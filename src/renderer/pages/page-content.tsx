@@ -3,7 +3,7 @@ import { Check, CircleAlert, Flag, PencilLine, Plus, Sparkles, Target } from 'lu
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
 import { useAppStore } from '@/store/app-store';
 import type { PageDefinition } from '@/pages/page-data';
-import type { AppState, HealthStatus, LearningGoal, LearningPlanDraft, ModelCapability, ProviderConfig, ProviderId, UserProfile } from '@shared/app-state';
+import type { AppState, HealthStatus, LearningGoal, LearningPlanDraft, LearningPlanStage, ModelCapability, PlanTask, ProviderConfig, ProviderId, TaskStatus, UserProfile } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import type { ProviderConfigInput } from '@shared/provider-config';
 
@@ -77,99 +77,7 @@ export function PageContent({ page }: { page: PageDefinition }) {
         </div>
       );
     case 'plans': {
-      const activeGoal = state.goals.find((goal) => goal.id === state.plan.activeGoalId) ?? state.goals[0] ?? null;
-      const activePlanDraft = getActivePlanDraft(state.plan.drafts, state.plan.activeGoalId);
-
-      return (
-        <div className="grid gap-4 xl:grid-cols-[1.2fr,1fr]">
-          <Card className="border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),_transparent_40%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <Badge className="bg-slate-900 text-white">当前主目标</Badge>
-                <SectionTitle className="mt-4 text-2xl">{activeGoal?.title ?? '暂未设置主目标'}</SectionTitle>
-                <Muted className="mt-2 max-w-2xl">{activeGoal ? activeGoal.motivation : '请先在目标页选择一个当前重点目标，计划页会跟随切换到该目标的独立草案。'}</Muted>
-              </div>
-              {activePlanDraft ? (
-                <div className="rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 text-sm text-slate-700 shadow-sm backdrop-blur">
-                  <div className="font-medium text-slate-900">{activePlanDraft.title}</div>
-                  <div className="mt-1">{activeGoal?.cycle ?? '未设置周期'} · {activeGoal ? `成功标准：${activeGoal.successMetric}` : '等待选择目标'}</div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-5 rounded-2xl bg-white/80 px-5 py-4 shadow-sm ring-1 ring-white">
-              <div className="text-sm font-medium text-slate-900">计划摘要</div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{activePlanDraft?.summary ?? '当前目标还没有计划草案。'}</p>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {(activePlanDraft?.stages ?? []).map((stage) => (
-                <div key={stage.title} className="rounded-2xl border border-slate-100 bg-white/85 px-4 py-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium">{stage.title}</div>
-                    <Badge>{stage.progress}</Badge>
-                  </div>
-                  <Muted className="mt-2">{stage.outcome}</Muted>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <div className="grid gap-4">
-            <Card>
-              <SectionTitle>目标 → 草案切换</SectionTitle>
-              <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                当前计划页直接读取 <span className="font-medium text-slate-900">goalId 对应的 plan draft payload</span>。切换主目标时，不再只是展示文案联动，而是切换到该目标持久化保存的独立草案。
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {state.goals.map((goal) => {
-                  const isCurrent = goal.id === state.plan.activeGoalId;
-                  const draft = state.plan.drafts.find((item) => item.goalId === goal.id);
-                  return (
-                    <button
-                      key={goal.id}
-                      type="button"
-                      onClick={() => void useAppStore.getState().setActiveGoal(goal.id)}
-                      className={[
-                        'rounded-full border px-4 py-2 text-left text-sm transition',
-                        isCurrent ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
-                      ].join(' ')}
-                    >
-                      <div className="font-medium">{goal.title}</div>
-                      <div className={isCurrent ? 'mt-1 text-xs text-slate-200' : 'mt-1 text-xs text-slate-500'}>{draft?.title ?? '待生成草案'}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </Card>
-            <Card>
-              <SectionTitle>计划依据说明</SectionTitle>
-              <ul className="mt-4 space-y-3 text-sm text-slate-700">
-                {(activePlanDraft?.basis ?? []).map((item) => (
-                  <li key={item} className="rounded-xl bg-slate-50 px-3 py-3">{item}</li>
-                ))}
-              </ul>
-            </Card>
-          </div>
-          <Card className="xl:col-span-2">
-            <div className="flex items-center justify-between gap-3">
-              <SectionTitle>任务清单</SectionTitle>
-              {activeGoal ? <Badge className="bg-blue-100 text-blue-800">已切换到：{activeGoal.priority} · {goalStatusLabel(activeGoal.status)}</Badge> : null}
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {(activePlanDraft?.tasks ?? []).map((task) => (
-                <div key={task.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium text-slate-900">{task.title}</div>
-                    <Badge className="bg-slate-100 text-slate-700">{task.status}</Badge>
-                  </div>
-                  <Muted className="mt-2">预计 {task.duration}</Muted>
-                  <p className="mt-2 text-sm leading-6 text-slate-700">{task.note}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      );
+      return <PlansContent />;
     }
     case 'goals':
       return <GoalsContent />;
@@ -232,6 +140,436 @@ export function PageContent({ page }: { page: PageDefinition }) {
     default:
       return null;
   }
+}
+
+const planProgressOptions = ['未开始', '进行中', '已完成', '需要调整'];
+const taskStatusOptions: Array<{ value: TaskStatus; label: string }> = [
+  { value: 'todo', label: '待开始' },
+  { value: 'in_progress', label: '进行中' },
+  { value: 'done', label: '已完成' },
+  { value: 'delayed', label: '已延后' },
+];
+
+function cloneLearningPlanDraft(draft: LearningPlanDraft): LearningPlanDraft {
+  return {
+    ...draft,
+    basis: [...draft.basis],
+    stages: draft.stages.map((stage) => ({ ...stage })),
+    tasks: draft.tasks.map((task) => ({ ...task })),
+  };
+}
+
+function getComparableLearningPlanDraft(draft: LearningPlanDraft | null) {
+  if (!draft) return null;
+
+  return {
+    id: draft.id,
+    goalId: draft.goalId,
+    title: draft.title,
+    summary: draft.summary,
+    basis: draft.basis,
+    stages: draft.stages,
+    tasks: draft.tasks,
+  };
+}
+
+function createEmptyStage(): LearningPlanStage {
+  return {
+    title: '',
+    outcome: '',
+    progress: '未开始',
+  };
+}
+
+function createEmptyTask(draftId: string, index: number): PlanTask {
+  return {
+    id: `${draftId}-task-${Date.now()}-${index + 1}`,
+    title: '',
+    duration: '',
+    status: 'todo',
+    note: '',
+  };
+}
+
+function PlansContent() {
+  const goals = useAppStore((state) => state.goals);
+  const activeGoalId = useAppStore((state) => state.plan.activeGoalId);
+  const planDrafts = useAppStore((state) => state.plan.drafts);
+  const hydrated = useAppStore((state) => state.hydrated);
+  const hydrationError = useAppStore((state) => state.hydrationError);
+  const setActiveGoal = useAppStore((state) => state.setActiveGoal);
+  const saveLearningPlanDraft = useAppStore((state) => state.saveLearningPlanDraft);
+
+  const activeGoal = goals.find((goal) => goal.id === activeGoalId) ?? goals[0] ?? null;
+  const activePlanDraft = getActivePlanDraft(planDrafts, activeGoalId);
+
+  const [draft, setDraft] = useState<LearningPlanDraft | null>(activePlanDraft ? cloneLearningPlanDraft(activePlanDraft) : null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activePlanDraft) {
+      setDraft(null);
+      setEditing(false);
+      setNotice(null);
+      return;
+    }
+
+    const switchedDraft = activePlanDraft.id !== draft?.id;
+    if (switchedDraft) {
+      setDraft(cloneLearningPlanDraft(activePlanDraft));
+      setEditing(false);
+      setNotice(null);
+      return;
+    }
+
+    if (!editing && activePlanDraft.updatedAt !== draft?.updatedAt) {
+      setDraft(cloneLearningPlanDraft(activePlanDraft));
+    }
+  }, [activePlanDraft, draft?.id, draft?.updatedAt, editing]);
+
+  const hasChanges = useMemo(() => {
+    if (!draft || !activePlanDraft) return false;
+    return JSON.stringify(getComparableLearningPlanDraft(draft)) !== JSON.stringify(getComparableLearningPlanDraft(activePlanDraft));
+  }, [draft, activePlanDraft]);
+
+  const canSave = useMemo(() => {
+    if (!draft) return false;
+
+    const stagesReady = draft.stages.length > 0 && draft.stages.every((stage) => stage.title.trim() && stage.outcome.trim());
+    const tasksReady = draft.tasks.length > 0 && draft.tasks.every((task) => task.title.trim() && task.duration.trim() && task.note.trim());
+    return Boolean(stagesReady && tasksReady);
+  }, [draft]);
+
+  const stageProgressStats = useMemo(() => {
+    const total = draft?.stages.length ?? 0;
+    const completed = draft?.stages.filter((stage) => stage.progress === '已完成').length ?? 0;
+    return { total, completed };
+  }, [draft]);
+
+  const taskStats = useMemo(() => {
+    const total = draft?.tasks.length ?? 0;
+    const completed = draft?.tasks.filter((task) => task.status === 'done').length ?? 0;
+    return { total, completed };
+  }, [draft]);
+
+  const updateStage = (index: number, key: keyof LearningPlanStage, value: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        stages: current.stages.map((stage, stageIndex) => (stageIndex === index ? { ...stage, [key]: value } : stage)),
+      };
+    });
+  };
+
+  const updateTask = (index: number, key: keyof PlanTask, value: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        tasks: current.tasks.map((task, taskIndex) => (taskIndex === index ? { ...task, [key]: value } : task)),
+      };
+    });
+  };
+
+  const addStage = () => {
+    setDraft((current) => (current ? { ...current, stages: [...current.stages, createEmptyStage()] } : current));
+  };
+
+  const removeStage = (index: number) => {
+    setDraft((current) => {
+      if (!current || current.stages.length <= 1) return current;
+      return {
+        ...current,
+        stages: current.stages.filter((_, stageIndex) => stageIndex !== index),
+      };
+    });
+  };
+
+  const addTask = () => {
+    setDraft((current) => (current ? { ...current, tasks: [...current.tasks, createEmptyTask(current.id, current.tasks.length)] } : current));
+  };
+
+  const removeTask = (index: number) => {
+    setDraft((current) => {
+      if (!current || current.tasks.length <= 1) return current;
+      return {
+        ...current,
+        tasks: current.tasks.filter((_, taskIndex) => taskIndex !== index),
+      };
+    });
+  };
+
+  const restoreDraft = () => {
+    if (!activePlanDraft) return;
+    setDraft(cloneLearningPlanDraft(activePlanDraft));
+    setEditing(false);
+    setNotice('已恢复为最近一次持久化的计划草案。');
+  };
+
+  const onSave = async () => {
+    if (!draft || !canSave) {
+      setNotice('请至少保留 1 个阶段和 1 个任务，并补齐它们的标题、结果、时长与说明。');
+      return;
+    }
+
+    setSaving(true);
+    setNotice(null);
+    try {
+      await saveLearningPlanDraft(draft);
+      setLastSavedAt(new Date().toLocaleString('zh-CN'));
+      setEditing(false);
+      setNotice('计划草案已通过 renderer → preload → main → AppStorageService → SQLite plan tables 写入本地。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '计划草案保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onSwitchGoal = async (goalId: string) => {
+    if (goalId === activeGoalId) return;
+    if (hasChanges && !window.confirm('当前草案有未保存修改，切换主目标会放弃这些修改。是否继续？')) {
+      return;
+    }
+
+    try {
+      await setActiveGoal(goalId);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '切换主目标失败');
+    }
+  };
+
+  if (!draft) {
+    return (
+      <Card>
+        <SectionTitle>学习计划</SectionTitle>
+        <Muted className="mt-3">当前还没有可编辑的计划草案，请先在目标页创建并激活一个目标。</Muted>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[1.2fr,1fr]">
+      <Card className="border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),_transparent_40%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Badge className="bg-slate-900 text-white">{editing ? '草案编辑中' : '当前主目标'}</Badge>
+            <SectionTitle className="mt-4 text-2xl">{activeGoal?.title ?? '暂未设置主目标'}</SectionTitle>
+            <Muted className="mt-2 max-w-2xl">{activeGoal ? activeGoal.motivation : '请先在目标页选择一个当前重点目标，计划页会跟随切换到该目标的独立草案。'}</Muted>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className={editing ? successButtonClassName : secondaryButtonClassName} type="button" onClick={() => {
+              setEditing((current) => !current);
+              setNotice(null);
+            }} disabled={saving}>
+              {editing ? '结束编辑' : '编辑草案'}
+            </button>
+            <button className={primaryButtonClassName} type="button" onClick={() => void onSave()} disabled={!editing || saving || !hasChanges}>
+              {saving ? '保存中…' : '保存计划'}
+            </button>
+            <button className={secondaryButtonClassName} type="button" onClick={restoreDraft} disabled={saving || !hasChanges}>
+              还原当前值
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <StatCard label="阶段数" value={String(stageProgressStats.total)} />
+          <StatCard label="已完成阶段" value={String(stageProgressStats.completed)} />
+          <StatCard label="任务完成" value={`${taskStats.completed}/${taskStats.total}`} />
+        </div>
+
+        <div className="mt-5 rounded-2xl bg-white/80 px-5 py-4 shadow-sm ring-1 ring-white">
+          <div className="text-sm font-medium text-slate-900">{draft.title}</div>
+          <p className="mt-2 text-sm leading-6 text-slate-700">{draft.summary}</p>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {draft.stages.map((stage, index) => (
+            <div key={`stage-${index}`} className="rounded-2xl border border-slate-100 bg-white/85 px-4 py-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <Field label={`阶段 ${index + 1} 标题`}>
+                    <input
+                      className={inputClassName}
+                      value={stage.title}
+                      onChange={(event) => updateStage(index, 'title', event.target.value)}
+                      disabled={!editing || saving}
+                    />
+                  </Field>
+                </div>
+                <div className="w-full max-w-[180px]">
+                  <Field label="进度">
+                    <select
+                      className={inputClassName}
+                      value={stage.progress}
+                      onChange={(event) => updateStage(index, 'progress', event.target.value)}
+                      disabled={!editing || saving}
+                    >
+                      {planProgressOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              </div>
+              <Field label="阶段结果" className="mt-4">
+                <textarea
+                  className={textareaClassName}
+                  rows={3}
+                  value={stage.outcome}
+                  onChange={(event) => updateStage(index, 'outcome', event.target.value)}
+                  disabled={!editing || saving}
+                />
+              </Field>
+              {editing ? (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    className={dangerButtonClassName}
+                    type="button"
+                    onClick={() => removeStage(index)}
+                    disabled={saving || draft.stages.length <= 1}
+                  >
+                    删除阶段
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        {editing ? (
+          <div className="mt-4">
+            <button className={secondaryButtonClassName} type="button" onClick={addStage} disabled={saving}>
+              <Plus className="mr-1 inline h-4 w-4" />新增阶段
+            </button>
+          </div>
+        ) : null}
+      </Card>
+
+      <div className="grid gap-4">
+        <Card>
+          <SectionTitle>目标 → 草案切换</SectionTitle>
+          <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            当前计划页已经进入真实草案编辑模式。切换主目标时，会切换到该目标对应的独立 plan draft；如果当前有未保存修改，会先提醒确认。
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {goals.map((goal) => {
+              const isCurrent = goal.id === activeGoalId;
+              const goalDraft = planDrafts.find((item) => item.goalId === goal.id);
+              return (
+                <button
+                  key={goal.id}
+                  type="button"
+                  onClick={() => void onSwitchGoal(goal.id)}
+                  className={[
+                    'rounded-full border px-4 py-2 text-left text-sm transition',
+                    isCurrent ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                  ].join(' ')}
+                >
+                  <div className="font-medium">{goal.title}</div>
+                  <div className={isCurrent ? 'mt-1 text-xs text-slate-200' : 'mt-1 text-xs text-slate-500'}>{goalDraft?.title ?? '待生成草案'}</div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card>
+          <SectionTitle>计划依据说明</SectionTitle>
+          <ul className="mt-4 space-y-3 text-sm text-slate-700">
+            {draft.basis.map((item) => (
+              <li key={item} className="rounded-xl bg-slate-50 px-3 py-3">{item}</li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card>
+          <SectionTitle>编辑状态</SectionTitle>
+          <div className="mt-4 space-y-2 text-sm text-slate-700">
+            <StatusRow icon={<Check className="h-4 w-4" />} label="Renderer 状态" value={hydrated ? '已完成 hydration，可直接编辑当前目标草案。' : '正在加载本地计划草案…'} />
+            <StatusRow icon={<Sparkles className="h-4 w-4" />} label="保存链路" value="saveLearningPlanDraft → preload IPC → main handler → AppStorageService → learning_plan_drafts / plan_stages / plan_tasks" />
+            <StatusRow icon={<CircleAlert className="h-4 w-4" />} label="当前边界" value="本轮只覆盖手动编辑与持久化，不含重新生成、版本对比与 AI 重排。" />
+            {lastSavedAt ? <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">最近一次成功保存：{lastSavedAt}</div> : null}
+            {hydrationError ? <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-700">本地存储告警：{hydrationError}</div> : null}
+            {notice ? <div className="rounded-lg bg-blue-50 px-3 py-2 text-blue-700">{notice}</div> : null}
+          </div>
+        </Card>
+      </div>
+
+      <Card className="xl:col-span-2">
+        <div className="flex items-center justify-between gap-3">
+          <SectionTitle>任务清单</SectionTitle>
+          {activeGoal ? <Badge className="bg-blue-100 text-blue-800">{activeGoal.priority} · {goalStatusLabel(activeGoal.status)}</Badge> : null}
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {draft.tasks.map((task, index) => (
+            <div key={task.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+              <Field label={`任务 ${index + 1} 标题`}>
+                <input
+                  className={inputClassName}
+                  value={task.title}
+                  onChange={(event) => updateTask(index, 'title', event.target.value)}
+                  disabled={!editing || saving}
+                />
+              </Field>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <Field label="预计时长">
+                  <input
+                    className={inputClassName}
+                    value={task.duration}
+                    onChange={(event) => updateTask(index, 'duration', event.target.value)}
+                    disabled={!editing || saving}
+                  />
+                </Field>
+                <Field label="状态">
+                  <select
+                    className={inputClassName}
+                    value={task.status}
+                    onChange={(event) => updateTask(index, 'status', event.target.value)}
+                    disabled={!editing || saving}
+                  >
+                    {taskStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <Field label="任务说明" className="mt-4">
+                <textarea
+                  className={textareaClassName}
+                  rows={4}
+                  value={task.note}
+                  onChange={(event) => updateTask(index, 'note', event.target.value)}
+                  disabled={!editing || saving}
+                />
+              </Field>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <Badge className="bg-slate-100 text-slate-700">{taskStatusLabel(task.status)}</Badge>
+                {editing ? (
+                  <button
+                    className={dangerButtonClassName}
+                    type="button"
+                    onClick={() => removeTask(index)}
+                    disabled={saving || draft.tasks.length <= 1}
+                  >
+                    删除任务
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+        {editing ? (
+          <div className="mt-4">
+            <button className={secondaryButtonClassName} type="button" onClick={addTask} disabled={saving}>
+              <Plus className="mr-1 inline h-4 w-4" />新增任务
+            </button>
+          </div>
+        ) : null}
+      </Card>
+    </div>
+  );
 }
 
 function ProfileContent() {
@@ -935,6 +1273,21 @@ function statusBadgeClassName(status: LearningGoal['status']) {
   }
 }
 
+function taskStatusLabel(status: TaskStatus) {
+  switch (status) {
+    case 'todo':
+      return '待开始';
+    case 'in_progress':
+      return '进行中';
+    case 'done':
+      return '已完成';
+    case 'delayed':
+      return '已延后';
+    default:
+      return status;
+  }
+}
+
 function ProfilePreviewBlock({ title, items, emptyText = '暂无内容' }: { title: string; items: string[]; emptyText?: string }) {
   return (
     <div>
@@ -967,10 +1320,11 @@ function Field({ label, children, className }: { label: string; children: ReactN
   );
 }
 
-const inputClassName = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400';
-const textareaClassName = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 resize-y';
+const inputClassName = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500';
+const textareaClassName = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 resize-y disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500';
 const primaryButtonClassName = 'rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60';
 const secondaryButtonClassName = 'rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60';
 const successButtonClassName = 'rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition disabled:cursor-not-allowed disabled:opacity-60';
+const dangerButtonClassName = 'rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60';
 const primaryChipClassName = 'rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white';
 const secondaryChipClassName = 'rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700';

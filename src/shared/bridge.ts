@@ -1,4 +1,4 @@
-import type { AppState, ProviderConfig, ProviderId, ProviderSecretInput } from './app-state.js';
+import type { AppState, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput } from './app-state.js';
 import type { LearningGoalInput } from './goal.js';
 import type { ProviderConfigInput } from './provider-config.js';
 
@@ -12,6 +12,7 @@ export type LearningCompanionBridge = {
     saveUserProfile: (profile: AppState['profile']) => Promise<AppState['profile']>;
     upsertLearningGoal: (goal: LearningGoalInput) => Promise<AppState['goals']>;
     setActiveGoal: (goalId: string) => Promise<AppState>;
+    saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<AppState>;
     listProviderConfigs: () => Promise<ProviderConfig[]>;
     upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<ProviderConfig[]>;
     saveProviderSecret: (payload: ProviderSecretInput) => Promise<ProviderConfig[]>;

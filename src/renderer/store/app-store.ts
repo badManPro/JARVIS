@@ -12,6 +12,7 @@ type AppStore = AppState & {
   saveUserProfile: (profile: UserProfile) => Promise<void>;
   upsertLearningGoal: (goal: LearningGoalInput) => Promise<void>;
   setActiveGoal: (goalId: string) => Promise<void>;
+  saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   refreshProviderConfigs: () => Promise<void>;
   upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<void>;
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
@@ -121,6 +122,32 @@ export const useAppStore = create<AppStore>((set) => ({
     }
 
     const persistedState = await bridge.setActiveGoal(goalId);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  saveLearningPlanDraft: async (draft) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      set((state) => {
+        const drafts = state.plan.drafts.map((item) => (item.id === draft.id ? draft : item));
+        const activeDraft = findDraftByGoalId(drafts, state.plan.activeGoalId);
+        return {
+          ...state,
+          plan: {
+            ...state.plan,
+            drafts,
+          },
+          conversation: {
+            ...state.conversation,
+            relatedPlan: activeDraft?.title ?? state.conversation.relatedPlan,
+          },
+          hydrated: true,
+          hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+        };
+      });
+      return;
+    }
+
+    const persistedState = await bridge.saveLearningPlanDraft(draft);
     set({ ...persistedState, hydrated: true, hydrationError: null });
   },
   refreshProviderConfigs: async () => {

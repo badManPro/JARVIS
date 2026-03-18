@@ -203,6 +203,27 @@ export class AppStorageService {
     return this.loadAppState();
   }
 
+  saveLearningPlanDraft(draft: LearningPlanDraft) {
+    const snapshot = this.loadAppState();
+    const previousDraft = snapshot.plan.drafts.find((item) => item.id === draft.id || item.goalId === draft.goalId);
+    if (!previousDraft) {
+      throw new Error('计划草案不存在，无法保存。');
+    }
+
+    const normalizedDraft = this.normalizeLearningPlanDraft(draft, previousDraft);
+    const nextState = this.sanitizeState(this.hydratePlanState({
+      ...snapshot,
+      plan: {
+        ...snapshot.plan,
+        drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? normalizedDraft : item)),
+      },
+    }));
+
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+    return this.loadAppState();
+  }
+
   listProviderConfigs() {
     const snapshot = this.loadAppState();
     return snapshot.settings.providers;
@@ -350,5 +371,32 @@ export class AppStorageService {
       secretRow?.secret ?? null,
       secretRow?.updatedAt?.toISOString(),
     );
+  }
+
+  private normalizeLearningPlanDraft(draft: LearningPlanDraft, fallback: LearningPlanDraft): LearningPlanDraft {
+    return {
+      ...fallback,
+      ...draft,
+      title: draft.title.trim() || fallback.title,
+      summary: draft.summary.trim() || fallback.summary,
+      basis: draft.basis.map((item) => item.trim()).filter(Boolean),
+      stages: draft.stages
+        .map((stage) => ({
+          title: stage.title.trim(),
+          outcome: stage.outcome.trim(),
+          progress: stage.progress.trim() || '未开始',
+        }))
+        .filter((stage) => stage.title || stage.outcome),
+      tasks: draft.tasks
+        .map((task, index) => ({
+          ...task,
+          id: task.id?.trim() || `${fallback.id}-task-${Date.now()}-${index + 1}`,
+          title: task.title.trim(),
+          duration: task.duration.trim(),
+          note: task.note.trim(),
+        }))
+        .filter((task) => task.title || task.note),
+      updatedAt: new Date().toISOString(),
+    };
   }
 }
