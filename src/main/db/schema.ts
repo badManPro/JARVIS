@@ -1,0 +1,99 @@
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export const appSnapshots = sqliteTable('app_snapshots', {
+  id: text('id').primaryKey(),
+  payload: text('payload').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const userProfiles = sqliteTable('user_profiles', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  identity: text('identity').notNull(),
+  timeBudget: text('time_budget').notNull(),
+  pacePreference: text('pace_preference').notNull(),
+  strengthsJson: text('strengths_json').notNull(),
+  blockersJson: text('blockers_json').notNull(),
+  bestStudyWindow: text('best_study_window').notNull(),
+  planImpactJson: text('plan_impact_json').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const learningGoals = sqliteTable('learning_goals', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  motivation: text('motivation').notNull(),
+  baseline: text('baseline').notNull(),
+  cycle: text('cycle').notNull(),
+  successMetric: text('success_metric').notNull(),
+  priority: text('priority').notNull(),
+  status: text('status').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const learningPlans = sqliteTable('learning_plans', {
+  id: text('id').primaryKey(),
+  activeGoalId: text('active_goal_id').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const learningPlanDrafts = sqliteTable('learning_plan_drafts', {
+  id: text('id').primaryKey(),
+  goalId: text('goal_id').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  basisJson: text('basis_json').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const planStages = sqliteTable('plan_stages', {
+  id: text('id').primaryKey(),
+  draftId: text('draft_id').notNull(),
+  title: text('title').notNull(),
+  outcome: text('outcome').notNull(),
+  progress: text('progress').notNull(),
+  sortOrder: integer('sort_order').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const planTasks = sqliteTable('plan_tasks', {
+  id: text('id').primaryKey(),
+  draftId: text('draft_id').notNull(),
+  title: text('title').notNull(),
+  duration: text('duration').notNull(),
+  status: text('status').notNull(),
+  note: text('note').notNull(),
+  sortOrder: integer('sort_order').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const appSettings = sqliteTable('app_settings', {
+  id: text('id').primaryKey(),
+  theme: text('theme').notNull(),
+  startPage: text('start_page').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const providerConfigs = sqliteTable('provider_configs', {
+  providerId: text('provider_id').primaryKey(),
+  label: text('label').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+  endpoint: text('endpoint').notNull(),
+  model: text('model').notNull(),
+  authMode: text('auth_mode').notNull(),
+  capabilityTagsJson: text('capability_tags_json').notNull(),
+  healthStatus: text('health_status').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const modelRouting = sqliteTable('model_routing', {
+  routeKey: text('route_key').primaryKey(),
+  providerId: text('provider_id').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const providerSecrets = sqliteTable('provider_secrets', {
+  providerId: text('provider_id').primaryKey(),
+  secret: text('secret'),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
