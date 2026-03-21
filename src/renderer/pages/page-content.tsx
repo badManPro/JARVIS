@@ -7,6 +7,7 @@ import type {
   AppState,
   ConversationActionKind,
   ConversationActionPreview,
+  ConversationActionReviewStatus,
   ConversationActionScope,
   ConversationActionStatus,
   HealthStatus,
@@ -134,15 +135,52 @@ export function PageContent({ page }: { page: PageDefinition }) {
 
 function ConversationContent() {
   const state = useAppStore();
+  const reviewConversationActionPreview = useAppStore((store) => store.reviewConversationActionPreview);
   const conversation = useMemo(() => resolveConversationState(state), [state]);
-  const proposedCount = useMemo(
-    () => conversation.actionPreviews.filter((item) => item.status === 'proposed').length,
+  const [updatingActionId, setUpdatingActionId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const unreviewedCount = useMemo(
+    () => conversation.actionPreviews.filter((item) => item.reviewable && item.reviewStatus === 'unreviewed').length,
+    [conversation.actionPreviews],
+  );
+  const acceptedCount = useMemo(
+    () => conversation.actionPreviews.filter((item) => item.reviewStatus === 'accepted').length,
+    [conversation.actionPreviews],
+  );
+  const rejectedCount = useMemo(
+    () => conversation.actionPreviews.filter((item) => item.reviewStatus === 'rejected').length,
     [conversation.actionPreviews],
   );
   const pendingCount = useMemo(
-    () => conversation.actionPreviews.filter((item) => item.status === 'pending').length,
+    () => conversation.actionPreviews.filter((item) => !item.reviewable).length,
     [conversation.actionPreviews],
   );
+
+  const onReviewAction = async (payload: { actionId: string; reviewStatus: ConversationActionReviewStatus }) => {
+    setUpdatingActionId(payload.actionId);
+    setNotice(null);
+
+    try {
+      await reviewConversationActionPreview(payload);
+      switch (payload.reviewStatus) {
+        case 'accepted':
+          setNotice('该预览已标记为“接受”，后续 Task 3 会把已接受动作接到真实实体写入。');
+          break;
+        case 'rejected':
+          setNotice('该预览已标记为“暂不采纳”，当前不会进入后续执行。');
+          break;
+        case 'unreviewed':
+          setNotice('已恢复为待确认状态。');
+          break;
+        default:
+          setNotice(null);
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '更新预览审核状态失败');
+    } finally {
+      setUpdatingActionId(null);
+    }
+  };
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.1fr,1fr]">
@@ -161,7 +199,7 @@ function ConversationContent() {
 
       <Card className="border-slate-200 bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.12),_transparent_40%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))]">
         <SectionTitle>结构化动作预览</SectionTitle>
-        <Muted className="mt-2">当前阶段只做建议到 action preview 的映射，不直接写入画像、目标或计划。</Muted>
+        <Muted className="mt-2">当前阶段允许逐条确认或拒绝预览，但仍不直接写入画像、目标或计划实体。</Muted>
 
         <div className="mt-4 flex flex-wrap gap-2">
           {conversation.tags.map((tag) => (
@@ -169,15 +207,26 @@ function ConversationContent() {
           ))}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <StatCard label="待确认预览" value={String(proposedCount)} />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="待你决定" value={String(unreviewedCount)} />
+          <StatCard label="已接受" value={String(acceptedCount)} />
+          <StatCard label="已拒绝" value={String(rejectedCount)} />
           <StatCard label="仍待接入" value={String(pendingCount)} />
         </div>
+
+        {notice ? (
+          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">{notice}</div>
+        ) : null}
 
         {conversation.actionPreviews.length ? (
           <div className="mt-4 space-y-4">
             {conversation.actionPreviews.map((action) => (
-              <ConversationActionPreviewCard key={action.id} action={action} />
+              <ConversationActionPreviewCard
+                key={action.id}
+                action={action}
+                updating={updatingActionId === action.id}
+                onReviewAction={onReviewAction}
+              />
             ))}
           </div>
         ) : (
@@ -188,7 +237,15 @@ function ConversationContent() {
   );
 }
 
-function ConversationActionPreviewCard({ action }: { action: ConversationActionPreview }) {
+function ConversationActionPreviewCard({
+  action,
+  updating,
+  onReviewAction,
+}: {
+  action: ConversationActionPreview;
+  updating: boolean;
+  onReviewAction: (payload: { actionId: string; reviewStatus: ConversationActionReviewStatus }) => Promise<void>;
+}) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white/85 px-4 py-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -203,6 +260,7 @@ function ConversationActionPreviewCard({ action }: { action: ConversationActionP
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <Badge className={conversationActionStatusBadgeClassName(action.status)}>{conversationActionStatusLabel(action.status)}</Badge>
+          <Badge className={conversationActionReviewBadgeClassName(action)}>{conversationActionReviewLabel(action)}</Badge>
           <Badge className={conversationActionTargetBadgeClassName(action.target)}>{conversationActionTargetLabel(action.target)}</Badge>
         </div>
       </div>
@@ -229,6 +287,46 @@ function ConversationActionPreviewCard({ action }: { action: ConversationActionP
       <div className="mt-4 rounded-xl bg-slate-50 px-3 py-3">
         <div className="text-xs font-medium uppercase tracking-wide text-slate-500">为什么建议这样改</div>
         <div className="mt-2 text-sm leading-6 text-slate-700">{action.reason}</div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+        <div className="text-sm text-slate-600">
+          {action.reviewable
+            ? (action.reviewStatus === 'unreviewed'
+              ? '你可以先确认或拒绝这条预览，实体写入会在下一步任务接入。'
+              : `当前审核结果：${conversationActionReviewLabel(action)}${action.reviewedAt ? ` · ${formatDateTime(action.reviewedAt)}` : ''}`)
+            : '这条建议仍依赖后续运行时接入，目前只保留为占位预览。'}
+        </div>
+        {action.reviewable ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={successButtonClassName}
+              type="button"
+              onClick={() => void onReviewAction({ actionId: action.id, reviewStatus: 'accepted' })}
+              disabled={updating || action.reviewStatus === 'accepted'}
+            >
+              {updating && action.reviewStatus !== 'accepted' ? '处理中…' : '接受预览'}
+            </button>
+            <button
+              className={dangerButtonClassName}
+              type="button"
+              onClick={() => void onReviewAction({ actionId: action.id, reviewStatus: 'rejected' })}
+              disabled={updating || action.reviewStatus === 'rejected'}
+            >
+              暂不采纳
+            </button>
+            <button
+              className={secondaryButtonClassName}
+              type="button"
+              onClick={() => void onReviewAction({ actionId: action.id, reviewStatus: 'unreviewed' })}
+              disabled={updating || action.reviewStatus === 'unreviewed'}
+            >
+              重置
+            </button>
+          </div>
+        ) : (
+          <Badge className="bg-slate-100 text-slate-700">等待运行时</Badge>
+        )}
       </div>
 
       <div className="mt-3 text-xs text-slate-500">来源建议：{action.sourceSuggestion}</div>
@@ -1858,6 +1956,40 @@ function conversationActionStatusBadgeClassName(status: ConversationActionStatus
       return 'bg-emerald-100 text-emerald-800';
     case 'pending':
       return 'bg-rose-100 text-rose-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function conversationActionReviewLabel(action: ConversationActionPreview) {
+  if (!action.reviewable) {
+    return '尚不可确认';
+  }
+
+  switch (action.reviewStatus) {
+    case 'accepted':
+      return '已接受';
+    case 'rejected':
+      return '已拒绝';
+    case 'unreviewed':
+      return '待审核';
+    default:
+      return action.reviewStatus;
+  }
+}
+
+function conversationActionReviewBadgeClassName(action: ConversationActionPreview) {
+  if (!action.reviewable) {
+    return 'bg-slate-100 text-slate-700';
+  }
+
+  switch (action.reviewStatus) {
+    case 'accepted':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'rejected':
+      return 'bg-rose-100 text-rose-800';
+    case 'unreviewed':
+      return 'bg-amber-100 text-amber-800';
     default:
       return 'bg-slate-100 text-slate-700';
   }

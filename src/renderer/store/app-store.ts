@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { AppState, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
-import { seedState } from '@shared/app-state';
+import type { AppState, ConversationActionReviewStatus, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
+import { resolveConversationState, seedState, updateConversationActionPreviewReview } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
@@ -16,6 +16,7 @@ type AppStore = AppState & {
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
+  reviewConversationActionPreview: (payload: { actionId: string; reviewStatus: ConversationActionReviewStatus }) => Promise<void>;
   refreshProviderConfigs: () => Promise<void>;
   upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<void>;
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
@@ -43,7 +44,19 @@ function findDraftByGoalId(drafts: LearningPlanDraft[], goalId: string) {
 const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
 const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
 
-export const useAppStore = create<AppStore>((set) => ({
+function extractAppState(state: AppStore): AppState {
+  return {
+    profile: state.profile,
+    dashboard: state.dashboard,
+    goals: state.goals,
+    plan: state.plan,
+    conversation: state.conversation,
+    reflection: state.reflection,
+    settings: state.settings,
+  };
+}
+
+export const useAppStore = create<AppStore>((set, get) => ({
   ...seedState,
   hydrated: false,
   hydrationError: null,
@@ -235,6 +248,34 @@ export const useAppStore = create<AppStore>((set) => ({
     }
 
     const persistedState = await bridge.regenerateLearningPlanDraft(payload);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  reviewConversationActionPreview: async (payload) => {
+    const bridge = getBridge();
+    const currentState = get();
+    const nextConversation = resolveConversationState({
+      profile: currentState.profile,
+      goals: currentState.goals,
+      plan: currentState.plan,
+      conversation: updateConversationActionPreviewReview(currentState.conversation, payload),
+      settings: currentState.settings,
+    });
+
+    if (!bridge) {
+      set((state) => ({
+        ...state,
+        conversation: nextConversation,
+        hydrated: true,
+        hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+      }));
+      return;
+    }
+
+    const nextState = {
+      ...extractAppState(currentState),
+      conversation: nextConversation,
+    } satisfies AppState;
+    const persistedState = await bridge.saveAppState(nextState);
     set({ ...persistedState, hydrated: true, hydrationError: null });
   },
   refreshProviderConfigs: async () => {

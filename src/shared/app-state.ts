@@ -107,6 +107,7 @@ export type ConversationMessage = {
 export type ConversationActionScope = 'profile' | 'goal' | 'plan';
 export type ConversationActionKind = 'profile_update' | 'goal_update' | 'plan_update' | 'plan_generation' | 'unknown';
 export type ConversationActionStatus = 'proposed' | 'pending';
+export type ConversationActionReviewStatus = 'unreviewed' | 'accepted' | 'rejected';
 
 export type ConversationActionChange = {
   field: string;
@@ -121,6 +122,9 @@ export type ConversationActionPreview = {
   target: ConversationActionScope;
   scopes: ConversationActionScope[];
   status: ConversationActionStatus;
+  reviewable: boolean;
+  reviewStatus: ConversationActionReviewStatus;
+  reviewedAt?: string;
   title: string;
   summary: string;
   reason: string;
@@ -228,6 +232,51 @@ function inferConversationActionTarget(content: string): ConversationActionScope
   return 'plan';
 }
 
+function isConversationActionReviewable(status: ConversationActionStatus) {
+  return status === 'proposed';
+}
+
+function normalizeConversationActionReviewStatus(status?: string): ConversationActionReviewStatus {
+  switch (status) {
+    case 'accepted':
+    case 'rejected':
+    case 'unreviewed':
+      return status;
+    default:
+      return 'unreviewed';
+  }
+}
+
+function buildConversationActionPreview(
+  preview: Omit<ConversationActionPreview, 'reviewable' | 'reviewStatus' | 'reviewedAt'>,
+): ConversationActionPreview {
+  return {
+    ...preview,
+    reviewable: isConversationActionReviewable(preview.status),
+    reviewStatus: 'unreviewed',
+  };
+}
+
+function applyStoredConversationActionReviewState(
+  preview: ConversationActionPreview,
+  storedPreview?: ConversationActionPreview,
+): ConversationActionPreview {
+  if (!preview.reviewable) {
+    return {
+      ...preview,
+      reviewStatus: 'unreviewed',
+      reviewedAt: undefined,
+    };
+  }
+
+  const reviewStatus = normalizeConversationActionReviewStatus(storedPreview?.reviewStatus);
+  return {
+    ...preview,
+    reviewStatus,
+    reviewedAt: reviewStatus === 'unreviewed' ? undefined : storedPreview?.reviewedAt,
+  };
+}
+
 function buildGenericConversationActionPreview({
   sourceSuggestion,
   status,
@@ -246,7 +295,7 @@ function buildGenericConversationActionPreview({
     plan: 'plan_update',
   };
 
-  return {
+  return buildConversationActionPreview({
     id: createConversationActionId(sourceSuggestion, index),
     kind: kindByTarget[target],
     target,
@@ -264,7 +313,7 @@ function buildGenericConversationActionPreview({
         after: content,
       },
     ],
-  };
+  });
 }
 
 export function resolveConversationState(
@@ -277,14 +326,17 @@ export function resolveConversationState(
   const planGenerationProvider = state.settings.providers.find((provider) => provider.id === state.settings.routing.planGeneration)?.label
     ?? state.settings.routing.planGeneration;
   const suggestions = state.conversation.suggestions.map((item) => item.trim()).filter(Boolean);
+  const storedPreviewById = new Map((state.conversation.actionPreviews ?? []).map((preview) => [preview.id, preview]));
 
   const actionPreviews = suggestions.length
     ? suggestions.map((sourceSuggestion, index) => {
       const { status, content } = parseSuggestionStatus(sourceSuggestion);
+      const previewId = createConversationActionId(sourceSuggestion, index);
+      const storedPreview = storedPreviewById.get(previewId);
 
       if (/直接读取当前目标/.test(content) && /(plan draft|草案)/i.test(content)) {
-        return {
-          id: createConversationActionId(sourceSuggestion, index),
+        return applyStoredConversationActionReviewState(buildConversationActionPreview({
+          id: previewId,
           kind: 'plan_update',
           target: 'plan',
           scopes: ['goal', 'plan'],
@@ -307,12 +359,12 @@ export function resolveConversationState(
               after: relatedPlan,
             },
           ],
-        } satisfies ConversationActionPreview;
+        }), storedPreview);
       }
 
       if (/新目标/.test(content) && /(自动补|首版草案|草案)/.test(content)) {
-        return {
-          id: createConversationActionId(sourceSuggestion, index),
+        return applyStoredConversationActionReviewState(buildConversationActionPreview({
+          id: previewId,
           kind: 'goal_update',
           target: 'goal',
           scopes: ['goal', 'plan'],
@@ -335,12 +387,12 @@ export function resolveConversationState(
               after: '新目标创建后立即拥有可编辑的首版草案',
             },
           ],
-        } satisfies ConversationActionPreview;
+        }), storedPreview);
       }
 
       if (/(真实 ai|ai provider|provider)/i.test(content) && /(生成计划|计划)/.test(content)) {
-        return {
-          id: createConversationActionId(sourceSuggestion, index),
+        return applyStoredConversationActionReviewState(buildConversationActionPreview({
+          id: previewId,
           kind: 'plan_generation',
           target: 'plan',
           scopes: ['plan'],
@@ -363,12 +415,12 @@ export function resolveConversationState(
               after: '路由配置会直接影响实际模型调用目标',
             },
           ],
-        } satisfies ConversationActionPreview;
+        }), storedPreview);
       }
 
       if (/(画像|时间窗口|节奏|偏好)/.test(content)) {
-        return {
-          id: createConversationActionId(sourceSuggestion, index),
+        return applyStoredConversationActionReviewState(buildConversationActionPreview({
+          id: previewId,
           kind: 'profile_update',
           target: 'profile',
           scopes: ['profile', 'plan'],
@@ -391,15 +443,15 @@ export function resolveConversationState(
               after: '新的画像变化将作为后续计划调整依据',
             },
           ],
-        } satisfies ConversationActionPreview;
+        }), storedPreview);
       }
 
-      return buildGenericConversationActionPreview({
+      return applyStoredConversationActionReviewState(buildGenericConversationActionPreview({
         sourceSuggestion,
         status,
         content,
         index,
-      });
+      }), storedPreview);
     })
     : (state.conversation.actionPreviews ?? []);
 
@@ -409,6 +461,31 @@ export function resolveConversationState(
     relatedPlan,
     suggestions,
     actionPreviews,
+  };
+}
+
+export function updateConversationActionPreviewReview(
+  conversation: AppState['conversation'],
+  payload: {
+    actionId: string;
+    reviewStatus: ConversationActionReviewStatus;
+    reviewedAt?: string;
+  },
+): AppState['conversation'] {
+  return {
+    ...conversation,
+    actionPreviews: conversation.actionPreviews.map((preview) => {
+      if (preview.id !== payload.actionId || !preview.reviewable) {
+        return preview;
+      }
+
+      const reviewStatus = payload.reviewStatus;
+      return {
+        ...preview,
+        reviewStatus,
+        reviewedAt: reviewStatus === 'unreviewed' ? undefined : (payload.reviewedAt ?? new Date().toISOString()),
+      };
+    }),
   };
 }
 
