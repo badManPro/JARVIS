@@ -17,7 +17,7 @@
 - Provider 配置安全存储基础接口（renderer 不直接拿到明文 secret）
 - 目标页已具备真实“创建 / 编辑 / 本地持久化 / 重启回填”链路
 - 学习计划已升级为“按目标保存独立计划草案”，切换当前目标会切换到对应 plan payload
-- 学习计划页已支持阶段/任务手动编辑、本地保存、重新生成确认和版本快照归档
+- 学习计划页已支持阶段/任务手动编辑、本地保存、重新生成确认、版本快照归档与版本对比视图
 
 ## 技术栈
 - Electron
@@ -109,15 +109,15 @@ npm run build
 - 用户画像、目标、设置页的关键字段已经可以通过 renderer → preload → main → SQLite 真实保存并在重启后回填
 - 计划相关数据已拆为：`learning_plans.active_goal_id` 保存当前主目标，`learning_plan_drafts` 保存各目标草案，`plan_stages` / `plan_tasks` 保存对应阶段与任务
 - 目标页已支持“设为当前目标”，计划页会直接切换到该目标对应的独立草案内容，而不是仅做展示映射
-- 点击“重新生成计划”前，会先把当前草案归档到 `learning_plan_snapshots`、`plan_snapshot_stages`、`plan_snapshot_tasks`，用于后续版本对比
+- 点击“重新生成计划”前，会先把当前草案归档到 `learning_plan_snapshots`、`plan_snapshot_stages`、`plan_snapshot_tasks`，并可在计划页直接选择历史快照做版本对比
 - 当前计划草案仍由本地规则模板生成，尚未接入真实 AI Provider 生成 / 重排
-- 当前尚未提供版本 diff 视图、目标删除、对话驱动目标变更等更高阶动作
+- 当前尚未提供版本回滚、目标删除、对话驱动目标变更等更高阶动作
 
 ## 下一步建议
-1. 为计划版本补上显式“版本对比”视图，先只展示标题、阶段、任务三类核心差异
+1. 增加目标删除与关联计划清理策略，避免留下脏的 active goal / dangling draft
 2. 把计划调整、画像修正、对话建议接成可提交的真实动作
 3. 增加统一 AI service，按 capability route 到不同 Provider
 4. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
 
 ## 当前推荐下一任务
-- `Phase 1 / Task 3`：增加版本对比视图，只展示标题、阶段、任务三类核心差异
+- `Phase 1 / Task 4`：增加目标删除与关联计划清理策略

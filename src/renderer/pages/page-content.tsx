@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Check, CircleAlert, Flag, History, PencilLine, Plus, RefreshCcw, Sparkles, Target } from 'lucide-react';
+import { Check, CircleAlert, Flag, GitCompareArrows, History, PencilLine, Plus, RefreshCcw, Sparkles, Target } from 'lucide-react';
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
 import { useAppStore } from '@/store/app-store';
 import type { PageDefinition } from '@/pages/page-data';
@@ -206,6 +206,133 @@ function createEmptyTask(draftId: string, index: number): PlanTask {
   };
 }
 
+type PlanDiffKind = 'added' | 'removed' | 'updated';
+
+type PlanDiffEntry = {
+  key: string;
+  label: string;
+  kind: PlanDiffKind;
+  previous: string | null;
+  current: string | null;
+};
+
+type LearningPlanComparison = {
+  titleChanged: boolean;
+  stageChanges: PlanDiffEntry[];
+  taskChanges: PlanDiffEntry[];
+  totalChanges: number;
+};
+
+function normalizeStage(stage: LearningPlanStage) {
+  return {
+    title: stage.title.trim(),
+    outcome: stage.outcome.trim(),
+    progress: stage.progress.trim(),
+  };
+}
+
+function normalizeTask(task: PlanTask) {
+  return {
+    title: task.title.trim(),
+    duration: task.duration.trim(),
+    status: task.status,
+    note: task.note.trim(),
+  };
+}
+
+function formatStageComparisonValue(stage: LearningPlanStage) {
+  const normalized = normalizeStage(stage);
+  return `${normalized.title || '未命名阶段'} · ${normalized.outcome || '未填写阶段结果'} · ${normalized.progress || '未标记进度'}`;
+}
+
+function formatTaskComparisonValue(task: PlanTask) {
+  const normalized = normalizeTask(task);
+  return `${normalized.title || '未命名任务'} · ${normalized.duration || '未填时长'} · ${taskStatusLabel(normalized.status)} · ${normalized.note || '未填写任务说明'}`;
+}
+
+function buildPlanDiffEntries<T>({
+  currentItems,
+  previousItems,
+  getLabel,
+  describe,
+  isEqual,
+}: {
+  currentItems: T[];
+  previousItems: T[];
+  getLabel: (index: number) => string;
+  describe: (item: T) => string;
+  isEqual: (currentItem: T, previousItem: T) => boolean;
+}) {
+  const maxLength = Math.max(currentItems.length, previousItems.length);
+  const entries: PlanDiffEntry[] = [];
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const currentItem = currentItems[index];
+    const previousItem = previousItems[index];
+    const label = getLabel(index);
+
+    if (currentItem && previousItem) {
+      if (!isEqual(currentItem, previousItem)) {
+        entries.push({
+          key: `${label}-updated`,
+          label,
+          kind: 'updated',
+          previous: describe(previousItem),
+          current: describe(currentItem),
+        });
+      }
+      continue;
+    }
+
+    if (currentItem) {
+      entries.push({
+        key: `${label}-added`,
+        label,
+        kind: 'added',
+        previous: null,
+        current: describe(currentItem),
+      });
+    }
+
+    if (previousItem) {
+      entries.push({
+        key: `${label}-removed`,
+        label,
+        kind: 'removed',
+        previous: describe(previousItem),
+        current: null,
+      });
+    }
+  }
+
+  return entries;
+}
+
+function buildLearningPlanComparison(currentDraft: LearningPlanDraft, snapshot: LearningPlanSnapshot): LearningPlanComparison {
+  const titleChanged = currentDraft.title.trim() !== snapshot.title.trim();
+  const stageChanges = buildPlanDiffEntries({
+    currentItems: currentDraft.stages,
+    previousItems: snapshot.stages,
+    getLabel: (index) => `阶段 ${index + 1}`,
+    describe: formatStageComparisonValue,
+    isEqual: (currentStage, previousStage) => JSON.stringify(normalizeStage(currentStage)) === JSON.stringify(normalizeStage(previousStage)),
+  });
+  const taskChanges = buildPlanDiffEntries({
+    currentItems: currentDraft.tasks,
+    previousItems: snapshot.tasks,
+    getLabel: (index) => `任务 ${index + 1}`,
+    describe: formatTaskComparisonValue,
+    isEqual: (currentTask, previousTask) => JSON.stringify(normalizeTask(currentTask)) === JSON.stringify(normalizeTask(previousTask)),
+  });
+
+  return {
+    titleChanged,
+    stageChanges,
+    taskChanges,
+    totalChanges: (titleChanged ? 1 : 0) + stageChanges.length + taskChanges.length,
+  };
+}
+
 function PlansContent() {
   const goals = useAppStore((state) => state.goals);
   const activeGoalId = useAppStore((state) => state.plan.activeGoalId);
@@ -234,6 +361,7 @@ function PlansContent() {
   const [notice, setNotice] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [lastRegeneratedAt, setLastRegeneratedAt] = useState<string | null>(null);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(latestSnapshot?.id ?? null);
 
   useEffect(() => {
     if (!activePlanDraft) {
@@ -256,6 +384,15 @@ function PlansContent() {
       setDraft(cloneLearningPlanDraft(activePlanDraft));
     }
   }, [activePlanDraft, draft?.id, draft?.updatedAt, editing]);
+
+  useEffect(() => {
+    if (!activeSnapshots.length) {
+      setSelectedSnapshotId(null);
+      return;
+    }
+
+    setSelectedSnapshotId((current) => (current && activeSnapshots.some((snapshot) => snapshot.id === current) ? current : activeSnapshots[0].id));
+  }, [activeSnapshots]);
 
   const hasChanges = useMemo(() => {
     if (!draft || !activePlanDraft) return false;
@@ -281,6 +418,14 @@ function PlansContent() {
     const completed = draft?.tasks.filter((task) => task.status === 'done').length ?? 0;
     return { total, completed };
   }, [draft]);
+  const selectedSnapshot = useMemo(
+    () => activeSnapshots.find((snapshot) => snapshot.id === selectedSnapshotId) ?? activeSnapshots[0] ?? null,
+    [activeSnapshots, selectedSnapshotId],
+  );
+  const planComparison = useMemo(() => {
+    if (!draft || !selectedSnapshot) return null;
+    return buildLearningPlanComparison(draft, selectedSnapshot);
+  }, [draft, selectedSnapshot]);
 
   const updateStage = (index: number, key: keyof LearningPlanStage, value: string) => {
     setDraft((current) => {
@@ -547,7 +692,7 @@ function PlansContent() {
               <Badge className="bg-slate-100 text-slate-700">{activeSnapshots.length} 个</Badge>
             </div>
             <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              每次点击“重新生成计划”前，当前草案都会先归档为完整版本快照。本轮先提供归档基础和元信息展示，版本 diff 视图留到下一任务。
+              每次点击“重新生成计划”前，当前草案都会先归档为完整版本快照。现在可以直接选一个历史版本，与当前展示中的草案比较标题、阶段和任务差异。
             </div>
             {latestSnapshot ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
@@ -566,19 +711,98 @@ function PlansContent() {
                 还没有历史快照。第一次重新生成时，会先归档当前草案作为 v1。
               </div>
             )}
-            {activeSnapshots.length > 1 ? (
+            {activeSnapshots.length ? (
               <div className="mt-3 space-y-2">
-                {activeSnapshots.slice(1, 4).map((snapshot) => (
-                  <div key={snapshot.id} className="rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-medium">v{snapshot.version}</span>
-                      <span className="text-xs text-slate-500">{formatDateTime(snapshot.createdAt)}</span>
-                    </div>
-                    <div className="mt-1">{snapshot.title}</div>
-                  </div>
-                ))}
+                {activeSnapshots.map((snapshot) => {
+                  const selected = snapshot.id === selectedSnapshot?.id;
+                  return (
+                    <button
+                      key={snapshot.id}
+                      type="button"
+                      onClick={() => setSelectedSnapshotId(snapshot.id)}
+                      aria-pressed={selected}
+                      className={[
+                        'w-full rounded-xl border px-3 py-3 text-left text-sm transition',
+                        selected
+                          ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white',
+                      ].join(' ')}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">v{snapshot.version}</span>
+                        <span className={selected ? 'text-xs text-slate-200' : 'text-xs text-slate-500'}>{formatDateTime(snapshot.createdAt)}</span>
+                      </div>
+                      <div className={selected ? 'mt-1 text-slate-100' : 'mt-1 text-slate-700'}>{snapshot.title}</div>
+                      <div className={selected ? 'mt-2 text-xs text-slate-200' : 'mt-2 text-xs text-slate-500'}>
+                        阶段 {snapshot.stages.length} · 任务 {snapshot.tasks.length}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
+          </Card>
+
+          <Card className="border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(239,246,255,0.65))]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <SectionTitle>版本对比</SectionTitle>
+                <Muted className="mt-2">
+                  {selectedSnapshot
+                    ? `当前展示草案 vs 快照 v${selectedSnapshot.version} · ${formatDateTime(selectedSnapshot.createdAt)}`
+                    : '选择一个快照后，这里会展示当前草案与历史版本的核心差异。'}
+                </Muted>
+              </div>
+              {planComparison ? <Badge className="bg-slate-900 text-white">{planComparison.totalChanges} 处差异</Badge> : null}
+            </div>
+            {selectedSnapshot && planComparison ? (
+              <>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <StatCard label="标题差异" value={planComparison.titleChanged ? '1' : '0'} />
+                  <StatCard label="阶段差异" value={String(planComparison.stageChanges.length)} />
+                  <StatCard label="任务差异" value={String(planComparison.taskChanges.length)} />
+                </div>
+
+                {hasChanges ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    当前对比基于你屏幕里的最新草案内容，包含尚未保存的修改。
+                  </div>
+                ) : null}
+
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 px-4 py-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <GitCompareArrows className="h-4 w-4 text-slate-500" />
+                    标题
+                  </div>
+                  {planComparison.titleChanged ? (
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <ComparisonValueCard label={`快照 v${selectedSnapshot.version}`} value={selectedSnapshot.title} />
+                      <ComparisonValueCard label="当前草案" value={draft.title} emphasized />
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600">标题未变化。</div>
+                  )}
+                </div>
+
+                <PlanDiffSection
+                  title="阶段"
+                  items={planComparison.stageChanges}
+                  emptyText="阶段结构没有变化。"
+                  previousLabel={`快照 v${selectedSnapshot.version}`}
+                />
+
+                <PlanDiffSection
+                  title="任务"
+                  items={planComparison.taskChanges}
+                  emptyText="任务结构没有变化。"
+                  previousLabel={`快照 v${selectedSnapshot.version}`}
+                />
+              </>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
+                还没有可对比的历史版本。先执行一次“重新生成计划”，再回到这里选择快照。
+              </div>
+            )}
           </Card>
 
           <Card>
@@ -596,7 +820,7 @@ function PlansContent() {
               <StatusRow icon={<Check className="h-4 w-4" />} label="Renderer 状态" value={hydrated ? '已完成 hydration，可直接编辑和重生成当前目标草案。' : '正在加载本地计划草案…'} />
               <StatusRow icon={<Sparkles className="h-4 w-4" />} label="保存链路" value="saveLearningPlanDraft → preload IPC → main handler → AppStorageService → learning_plan_drafts / plan_stages / plan_tasks" />
               <StatusRow icon={<History className="h-4 w-4" />} label="快照链路" value="regenerateLearningPlanDraft → preload IPC → main handler → AppStorageService → learning_plan_snapshots / plan_snapshot_stages / plan_snapshot_tasks" />
-              <StatusRow icon={<CircleAlert className="h-4 w-4" />} label="当前边界" value="本轮覆盖手动编辑、重新生成和版本快照基础，不含版本 diff 视图与真实 AI 重排。" />
+              <StatusRow icon={<CircleAlert className="h-4 w-4" />} label="当前边界" value="本轮覆盖手动编辑、重新生成、版本快照与版本对比，不含版本回滚与真实 AI 重排。" />
               {lastSavedAt ? <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">最近一次成功保存：{lastSavedAt}</div> : null}
               {lastRegeneratedAt ? <div className="rounded-lg bg-sky-50 px-3 py-2 text-sky-700">最近一次成功重生成：{lastRegeneratedAt}</div> : null}
               {hydrationError ? <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-700">本地存储告警：{hydrationError}</div> : null}
@@ -1412,6 +1636,32 @@ function statusBadgeClassName(status: LearningGoal['status']) {
   }
 }
 
+function diffKindLabel(kind: PlanDiffKind) {
+  switch (kind) {
+    case 'added':
+      return '新增';
+    case 'removed':
+      return '移除';
+    case 'updated':
+      return '调整';
+    default:
+      return kind;
+  }
+}
+
+function diffKindBadgeClassName(kind: PlanDiffKind) {
+  switch (kind) {
+    case 'added':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'removed':
+      return 'bg-rose-100 text-rose-700';
+    case 'updated':
+      return 'bg-amber-100 text-amber-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
 function taskStatusLabel(status: TaskStatus) {
   switch (status) {
     case 'todo':
@@ -1434,6 +1684,57 @@ function ProfilePreviewBlock({ title, items, emptyText = '暂无内容' }: { tit
       <div className="mt-2 flex flex-wrap gap-2">
         {items.length ? items.map((item) => <Badge key={`${title}-${item}`} className="bg-slate-100 text-slate-700">{item}</Badge>) : <Muted>{emptyText}</Muted>}
       </div>
+    </div>
+  );
+}
+
+function ComparisonValueCard({ label, value, emphasized = false }: { label: string; value: string; emphasized?: boolean }) {
+  return (
+    <div className={[
+      'rounded-xl border px-3 py-3 text-sm',
+      emphasized ? 'border-blue-200 bg-blue-50 text-blue-950' : 'border-slate-200 bg-slate-50 text-slate-700',
+    ].join(' ')}>
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-2 leading-6">{value.trim() || '暂无内容'}</div>
+    </div>
+  );
+}
+
+function PlanDiffSection({
+  title,
+  items,
+  emptyText,
+  previousLabel,
+}: {
+  title: string;
+  items: PlanDiffEntry[];
+  emptyText: string;
+  previousLabel: string;
+}) {
+  return (
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium text-slate-900">{title}</div>
+        <Badge className="bg-slate-100 text-slate-700">{items.length} 处</Badge>
+      </div>
+      {items.length ? (
+        <div className="mt-3 space-y-3">
+          {items.map((item) => (
+            <div key={item.key} className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium text-slate-900">{item.label}</div>
+                <Badge className={diffKindBadgeClassName(item.kind)}>{diffKindLabel(item.kind)}</Badge>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <ComparisonValueCard label={previousLabel} value={item.previous ?? '无'} />
+                <ComparisonValueCard label="当前草案" value={item.current ?? '无'} emphasized />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600">{emptyText}</div>
+      )}
     </div>
   );
 }
