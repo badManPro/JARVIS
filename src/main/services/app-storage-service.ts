@@ -1,81 +1,12 @@
-import type { AppState, LearningGoal, LearningPlanDraft, LearningPlanState, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
+import type { AppState, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
 import { seedState } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
+import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getActiveDraft, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
 import { normalizeSecretInput, toSafeProviderConfig } from '../../shared/provider-config.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
-
-function buildDraftId(goalId: string) {
-  return `plan-${goalId}`;
-}
-
-function buildTaskId(goalId: string, index: number) {
-  return `${goalId}-task-${index + 1}`;
-}
-
-function createPlanDraft(goal: LearningGoal, profile: UserProfile): LearningPlanDraft {
-  const intensityHint = profile.timeBudget.includes('2 小时') ? '周末安排一个完整学习块' : '继续保持轻量频次';
-  const firstStrength = profile.strengths[0] ?? '已有经验可迁移';
-  const firstBlocker = profile.blockers[0] ?? '需要控制任务摩擦';
-  const firstPlanImpact = profile.planImpact[0] ?? '计划保持低摩擦、可持续';
-  const focusTag = goal.priority === 'P1' ? '主线目标' : '并行目标';
-
-  return {
-    id: buildDraftId(goal.id),
-    goalId: goal.id,
-    title: `${goal.title} · 首版计划草案`,
-    summary: `${focusTag}「${goal.title}」会基于当前基础“${goal.baseline}”先生成一份可执行草案：先拆出低门槛起步动作，再逐步走向“${goal.successMetric}”。`,
-    basis: [
-      `学习动机：${goal.motivation}`,
-      `当前基础：${goal.baseline}`,
-      `画像优势：${firstStrength}`,
-      `风险提醒：${firstBlocker}`,
-      `节奏策略：${firstPlanImpact}；${intensityHint}`,
-    ],
-    stages: [
-      { title: '阶段 1：校准起点', outcome: `明确「${goal.title}」的当前起点与最小可执行动作`, progress: '进行中' },
-      { title: '阶段 2：稳定推进', outcome: `围绕 ${goal.cycle} 周期保持稳定任务节奏`, progress: '未开始' },
-      { title: '阶段 3：验证达成', outcome: `用“${goal.successMetric}”检验目标结果`, progress: '未开始' },
-    ],
-    tasks: [
-      { id: buildTaskId(goal.id, 0), title: `拆解「${goal.title}」的最小行动`, duration: '20 分钟', status: 'todo', note: '把目标变成一周内可以直接开始的动作。' },
-      { id: buildTaskId(goal.id, 1), title: '安排本周第一次执行窗口', duration: '10 分钟', status: 'todo', note: `优先利用 ${profile.bestStudyWindow}。` },
-      { id: buildTaskId(goal.id, 2), title: '完成一次真实练习并记录反馈', duration: '30-45 分钟', status: 'todo', note: '先形成执行闭环，再考虑进一步精细化。' },
-    ],
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function ensurePlanDrafts(goals: LearningGoal[], planState: LearningPlanState, profile: UserProfile): LearningPlanState {
-  const drafts = goals.map((goal) => {
-    const existingDraft = planState.drafts.find((draft) => draft.goalId === goal.id);
-    if (!existingDraft) {
-      return createPlanDraft(goal, profile);
-    }
-
-    const nextTitle = existingDraft.title.trim() || `${goal.title} · 首版计划草案`;
-    return {
-      ...existingDraft,
-      goalId: goal.id,
-      title: nextTitle,
-    };
-  });
-
-  const activeGoalId = goals.some((goal) => goal.id === planState.activeGoalId)
-    ? planState.activeGoalId
-    : goals[0]?.id ?? '';
-
-  return {
-    activeGoalId,
-    drafts,
-  };
-}
-
-function getActiveDraft(planState: LearningPlanState): LearningPlanDraft | null {
-  return planState.drafts.find((draft) => draft.goalId === planState.activeGoalId) ?? planState.drafts[0] ?? null;
-}
 
 export class AppStorageService {
   constructor(
@@ -216,6 +147,46 @@ export class AppStorageService {
       plan: {
         ...snapshot.plan,
         drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? normalizedDraft : item)),
+      },
+    }));
+
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+    return this.loadAppState();
+  }
+
+  regenerateLearningPlanDraft(goalId: string, snapshotDraft?: LearningPlanDraft | null) {
+    const snapshot = this.loadAppState();
+    const targetGoal = snapshot.goals.find((goal) => goal.id === goalId);
+    if (!targetGoal) {
+      throw new Error('目标不存在，无法重新生成计划。');
+    }
+
+    const previousDraft = snapshot.plan.drafts.find((item) => item.goalId === goalId);
+    if (!previousDraft) {
+      throw new Error('计划草案不存在，无法重新生成。');
+    }
+
+    const archivedDraft = snapshotDraft
+      ? this.normalizeSnapshotDraft(snapshotDraft, previousDraft)
+      : this.normalizeSnapshotDraft(previousDraft, previousDraft);
+    const nextSnapshotVersion = getNextSnapshotVersion(snapshot.plan.snapshots, goalId);
+    const archivedSnapshot = createPlanSnapshot(archivedDraft, nextSnapshotVersion);
+    const regeneratedDraft = this.normalizeLearningPlanDraft(
+      {
+        ...createPlanDraft(targetGoal, snapshot.profile, 'regenerated'),
+        id: previousDraft.id,
+        goalId: previousDraft.goalId,
+      },
+      previousDraft,
+    );
+
+    const nextState = this.sanitizeState(this.hydratePlanState({
+      ...snapshot,
+      plan: {
+        ...snapshot.plan,
+        drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? regeneratedDraft : item)),
+        snapshots: [archivedSnapshot, ...snapshot.plan.snapshots],
       },
     }));
 
@@ -397,6 +368,29 @@ export class AppStorageService {
         }))
         .filter((task) => task.title || task.note),
       updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private normalizeSnapshotDraft(draft: LearningPlanDraft, fallback: LearningPlanDraft): LearningPlanDraft {
+    return {
+      ...fallback,
+      ...draft,
+      title: draft.title.trim(),
+      summary: draft.summary.trim(),
+      basis: draft.basis.map((item) => item.trim()).filter(Boolean),
+      stages: draft.stages.map((stage) => ({
+        title: stage.title.trim(),
+        outcome: stage.outcome.trim(),
+        progress: stage.progress.trim() || '未开始',
+      })),
+      tasks: draft.tasks.map((task, index) => ({
+        ...task,
+        id: task.id?.trim() || `${fallback.id}-snapshot-task-${index + 1}`,
+        title: task.title.trim(),
+        duration: task.duration.trim(),
+        note: task.note.trim(),
+      })),
+      updatedAt: draft.updatedAt ?? fallback.updatedAt,
     };
   }
 }

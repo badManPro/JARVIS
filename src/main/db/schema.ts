@@ -67,6 +67,37 @@ export const planTasks = sqliteTable('plan_tasks', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+export const learningPlanSnapshots = sqliteTable('learning_plan_snapshots', {
+  id: text('id').primaryKey(),
+  draftId: text('draft_id').notNull(),
+  goalId: text('goal_id').notNull(),
+  version: integer('version').notNull(),
+  source: text('source').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  basisJson: text('basis_json').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const planSnapshotStages = sqliteTable('plan_snapshot_stages', {
+  id: text('id').primaryKey(),
+  snapshotId: text('snapshot_id').notNull(),
+  title: text('title').notNull(),
+  outcome: text('outcome').notNull(),
+  progress: text('progress').notNull(),
+  sortOrder: integer('sort_order').notNull(),
+});
+
+export const planSnapshotTasks = sqliteTable('plan_snapshot_tasks', {
+  id: text('id').primaryKey(),
+  snapshotId: text('snapshot_id').notNull(),
+  title: text('title').notNull(),
+  duration: text('duration').notNull(),
+  status: text('status').notNull(),
+  note: text('note').notNull(),
+  sortOrder: integer('sort_order').notNull(),
+});
+
 export const appSettings = sqliteTable('app_settings', {
   id: text('id').primaryKey(),
   theme: text('theme').notNull(),

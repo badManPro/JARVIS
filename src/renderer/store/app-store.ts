@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AppState, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
 import { seedState } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
+import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
 
 type AppStore = AppState & {
@@ -13,6 +14,7 @@ type AppStore = AppState & {
   upsertLearningGoal: (goal: LearningGoalInput) => Promise<void>;
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
+  regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
   refreshProviderConfigs: () => Promise<void>;
   upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<void>;
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
@@ -148,6 +150,47 @@ export const useAppStore = create<AppStore>((set) => ({
     }
 
     const persistedState = await bridge.saveLearningPlanDraft(draft);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  regenerateLearningPlanDraft: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      set((state) => {
+        const targetGoal = state.goals.find((goal) => goal.id === payload.goalId);
+        const currentDraft = findDraftByGoalId(state.plan.drafts, payload.goalId);
+        if (!targetGoal || !currentDraft) {
+          return state;
+        }
+
+        const archivedDraft = payload.snapshotDraft ?? currentDraft;
+        const snapshotVersion = getNextSnapshotVersion(state.plan.snapshots, payload.goalId);
+        const nextSnapshot = createPlanSnapshot(archivedDraft, snapshotVersion);
+        const nextDraft = {
+          ...createPlanDraft(targetGoal, state.profile, 'regenerated'),
+          id: currentDraft.id,
+          goalId: currentDraft.goalId,
+        };
+
+        return {
+          ...state,
+          plan: {
+            ...state.plan,
+            drafts: state.plan.drafts.map((item) => (item.id === currentDraft.id ? nextDraft : item)),
+            snapshots: [nextSnapshot, ...state.plan.snapshots],
+          },
+          conversation: {
+            ...state.conversation,
+            relatedGoal: targetGoal.title,
+            relatedPlan: nextDraft.title,
+          },
+          hydrated: true,
+          hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+        };
+      });
+      return;
+    }
+
+    const persistedState = await bridge.regenerateLearningPlanDraft(payload);
     set({ ...persistedState, hydrated: true, hydrationError: null });
   },
   refreshProviderConfigs: async () => {

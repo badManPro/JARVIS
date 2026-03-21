@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
-import type { LearningGoal, LearningPlanDraft, LearningPlanStage, LearningPlanState, PlanTask, UserProfile } from '../../shared/app-state.js';
+import type { LearningGoal, LearningPlanDraft, LearningPlanSnapshot, LearningPlanStage, LearningPlanState, PlanTask, UserProfile } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
-import { learningGoals, learningPlanDrafts, learningPlans, planStages, planTasks, userProfiles } from '../db/schema.js';
+import { learningGoals, learningPlanDrafts, learningPlans, learningPlanSnapshots, planSnapshotStages, planSnapshotTasks, planStages, planTasks, userProfiles } from '../db/schema.js';
 import type { LearningCompanionDatabase } from '../db/client.js';
 
 const PROFILE_ID = 'default';
@@ -185,9 +185,64 @@ export class EntitiesRepository {
         } satisfies LearningPlanDraft;
       });
 
+    const snapshots = this.db
+      .select()
+      .from(learningPlanSnapshots)
+      .orderBy(asc(learningPlanSnapshots.goalId), asc(learningPlanSnapshots.version))
+      .all()
+      .map((row) => {
+        const stages = this.db
+          .select()
+          .from(planSnapshotStages)
+          .where(eq(planSnapshotStages.snapshotId, row.id))
+          .orderBy(asc(planSnapshotStages.sortOrder))
+          .all()
+          .map((stageRow) => ({
+            title: stageRow.title,
+            outcome: stageRow.outcome,
+            progress: stageRow.progress,
+          })) satisfies LearningPlanStage[];
+
+        const tasks = this.db
+          .select()
+          .from(planSnapshotTasks)
+          .where(eq(planSnapshotTasks.snapshotId, row.id))
+          .orderBy(asc(planSnapshotTasks.sortOrder))
+          .all()
+          .map((taskRow) => ({
+            id: taskRow.id,
+            title: taskRow.title,
+            duration: taskRow.duration,
+            status: taskRow.status as PlanTask['status'],
+            note: taskRow.note,
+          }));
+
+        return {
+          id: row.id,
+          draftId: row.draftId,
+          goalId: row.goalId,
+          version: row.version,
+          source: row.source as LearningPlanSnapshot['source'],
+          title: row.title,
+          summary: row.summary,
+          basis: parseJsonArray<string>(row.basisJson),
+          stages,
+          tasks,
+          createdAt: row.createdAt.toISOString(),
+        } satisfies LearningPlanSnapshot;
+      })
+      .sort((left, right) => {
+        if (left.goalId !== right.goalId) {
+          return left.goalId.localeCompare(right.goalId);
+        }
+
+        return right.version - left.version;
+      });
+
     return {
       activeGoalId: planRow.activeGoalId,
       drafts,
+      snapshots,
     };
   }
 
@@ -212,6 +267,9 @@ export class EntitiesRepository {
     this.db.delete(planStages).run();
     this.db.delete(planTasks).run();
     this.db.delete(learningPlanDrafts).run();
+    this.db.delete(planSnapshotStages).run();
+    this.db.delete(planSnapshotTasks).run();
+    this.db.delete(learningPlanSnapshots).run();
 
     if (!planState.drafts.length) return;
 
@@ -256,6 +314,52 @@ export class EntitiesRepository {
 
     if (allTasks.length) {
       this.db.insert(planTasks).values(allTasks).run();
+    }
+
+    if (!planState.snapshots.length) return;
+
+    this.db
+      .insert(learningPlanSnapshots)
+      .values(
+        planState.snapshots.map((snapshot) => ({
+          id: snapshot.id,
+          draftId: snapshot.draftId,
+          goalId: snapshot.goalId,
+          version: snapshot.version,
+          source: snapshot.source,
+          title: snapshot.title,
+          summary: snapshot.summary,
+          basisJson: JSON.stringify(snapshot.basis),
+          createdAt: new Date(snapshot.createdAt),
+        })),
+      )
+      .run();
+
+    const allSnapshotStages = planState.snapshots.flatMap((snapshot) => snapshot.stages.map((stage, index) => ({
+      id: `${snapshot.id}-stage-${index + 1}`,
+      snapshotId: snapshot.id,
+      title: stage.title,
+      outcome: stage.outcome,
+      progress: stage.progress,
+      sortOrder: index,
+    })));
+
+    if (allSnapshotStages.length) {
+      this.db.insert(planSnapshotStages).values(allSnapshotStages).run();
+    }
+
+    const allSnapshotTasks = planState.snapshots.flatMap((snapshot) => snapshot.tasks.map((task, index) => ({
+      id: `${snapshot.id}-task-${index + 1}`,
+      snapshotId: snapshot.id,
+      title: task.title,
+      duration: task.duration,
+      status: task.status,
+      note: task.note,
+      sortOrder: index,
+    })));
+
+    if (allSnapshotTasks.length) {
+      this.db.insert(planSnapshotTasks).values(allSnapshotTasks).run();
     }
   }
 }

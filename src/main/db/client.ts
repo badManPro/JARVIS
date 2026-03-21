@@ -8,7 +8,10 @@ import {
   learningGoals,
   learningPlanDrafts,
   learningPlans,
+  learningPlanSnapshots,
   modelRouting,
+  planSnapshotStages,
+  planSnapshotTasks,
   planStages,
   planTasks,
   providerConfigs,
@@ -22,8 +25,11 @@ export type LearningCompanionDatabase = BetterSQLite3Database<{
   learningGoals: typeof learningGoals;
   learningPlans: typeof learningPlans;
   learningPlanDrafts: typeof learningPlanDrafts;
+  learningPlanSnapshots: typeof learningPlanSnapshots;
   planStages: typeof planStages;
   planTasks: typeof planTasks;
+  planSnapshotStages: typeof planSnapshotStages;
+  planSnapshotTasks: typeof planSnapshotTasks;
   appSettings: typeof appSettings;
   providerConfigs: typeof providerConfigs;
   modelRouting: typeof modelRouting;
@@ -110,6 +116,39 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
       sort_order INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY(draft_id) REFERENCES learning_plan_drafts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS learning_plan_snapshots (
+      id TEXT PRIMARY KEY NOT NULL,
+      draft_id TEXT NOT NULL,
+      goal_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      basis_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_snapshot_stages (
+      id TEXT PRIMARY KEY NOT NULL,
+      snapshot_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      progress TEXT NOT NULL,
+      sort_order INTEGER NOT NULL,
+      FOREIGN KEY(snapshot_id) REFERENCES learning_plan_snapshots(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_snapshot_tasks (
+      id TEXT PRIMARY KEY NOT NULL,
+      snapshot_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      duration TEXT NOT NULL,
+      status TEXT NOT NULL,
+      note TEXT NOT NULL,
+      sort_order INTEGER NOT NULL,
+      FOREIGN KEY(snapshot_id) REFERENCES learning_plan_snapshots(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS app_settings (
@@ -201,8 +240,11 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
         learningGoals,
         learningPlans,
         learningPlanDrafts,
+        learningPlanSnapshots,
         planStages,
         planTasks,
+        planSnapshotStages,
+        planSnapshotTasks,
         appSettings,
         providerConfigs,
         modelRouting,

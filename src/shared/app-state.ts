@@ -76,9 +76,26 @@ export type LearningPlanDraft = {
   updatedAt?: string;
 };
 
+export type PlanSnapshotSource = 'regenerated';
+
+export type LearningPlanSnapshot = {
+  id: string;
+  draftId: string;
+  goalId: string;
+  version: number;
+  source: PlanSnapshotSource;
+  title: string;
+  summary: string;
+  basis: string[];
+  stages: LearningPlanStage[];
+  tasks: PlanTask[];
+  createdAt: string;
+};
+
 export type LearningPlanState = {
   activeGoalId: string;
   drafts: LearningPlanDraft[];
+  snapshots: LearningPlanSnapshot[];
 };
 
 export type ConversationMessage = {
@@ -212,6 +229,7 @@ export const seedState: AppState = {
         ],
       },
     ],
+    snapshots: [],
   },
   conversation: {
     title: '学习伴侣下一阶段推进',

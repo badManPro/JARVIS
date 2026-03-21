@@ -13,6 +13,7 @@ export type LearningCompanionBridge = {
     upsertLearningGoal: (goal: LearningGoalInput) => Promise<AppState['goals']>;
     setActiveGoal: (goalId: string) => Promise<AppState>;
     saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<AppState>;
+    regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<AppState>;
     listProviderConfigs: () => Promise<ProviderConfig[]>;
     upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<ProviderConfig[]>;
     saveProviderSecret: (payload: ProviderSecretInput) => Promise<ProviderConfig[]>;
