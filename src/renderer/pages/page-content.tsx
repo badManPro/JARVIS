@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Check, CircleAlert, Flag, GitCompareArrows, History, PencilLine, Plus, RefreshCcw, Sparkles, Target } from 'lucide-react';
+import { Check, CircleAlert, Flag, GitCompareArrows, History, PencilLine, Plus, RefreshCcw, Sparkles, Target, Trash2 } from 'lucide-react';
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
 import { useAppStore } from '@/store/app-store';
 import type { PageDefinition } from '@/pages/page-data';
@@ -1103,13 +1103,17 @@ function GoalsContent() {
   const goals = useAppStore((state) => state.goals);
   const activeGoalId = useAppStore((state) => state.plan.activeGoalId);
   const planDrafts = useAppStore((state) => state.plan.drafts);
+  const planSnapshots = useAppStore((state) => state.plan.snapshots);
   const hydrated = useAppStore((state) => state.hydrated);
   const hydrationError = useAppStore((state) => state.hydrationError);
   const upsertLearningGoal = useAppStore((state) => state.upsertLearningGoal);
+  const removeLearningGoal = useAppStore((state) => state.removeLearningGoal);
   const setActiveGoal = useAppStore((state) => state.setActiveGoal);
   const [selectedGoalId, setSelectedGoalId] = useState<string>(goals[0]?.id ?? 'new');
   const [draft, setDraft] = useState<LearningGoalInput>(goals[0] ? { ...goals[0] } : defaultGoalDraft());
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
@@ -1130,6 +1134,10 @@ function GoalsContent() {
 
   const selectedGoal = goals.find((goal) => goal.id === selectedGoalId) ?? null;
   const selectedPlanDraft = selectedGoal ? planDrafts.find((item) => item.goalId === selectedGoal.id) ?? null : null;
+  const selectedGoalSnapshots = useMemo(
+    () => (selectedGoal ? planSnapshots.filter((snapshot) => snapshot.goalId === selectedGoal.id) : []),
+    [planSnapshots, selectedGoal],
+  );
   const isCreating = selectedGoalId === 'new';
   const hasChanges = useMemo(() => {
     if (isCreating) {
@@ -1148,10 +1156,26 @@ function GoalsContent() {
     active: goals.filter((goal) => goal.status === 'active').length,
     completed: goals.filter((goal) => goal.status === 'completed').length,
   }), [goals]);
+  const deletionPreview = useMemo(() => {
+    if (!selectedGoal) return null;
+
+    const remainingGoals = goals.filter((goal) => goal.id !== selectedGoal.id);
+    const currentActiveGoal = goals.find((goal) => goal.id === activeGoalId) ?? null;
+    const nextActiveGoal = selectedGoal.id === activeGoalId ? (remainingGoals[0] ?? null) : currentActiveGoal;
+
+    return {
+      remainingGoals,
+      nextActiveGoal,
+      deletingActiveGoal: selectedGoal.id === activeGoalId,
+      draftCount: selectedPlanDraft ? 1 : 0,
+      snapshotCount: selectedGoalSnapshots.length,
+    };
+  }, [selectedGoal, goals, activeGoalId, selectedPlanDraft, selectedGoalSnapshots]);
 
   const startCreate = () => {
     setSelectedGoalId('new');
     setDraft(defaultGoalDraft());
+    setShowDeleteConfirm(false);
     setNotice('已切换到新目标创建模式。');
   };
 
@@ -1213,152 +1237,235 @@ function GoalsContent() {
     }
   };
 
+  const onOpenDeleteConfirm = () => {
+    if (!selectedGoal) return;
+    setNotice(null);
+    setShowDeleteConfirm(true);
+  };
+
+  const onConfirmDeleteGoal = async () => {
+    if (!selectedGoal || !deletionPreview) return;
+
+    setDeleting(true);
+    setNotice(null);
+    try {
+      await removeLearningGoal(selectedGoal.id);
+      setLastSavedAt(new Date().toLocaleString('zh-CN'));
+      setShowDeleteConfirm(false);
+
+      const nextSelectedGoal = deletionPreview.nextActiveGoal ?? deletionPreview.remainingGoals[0] ?? null;
+      if (nextSelectedGoal) {
+        setSelectedGoalId(nextSelectedGoal.id);
+        setDraft({ ...nextSelectedGoal });
+      } else {
+        setSelectedGoalId('new');
+        setDraft(defaultGoalDraft());
+      }
+
+      if (!deletionPreview.remainingGoals.length) {
+        setNotice('目标已删除，关联计划草案与版本快照也已清理。当前已无主目标，请先新建一个学习方向。');
+      } else if (deletionPreview.deletingActiveGoal && deletionPreview.nextActiveGoal) {
+        setNotice(`目标已删除，关联计划草案与版本快照也已清理。当前主目标已切换为「${deletionPreview.nextActiveGoal.title}」。`);
+      } else {
+        setNotice('目标已删除，关联计划草案与版本快照也已清理。');
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '目标删除失败');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.05fr,1.25fr,0.9fr]">
-      <Card>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <SectionTitle>目标列表</SectionTitle>
-            <Muted className="mt-2">先把“想学什么”管理清楚，再为每个目标配一份独立计划草案。</Muted>
-          </div>
-          <button className={secondaryButtonClassName} type="button" onClick={startCreate}>
-            <Plus className="mr-1 inline h-4 w-4" />新建
-          </button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-          <StatCard label="目标总数" value={String(goalStats.total)} />
-          <StatCard label="进行中" value={String(goalStats.active)} />
-          <StatCard label="已完成" value={String(goalStats.completed)} />
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {goals.map((goal) => {
-            const active = goal.id === selectedGoalId;
-            const goalPlanDraft = planDrafts.find((item) => item.goalId === goal.id);
-            return (
-              <button
-                key={goal.id}
-                type="button"
-                onClick={() => selectGoal(goal)}
-                className={[
-                  'w-full rounded-2xl border px-4 py-4 text-left transition',
-                  active ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-                ].join(' ')}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium">{goal.title}</div>
-                    <div className={active ? 'mt-1 text-sm text-slate-200' : 'mt-1 text-sm text-slate-600'}>{goal.motivation}</div>
-                  </div>
-                  <Badge className={active ? 'bg-white/15 text-white' : priorityBadgeClassName(goal.priority)}>{goal.priority}</Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <Badge className={active ? 'bg-white/10 text-white' : statusBadgeClassName(goal.status)}>{goalStatusLabel(goal.status)}</Badge>
-                  <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.cycle}</Badge>
-                  {goal.id === activeGoalId ? <Badge className={active ? 'bg-emerald-400/20 text-emerald-50' : 'bg-emerald-100 text-emerald-700'}>当前主目标</Badge> : null}
-                </div>
-                <div className={active ? 'mt-3 text-xs text-slate-200' : 'mt-3 text-xs text-slate-500'}>{goalPlanDraft?.title ?? '自动草案待生成'}</div>
-              </button>
-            );
-          })}
-          {!goals.length ? <Muted>当前还没有目标，先创建一个可规划的学习方向。</Muted> : null}
-        </div>
-      </Card>
-
-      <Card>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <SectionTitle>{isCreating ? '新建学习目标' : '编辑学习目标'}</SectionTitle>
-            <Muted className="mt-2">重点维护标题、动机、基础、周期、成功标准这些真正驱动计划的字段。</Muted>
-          </div>
-          <Badge className="bg-blue-100 text-blue-800">{isCreating ? 'Create' : 'Edit'}</Badge>
-        </div>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <Field label="目标名称" className="md:col-span-2">
-            <input className={inputClassName} placeholder="例如：完成 Python + AI 工具开发入门" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
-          </Field>
-          <Field label="优先级">
-            <select className={inputClassName} value={draft.priority} onChange={(event) => setDraft((current) => ({ ...current, priority: event.target.value as LearningGoal['priority'] }))}>
-              <option value="P1">P1 · 当前最重要</option>
-              <option value="P2">P2 · 持续推进</option>
-              <option value="P3">P3 · 低优先储备</option>
-            </select>
-          </Field>
-          <Field label="状态">
-            <select className={inputClassName} value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as LearningGoal['status'] }))}>
-              <option value="active">进行中</option>
-              <option value="paused">暂停</option>
-              <option value="completed">已完成</option>
-            </select>
-          </Field>
-          <Field label="学习动机" className="md:col-span-2">
-            <textarea className={textareaClassName} rows={3} placeholder="为什么现在要学这件事？" value={draft.motivation} onChange={(event) => setDraft((current) => ({ ...current, motivation: event.target.value }))} />
-          </Field>
-          <Field label="当前基础" className="md:col-span-2">
-            <textarea className={textareaClassName} rows={3} placeholder="当前掌握到什么程度、有哪些短板？" value={draft.baseline} onChange={(event) => setDraft((current) => ({ ...current, baseline: event.target.value }))} />
-          </Field>
-          <Field label="目标周期">
-            <input className={inputClassName} placeholder="例如：6 周 / 30 天" value={draft.cycle} onChange={(event) => setDraft((current) => ({ ...current, cycle: event.target.value }))} />
-          </Field>
-          <Field label="成功标准">
-            <textarea className={textareaClassName} rows={3} placeholder="如何判断这个目标达成？" value={draft.successMetric} onChange={(event) => setDraft((current) => ({ ...current, successMetric: event.target.value }))} />
-          </Field>
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button className={primaryButtonClassName} type="button" onClick={() => void onSave()} disabled={saving || !hasChanges}>
-            {saving ? '保存中…' : isCreating ? '创建目标' : '保存修改'}
-          </button>
-          {!isCreating ? (
-            <button className={selectedGoal?.id === activeGoalId ? successButtonClassName : secondaryButtonClassName} type="button" onClick={() => void onSetActiveGoal()} disabled={saving || !selectedGoal || selectedGoal.id === activeGoalId}>
-              {selectedGoal?.id === activeGoalId ? '当前主目标' : '设为当前目标'}
-            </button>
-          ) : null}
-          <button className={secondaryButtonClassName} type="button" onClick={restoreDraft} disabled={saving || !hasChanges}>
-            {isCreating ? '清空草稿' : '恢复当前值'}
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-2 text-sm text-slate-700">
-          <StatusRow icon={<Flag className="h-4 w-4" />} label="目标链路" value="目标页表单 / 设为当前目标 → Zustand store → preload IPC → main storage service → SQLite learning_goals + learning_plan_drafts" />
-          <StatusRow icon={<Target className="h-4 w-4" />} label="当前能力" value="已支持目标新建、编辑、设为当前主目标，并为每个目标维护独立 plan draft payload。" />
-          <StatusRow icon={<PencilLine className="h-4 w-4" />} label="当前边界" value="本轮不含目标删除、排序拖拽、AI 实时重算与多目标交叉依赖分析。" />
-          <StatusRow icon={<Check className="h-4 w-4" />} label="Renderer 状态" value={hydrated ? '已完成 hydration，可直接编辑和新建目标。' : '正在加载本地目标…'} />
-          {lastSavedAt ? <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">最近一次成功保存：{lastSavedAt}</div> : null}
-          {hydrationError ? <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-700">本地存储告警：{hydrationError}</div> : null}
-          {notice ? <div className="rounded-lg bg-blue-50 px-3 py-2 text-blue-700">{notice}</div> : null}
-        </div>
-      </Card>
-
-      <div className="grid gap-4">
+    <>
+      <div className="grid gap-4 xl:grid-cols-[1.05fr,1.25fr,0.9fr]">
         <Card>
-          <SectionTitle>{isCreating ? '新目标预览' : '目标详情预览'}</SectionTitle>
-          <div className="mt-4 space-y-4 text-sm text-slate-700">
-            <GoalPreviewBlock title="目标名称" content={draft.title} emptyText="请输入目标名称" />
-            <GoalPreviewBlock title="学习动机" content={draft.motivation} emptyText="说明这件事为什么值得现在做" />
-            <GoalPreviewBlock title="当前基础" content={draft.baseline} emptyText="补充你的起点，计划才有依据" />
-            <GoalPreviewBlock title="成功标准" content={draft.successMetric} emptyText="明确结果，后续才好跟踪" />
-            {!isCreating ? <GoalPreviewBlock title="对应计划草案" content={selectedPlanDraft?.title ?? ''} emptyText="保存后会自动生成首版草案" /> : null}
-            <div className="flex flex-wrap gap-2">
-              <Badge className={priorityBadgeClassName(draft.priority)}>{draft.priority}</Badge>
-              <Badge className={statusBadgeClassName(draft.status)}>{goalStatusLabel(draft.status)}</Badge>
-              {draft.cycle.trim() ? <Badge className="bg-slate-100 text-slate-700">{draft.cycle}</Badge> : null}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <SectionTitle>目标列表</SectionTitle>
+              <Muted className="mt-2">先把“想学什么”管理清楚，再为每个目标配一份独立计划草案。</Muted>
+            </div>
+            <button className={secondaryButtonClassName} type="button" onClick={startCreate}>
+              <Plus className="mr-1 inline h-4 w-4" />新建
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+            <StatCard label="目标总数" value={String(goalStats.total)} />
+            <StatCard label="进行中" value={String(goalStats.active)} />
+            <StatCard label="已完成" value={String(goalStats.completed)} />
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {goals.map((goal) => {
+              const active = goal.id === selectedGoalId;
+              const goalPlanDraft = planDrafts.find((item) => item.goalId === goal.id);
+              return (
+                <button
+                  key={goal.id}
+                  type="button"
+                  onClick={() => selectGoal(goal)}
+                  className={[
+                    'w-full rounded-2xl border px-4 py-4 text-left transition',
+                    active ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium">{goal.title}</div>
+                      <div className={active ? 'mt-1 text-sm text-slate-200' : 'mt-1 text-sm text-slate-600'}>{goal.motivation}</div>
+                    </div>
+                    <Badge className={active ? 'bg-white/15 text-white' : priorityBadgeClassName(goal.priority)}>{goal.priority}</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <Badge className={active ? 'bg-white/10 text-white' : statusBadgeClassName(goal.status)}>{goalStatusLabel(goal.status)}</Badge>
+                    <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.cycle}</Badge>
+                    {goal.id === activeGoalId ? <Badge className={active ? 'bg-emerald-400/20 text-emerald-50' : 'bg-emerald-100 text-emerald-700'}>当前主目标</Badge> : null}
+                  </div>
+                  <div className={active ? 'mt-3 text-xs text-slate-200' : 'mt-3 text-xs text-slate-500'}>{goalPlanDraft?.title ?? '自动草案待生成'}</div>
+                </button>
+              );
+            })}
+            {!goals.length ? <Muted>当前还没有目标，先创建一个可规划的学习方向。</Muted> : null}
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <SectionTitle>{isCreating ? '新建学习目标' : '编辑学习目标'}</SectionTitle>
+              <Muted className="mt-2">重点维护标题、动机、基础、周期、成功标准这些真正驱动计划的字段。</Muted>
+            </div>
+            <Badge className="bg-blue-100 text-blue-800">{isCreating ? 'Create' : 'Edit'}</Badge>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <Field label="目标名称" className="md:col-span-2">
+              <input className={inputClassName} placeholder="例如：完成 Python + AI 工具开发入门" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
+            </Field>
+            <Field label="优先级">
+              <select className={inputClassName} value={draft.priority} onChange={(event) => setDraft((current) => ({ ...current, priority: event.target.value as LearningGoal['priority'] }))}>
+                <option value="P1">P1 · 当前最重要</option>
+                <option value="P2">P2 · 持续推进</option>
+                <option value="P3">P3 · 低优先储备</option>
+              </select>
+            </Field>
+            <Field label="状态">
+              <select className={inputClassName} value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as LearningGoal['status'] }))}>
+                <option value="active">进行中</option>
+                <option value="paused">暂停</option>
+                <option value="completed">已完成</option>
+              </select>
+            </Field>
+            <Field label="学习动机" className="md:col-span-2">
+              <textarea className={textareaClassName} rows={3} placeholder="为什么现在要学这件事？" value={draft.motivation} onChange={(event) => setDraft((current) => ({ ...current, motivation: event.target.value }))} />
+            </Field>
+            <Field label="当前基础" className="md:col-span-2">
+              <textarea className={textareaClassName} rows={3} placeholder="当前掌握到什么程度、有哪些短板？" value={draft.baseline} onChange={(event) => setDraft((current) => ({ ...current, baseline: event.target.value }))} />
+            </Field>
+            <Field label="目标周期">
+              <input className={inputClassName} placeholder="例如：6 周 / 30 天" value={draft.cycle} onChange={(event) => setDraft((current) => ({ ...current, cycle: event.target.value }))} />
+            </Field>
+            <Field label="成功标准">
+              <textarea className={textareaClassName} rows={3} placeholder="如何判断这个目标达成？" value={draft.successMetric} onChange={(event) => setDraft((current) => ({ ...current, successMetric: event.target.value }))} />
+            </Field>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button className={primaryButtonClassName} type="button" onClick={() => void onSave()} disabled={saving || deleting || !hasChanges}>
+              {saving ? '保存中…' : isCreating ? '创建目标' : '保存修改'}
+            </button>
+            {!isCreating ? (
+              <button className={selectedGoal?.id === activeGoalId ? successButtonClassName : secondaryButtonClassName} type="button" onClick={() => void onSetActiveGoal()} disabled={saving || deleting || !selectedGoal || selectedGoal.id === activeGoalId}>
+                {selectedGoal?.id === activeGoalId ? '当前主目标' : '设为当前目标'}
+              </button>
+            ) : null}
+            <button className={secondaryButtonClassName} type="button" onClick={restoreDraft} disabled={saving || deleting || !hasChanges}>
+              {isCreating ? '清空草稿' : '恢复当前值'}
+            </button>
+            {!isCreating ? (
+              <button className={dangerButtonClassName} type="button" onClick={onOpenDeleteConfirm} disabled={saving || deleting || !selectedGoal}>
+                <Trash2 className="mr-1 inline h-4 w-4" />
+                {deleting ? '删除中…' : '删除目标'}
+              </button>
+            ) : null}
+          </div>
+
+          <div className="mt-4 space-y-2 text-sm text-slate-700">
+            <StatusRow icon={<Flag className="h-4 w-4" />} label="目标链路" value="目标页表单 / 删除 / 设为当前目标 → Zustand store → preload IPC → main storage service → SQLite learning_goals + learning_plan_drafts + learning_plan_snapshots" />
+            <StatusRow icon={<Target className="h-4 w-4" />} label="当前能力" value="已支持目标新建、编辑、删除、设为当前主目标，并同步清理该目标关联的计划草案与版本快照。" />
+            <StatusRow icon={<PencilLine className="h-4 w-4" />} label="当前边界" value="本轮不含目标排序拖拽、AI 实时重算与多目标交叉依赖分析。" />
+            <StatusRow icon={<Check className="h-4 w-4" />} label="Renderer 状态" value={hydrated ? '已完成 hydration，可直接编辑、新建和删除目标。' : '正在加载本地目标…'} />
+            {lastSavedAt ? <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">最近一次成功操作：{lastSavedAt}</div> : null}
+            {hydrationError ? <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-700">本地存储告警：{hydrationError}</div> : null}
+            {notice ? <div className="rounded-lg bg-blue-50 px-3 py-2 text-blue-700">{notice}</div> : null}
+          </div>
+        </Card>
+
+        <div className="grid gap-4">
+          <Card>
+            <SectionTitle>{isCreating ? '新目标预览' : '目标详情预览'}</SectionTitle>
+            <div className="mt-4 space-y-4 text-sm text-slate-700">
+              <GoalPreviewBlock title="目标名称" content={draft.title} emptyText="请输入目标名称" />
+              <GoalPreviewBlock title="学习动机" content={draft.motivation} emptyText="说明这件事为什么值得现在做" />
+              <GoalPreviewBlock title="当前基础" content={draft.baseline} emptyText="补充你的起点，计划才有依据" />
+              <GoalPreviewBlock title="成功标准" content={draft.successMetric} emptyText="明确结果，后续才好跟踪" />
+              {!isCreating ? <GoalPreviewBlock title="对应计划草案" content={selectedPlanDraft?.title ?? ''} emptyText="保存后会自动生成首版草案" /> : null}
+              {!isCreating ? <GoalPreviewBlock title="历史快照数" content={String(selectedGoalSnapshots.length)} emptyText="0" /> : null}
+              <div className="flex flex-wrap gap-2">
+                <Badge className={priorityBadgeClassName(draft.priority)}>{draft.priority}</Badge>
+                <Badge className={statusBadgeClassName(draft.status)}>{goalStatusLabel(draft.status)}</Badge>
+                {draft.cycle.trim() ? <Badge className="bg-slate-100 text-slate-700">{draft.cycle}</Badge> : null}
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <SectionTitle>填写建议</SectionTitle>
+            <ul className="mt-4 space-y-3 text-sm text-slate-700">
+              <li className="rounded-lg bg-slate-50 px-3 py-2">目标名称尽量写成结果导向，而不是抽象愿望。</li>
+              <li className="rounded-lg bg-slate-50 px-3 py-2">“当前基础”越具体，后续自动生成的首版草案越容易落到正确难度。</li>
+              <li className="rounded-lg bg-slate-50 px-3 py-2">删除目标时，会同时清理它的计划草案和版本快照，避免留下脏的 active goal / dangling draft。</li>
+            </ul>
+          </Card>
+        </div>
+      </div>
+
+      {showDeleteConfirm && selectedGoal && deletionPreview ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 px-4">
+          <div className="w-full max-w-xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-50 text-rose-700">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-base font-semibold text-slate-900">确认删除这个学习目标？</div>
+                <div className="mt-1 text-sm text-slate-600">这是一个破坏性操作，会把目标本身以及与它绑定的计划数据一起清理。</div>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-700">
+              <div>目标名称：{selectedGoal.title}</div>
+              <div>将清理的计划草案：{deletionPreview.draftCount} 个。</div>
+              <div>将清理的版本快照：{deletionPreview.snapshotCount} 个。</div>
+              {deletionPreview.deletingActiveGoal && deletionPreview.nextActiveGoal ? <div>删除后新的当前主目标：{deletionPreview.nextActiveGoal.title}</div> : null}
+              {deletionPreview.deletingActiveGoal && !deletionPreview.nextActiveGoal ? <div>删除后将不再有当前主目标，计划页会进入空状态。</div> : null}
+              {!deletionPreview.deletingActiveGoal ? <div>当前主目标保持不变，只清理这个目标自己的数据。</div> : null}
+              {hasChanges ? <div className="rounded-xl bg-amber-100/70 px-3 py-2 text-amber-900">你在表单里还有未保存修改；如果继续删除，这些修改不会保留。</div> : null}
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button className={secondaryButtonClassName} type="button" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>
+                取消
+              </button>
+              <button className={dangerButtonClassName} type="button" onClick={() => void onConfirmDeleteGoal()} disabled={deleting}>
+                {deleting ? '删除中…' : '确认删除'}
+              </button>
             </div>
           </div>
-        </Card>
-
-        <Card>
-          <SectionTitle>填写建议</SectionTitle>
-          <ul className="mt-4 space-y-3 text-sm text-slate-700">
-            <li className="rounded-lg bg-slate-50 px-3 py-2">目标名称尽量写成结果导向，而不是抽象愿望。</li>
-            <li className="rounded-lg bg-slate-50 px-3 py-2">“当前基础”越具体，后续自动生成的首版草案越容易落到正确难度。</li>
-            <li className="rounded-lg bg-slate-50 px-3 py-2">保存新目标后会先生成本地模板草案，后续再接入真实 AI 生成。</li>
-          </ul>
-        </Card>
-      </div>
-    </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

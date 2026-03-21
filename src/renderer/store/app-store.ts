@@ -12,6 +12,7 @@ type AppStore = AppState & {
   saveAppState: (nextState: AppState) => Promise<void>;
   saveUserProfile: (profile: UserProfile) => Promise<void>;
   upsertLearningGoal: (goal: LearningGoalInput) => Promise<void>;
+  removeLearningGoal: (goalId: string) => Promise<void>;
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
@@ -38,6 +39,9 @@ function mergeProviders(state: AppState, providers: ProviderConfig[]): AppState 
 function findDraftByGoalId(drafts: LearningPlanDraft[], goalId: string) {
   return drafts.find((draft) => draft.goalId === goalId) ?? drafts[0] ?? null;
 }
+
+const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
+const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
 
 export const useAppStore = create<AppStore>((set) => ({
   ...seedState,
@@ -94,6 +98,46 @@ export const useAppStore = create<AppStore>((set) => ({
 
     const goals = await bridge.upsertLearningGoal(goal);
     set((state) => ({ ...state, goals, hydrated: true, hydrationError: null }));
+  },
+  removeLearningGoal: async (goalId) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      set((state) => {
+        const targetGoal = state.goals.find((goal) => goal.id === goalId);
+        if (!targetGoal) {
+          return state;
+        }
+
+        const nextGoals = state.goals.filter((goal) => goal.id !== goalId);
+        const nextActiveGoalId = state.plan.activeGoalId === goalId ? (nextGoals[0]?.id ?? '') : state.plan.activeGoalId;
+        const nextDrafts = state.plan.drafts.filter((draft) => draft.goalId !== goalId);
+        const nextSnapshots = state.plan.snapshots.filter((snapshot) => snapshot.goalId !== goalId);
+        const activeDraft = findDraftByGoalId(nextDrafts, nextActiveGoalId);
+        const activeGoal = nextGoals.find((goal) => goal.id === nextActiveGoalId) ?? nextGoals[0] ?? null;
+
+        return {
+          ...state,
+          goals: nextGoals,
+          plan: {
+            ...state.plan,
+            activeGoalId: nextActiveGoalId,
+            drafts: nextDrafts,
+            snapshots: nextSnapshots,
+          },
+          conversation: {
+            ...state.conversation,
+            relatedGoal: activeGoal?.title ?? EMPTY_RELATED_GOAL_LABEL,
+            relatedPlan: activeDraft?.title ?? EMPTY_RELATED_PLAN_LABEL,
+          },
+          hydrated: true,
+          hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+        };
+      });
+      return;
+    }
+
+    const persistedState = await bridge.removeLearningGoal(goalId);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
   },
   setActiveGoal: async (goalId) => {
     const bridge = getBridge();

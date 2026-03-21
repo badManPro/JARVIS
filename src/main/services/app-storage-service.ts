@@ -8,6 +8,9 @@ import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
 
+const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
+const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
+
 export class AppStorageService {
   constructor(
     private readonly appStateRepository: AppStateRepository,
@@ -93,21 +96,46 @@ export class AppStorageService {
     });
 
     const nextPlanState = ensurePlanDrafts(persistedGoals, snapshot.plan, snapshot.profile);
-    const nextActiveDraft = getActiveDraft(nextPlanState);
-    const nextState = this.sanitizeState({
+    const nextState = this.sanitizeState(this.withResolvedConversationLinks({
       ...snapshot,
       goals: persistedGoals,
       plan: nextPlanState,
-      conversation: {
-        ...snapshot.conversation,
-        relatedGoal: persistedGoals.find((item) => item.id === nextPlanState.activeGoalId)?.title ?? snapshot.conversation.relatedGoal,
-        relatedPlan: nextActiveDraft?.title ?? snapshot.conversation.relatedPlan,
-      },
-    });
+      conversation: snapshot.conversation,
+    }));
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
     return this.loadAppState().goals;
+  }
+
+  removeLearningGoal(goalId: string) {
+    const snapshot = this.loadAppState();
+    const targetGoal = snapshot.goals.find((goal) => goal.id === goalId);
+    if (!targetGoal) {
+      throw new Error('目标不存在，无法删除。');
+    }
+
+    const nextGoals = snapshot.goals.filter((goal) => goal.id !== goalId);
+    const nextPlanState = ensurePlanDrafts(
+      nextGoals,
+      {
+        activeGoalId: snapshot.plan.activeGoalId === goalId ? (nextGoals[0]?.id ?? '') : snapshot.plan.activeGoalId,
+        drafts: snapshot.plan.drafts.filter((draft) => draft.goalId !== goalId),
+        snapshots: snapshot.plan.snapshots.filter((planSnapshot) => planSnapshot.goalId !== goalId),
+      },
+      snapshot.profile,
+    );
+
+    const nextState = this.sanitizeState(this.withResolvedConversationLinks({
+      ...snapshot,
+      goals: nextGoals,
+      plan: nextPlanState,
+      conversation: snapshot.conversation,
+    }));
+
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+    return this.loadAppState();
   }
 
   setActiveGoal(goalId: string) {
@@ -118,16 +146,11 @@ export class AppStorageService {
     }
 
     const ensuredPlanState = ensurePlanDrafts(snapshot.goals, { ...snapshot.plan, activeGoalId: goalId }, snapshot.profile);
-    const activeDraft = getActiveDraft(ensuredPlanState);
-    const nextState = this.sanitizeState({
+    const nextState = this.sanitizeState(this.withResolvedConversationLinks({
       ...snapshot,
       plan: ensuredPlanState,
-      conversation: {
-        ...snapshot.conversation,
-        relatedGoal: targetGoal.title,
-        relatedPlan: activeDraft?.title ?? snapshot.conversation.relatedPlan,
-      },
-    });
+      conversation: snapshot.conversation,
+    }));
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
@@ -255,29 +278,17 @@ export class AppStorageService {
     const goals = this.entitiesRepository.loadLearningGoals();
     const plan = this.entitiesRepository.loadLearningPlanState();
 
-    if (!profile || !plan || !goals.length) {
+    if (!profile || !plan) {
       return null;
     }
 
     const snapshot = this.appStateRepository.load() ?? seedState;
-    const hydrated = this.hydratePlanState({
+    return this.hydratePlanState({
       ...snapshot,
       profile,
       goals,
       plan,
     });
-
-    const activeGoal = hydrated.goals.find((goal) => goal.id === hydrated.plan.activeGoalId) ?? hydrated.goals[0] ?? null;
-    const activeDraft = getActiveDraft(hydrated.plan);
-
-    return {
-      ...hydrated,
-      conversation: {
-        ...hydrated.conversation,
-        relatedGoal: activeGoal?.title ?? hydrated.conversation.relatedGoal,
-        relatedPlan: activeDraft?.title ?? hydrated.conversation.relatedPlan,
-      },
-    };
   }
 
   private persistStructuredState(state: AppState) {
@@ -288,18 +299,10 @@ export class AppStorageService {
 
   private hydratePlanState(state: AppState): AppState {
     const nextPlanState = ensurePlanDrafts(state.goals, state.plan, state.profile);
-    const activeGoal = state.goals.find((goal) => goal.id === nextPlanState.activeGoalId) ?? state.goals[0] ?? null;
-    const activeDraft = getActiveDraft(nextPlanState);
-
-    return {
+    return this.withResolvedConversationLinks({
       ...state,
       plan: nextPlanState,
-      conversation: {
-        ...state.conversation,
-        relatedGoal: activeGoal?.title ?? state.conversation.relatedGoal,
-        relatedPlan: activeDraft?.title ?? state.conversation.relatedPlan,
-      },
-    };
+    });
   }
 
   private sanitizeState(state: AppState): AppState {
@@ -342,6 +345,20 @@ export class AppStorageService {
       secretRow?.secret ?? null,
       secretRow?.updatedAt?.toISOString(),
     );
+  }
+
+  private withResolvedConversationLinks(state: AppState): AppState {
+    const activeGoal = state.goals.find((goal) => goal.id === state.plan.activeGoalId) ?? state.goals[0] ?? null;
+    const activeDraft = getActiveDraft(state.plan);
+
+    return {
+      ...state,
+      conversation: {
+        ...state.conversation,
+        relatedGoal: activeGoal?.title ?? EMPTY_RELATED_GOAL_LABEL,
+        relatedPlan: activeDraft?.title ?? EMPTY_RELATED_PLAN_LABEL,
+      },
+    };
   }
 
   private normalizeLearningPlanDraft(draft: LearningPlanDraft, fallback: LearningPlanDraft): LearningPlanDraft {

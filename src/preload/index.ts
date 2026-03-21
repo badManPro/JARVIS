@@ -10,6 +10,7 @@ const learningCompanion: LearningCompanionBridge = {
     loadUserProfile: () => ipcRenderer.invoke('storage:load-user-profile'),
     saveUserProfile: (profile) => ipcRenderer.invoke('storage:save-user-profile', profile),
     upsertLearningGoal: (goal) => ipcRenderer.invoke('storage:upsert-learning-goal', goal),
+    removeLearningGoal: (goalId) => ipcRenderer.invoke('storage:remove-learning-goal', goalId),
     setActiveGoal: (goalId) => ipcRenderer.invoke('storage:set-active-goal', goalId),
     saveLearningPlanDraft: (draft) => ipcRenderer.invoke('storage:save-learning-plan-draft', draft),
     regenerateLearningPlanDraft: (payload) => ipcRenderer.invoke('storage:regenerate-learning-plan-draft', payload),

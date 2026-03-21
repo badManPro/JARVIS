@@ -123,15 +123,21 @@ Preload 当前暴露：
 - `loadUserProfile`
 - `saveUserProfile`
 - `upsertLearningGoal`
+- `removeLearningGoal`
+- `setActiveGoal`
+- `saveLearningPlanDraft`
+- `regenerateLearningPlanDraft`
 - `listProviderConfigs`
 - `upsertProviderConfig`
 - `saveProviderSecret`
 - `clearProviderSecret`
 
-这意味着当前已经具备三类真实交互：
+这意味着当前已经具备六类真实交互：
 1. 用户画像关键字段通过 `saveUserProfile` 写入本地 SQLite
 2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并落到 `learning_goals`
 3. 目标切换通过 `setActiveGoal` 持久化 `active_goal_id`，并让计划页直接读取该目标对应的独立草案
-4. 应用偏好 / 路由策略与 Provider 基础配置通过 `saveAppState` / `upsertProviderConfig` 更新，secret 继续走独立安全存储
+4. 目标删除通过 `removeLearningGoal` 同步清理 `learning_goals`、目标关联计划草案与版本快照，并处理 active goal 回退
+5. 计划页通过 `saveLearningPlanDraft` / `regenerateLearningPlanDraft` 支持草案保存、重生成与快照归档
+6. 应用偏好 / 路由策略与 Provider 基础配置通过 `saveAppState` / `upsertProviderConfig` 更新，secret 继续走独立安全存储
 
-当前仍未覆盖：目标删除、目标排序、AI 驱动的计划实时重算 / 多版本对比、真正的在线模型调用。
+当前仍未覆盖：目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。

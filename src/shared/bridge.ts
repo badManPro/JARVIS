@@ -11,6 +11,7 @@ export type LearningCompanionBridge = {
     loadUserProfile: () => Promise<AppState['profile']>;
     saveUserProfile: (profile: AppState['profile']) => Promise<AppState['profile']>;
     upsertLearningGoal: (goal: LearningGoalInput) => Promise<AppState['goals']>;
+    removeLearningGoal: (goalId: string) => Promise<AppState>;
     setActiveGoal: (goalId: string) => Promise<AppState>;
     saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<AppState>;
     regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<AppState>;
