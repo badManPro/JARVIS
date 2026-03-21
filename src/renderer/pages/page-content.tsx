@@ -3,7 +3,25 @@ import { Check, CircleAlert, Flag, GitCompareArrows, History, PencilLine, Plus, 
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
 import { useAppStore } from '@/store/app-store';
 import type { PageDefinition } from '@/pages/page-data';
-import type { AppState, HealthStatus, LearningGoal, LearningPlanDraft, LearningPlanSnapshot, LearningPlanStage, ModelCapability, PlanTask, ProviderConfig, ProviderId, TaskStatus, UserProfile } from '@shared/app-state';
+import type {
+  AppState,
+  ConversationActionKind,
+  ConversationActionPreview,
+  ConversationActionScope,
+  ConversationActionStatus,
+  HealthStatus,
+  LearningGoal,
+  LearningPlanDraft,
+  LearningPlanSnapshot,
+  LearningPlanStage,
+  ModelCapability,
+  PlanTask,
+  ProviderConfig,
+  ProviderId,
+  TaskStatus,
+  UserProfile,
+} from '@shared/app-state';
+import { resolveConversationState } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import type { ProviderConfigInput } from '@shared/provider-config';
 
@@ -82,35 +100,7 @@ export function PageContent({ page }: { page: PageDefinition }) {
     case 'goals':
       return <GoalsContent />;
     case 'conversation':
-      return (
-        <div className="grid gap-4 xl:grid-cols-[1.2fr,0.9fr]">
-          <Card>
-            <SectionTitle>{state.conversation.title}</SectionTitle>
-            <Muted className="mt-2">目标：{state.conversation.relatedGoal} · 计划：{state.conversation.relatedPlan}</Muted>
-            <div className="mt-4 space-y-3">
-              {state.conversation.messages.map((message) => (
-                <div key={message.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">{message.role}</div>
-                  {message.content}
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card>
-            <SectionTitle>建议动作</SectionTitle>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {state.conversation.tags.map((tag) => (
-                <Badge key={tag}>{tag}</Badge>
-              ))}
-            </div>
-            <ul className="mt-4 space-y-3 text-sm text-slate-700">
-              {state.conversation.suggestions.map((item) => (
-                <li key={item} className="rounded-lg bg-slate-50 px-3 py-2">{item}</li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-      );
+      return <ConversationContent />;
     case 'profile':
       return <ProfileContent />;
     case 'reflection':
@@ -140,6 +130,110 @@ export function PageContent({ page }: { page: PageDefinition }) {
     default:
       return null;
   }
+}
+
+function ConversationContent() {
+  const state = useAppStore();
+  const conversation = useMemo(() => resolveConversationState(state), [state]);
+  const proposedCount = useMemo(
+    () => conversation.actionPreviews.filter((item) => item.status === 'proposed').length,
+    [conversation.actionPreviews],
+  );
+  const pendingCount = useMemo(
+    () => conversation.actionPreviews.filter((item) => item.status === 'pending').length,
+    [conversation.actionPreviews],
+  );
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[1.1fr,1fr]">
+      <Card>
+        <SectionTitle>{conversation.title}</SectionTitle>
+        <Muted className="mt-2">目标：{conversation.relatedGoal} · 计划：{conversation.relatedPlan}</Muted>
+        <div className="mt-4 space-y-3">
+          {conversation.messages.map((message) => (
+            <div key={message.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">{message.role}</div>
+              {message.content}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="border-slate-200 bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.12),_transparent_40%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))]">
+        <SectionTitle>结构化动作预览</SectionTitle>
+        <Muted className="mt-2">当前阶段只做建议到 action preview 的映射，不直接写入画像、目标或计划。</Muted>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {conversation.tags.map((tag) => (
+            <Badge key={tag}>{tag}</Badge>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <StatCard label="待确认预览" value={String(proposedCount)} />
+          <StatCard label="仍待接入" value={String(pendingCount)} />
+        </div>
+
+        {conversation.actionPreviews.length ? (
+          <div className="mt-4 space-y-4">
+            {conversation.actionPreviews.map((action) => (
+              <ConversationActionPreviewCard key={action.id} action={action} />
+            ))}
+          </div>
+        ) : (
+          <Muted className="mt-4">当前还没有可映射的结构化建议，后续对话建议会先在这里进入预览层。</Muted>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function ConversationActionPreviewCard({ action }: { action: ConversationActionPreview }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/85 px-4 py-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className={conversationActionIconWrapClassName(action)}>
+            {conversationActionIcon(action)}
+          </div>
+          <div>
+            <div className="text-sm font-medium text-slate-900">{action.title}</div>
+            <Muted className="mt-1 max-w-xl">{action.summary}</Muted>
+          </div>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge className={conversationActionStatusBadgeClassName(action.status)}>{conversationActionStatusLabel(action.status)}</Badge>
+          <Badge className={conversationActionTargetBadgeClassName(action.target)}>{conversationActionTargetLabel(action.target)}</Badge>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Badge className="bg-white text-slate-600 ring-1 ring-slate-200">{conversationActionKindLabel(action.kind)}</Badge>
+        {action.scopes.map((scope) => (
+          <Badge key={`${action.id}-${scope}`} className="bg-slate-100 text-slate-700">{conversationActionTargetLabel(scope)}</Badge>
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {action.changes.map((change) => (
+          <div key={`${action.id}-${change.field}`} className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{change.label}</div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <ComparisonValueCard label="当前" value={change.before ?? '无'} />
+              <ComparisonValueCard label="建议后" value={change.after ?? '无'} emphasized />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-xl bg-slate-50 px-3 py-3">
+        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">为什么建议这样改</div>
+        <div className="mt-2 text-sm leading-6 text-slate-700">{action.reason}</div>
+      </div>
+
+      <div className="mt-3 text-xs text-slate-500">来源建议：{action.sourceSuggestion}</div>
+    </div>
+  );
 }
 
 const planProgressOptions = ['未开始', '进行中', '已完成', '需要调整'];
@@ -1702,6 +1796,105 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <div className="mt-1 text-lg font-semibold text-slate-900">{value}</div>
     </div>
   );
+}
+
+function conversationActionTargetLabel(target: ConversationActionScope) {
+  switch (target) {
+    case 'profile':
+      return '画像';
+    case 'goal':
+      return '目标';
+    case 'plan':
+      return '计划';
+    default:
+      return target;
+  }
+}
+
+function conversationActionStatusLabel(status: ConversationActionStatus) {
+  switch (status) {
+    case 'proposed':
+      return '待确认';
+    case 'pending':
+      return '进行中';
+    default:
+      return status;
+  }
+}
+
+function conversationActionKindLabel(kind: ConversationActionKind) {
+  switch (kind) {
+    case 'profile_update':
+      return '画像更新';
+    case 'goal_update':
+      return '目标更新';
+    case 'plan_update':
+      return '计划调整';
+    case 'plan_generation':
+      return '计划生成';
+    case 'unknown':
+      return '通用建议';
+    default:
+      return kind;
+  }
+}
+
+function conversationActionTargetBadgeClassName(target: ConversationActionScope) {
+  switch (target) {
+    case 'profile':
+      return 'bg-cyan-100 text-cyan-800';
+    case 'goal':
+      return 'bg-amber-100 text-amber-800';
+    case 'plan':
+      return 'bg-blue-100 text-blue-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function conversationActionStatusBadgeClassName(status: ConversationActionStatus) {
+  switch (status) {
+    case 'proposed':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'pending':
+      return 'bg-rose-100 text-rose-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function conversationActionIcon(action: ConversationActionPreview) {
+  if (action.status === 'pending') {
+    return <CircleAlert className="h-4 w-4" />;
+  }
+
+  switch (action.target) {
+    case 'profile':
+      return <Sparkles className="h-4 w-4" />;
+    case 'goal':
+      return <Target className="h-4 w-4" />;
+    case 'plan':
+      return <GitCompareArrows className="h-4 w-4" />;
+    default:
+      return <Flag className="h-4 w-4" />;
+  }
+}
+
+function conversationActionIconWrapClassName(action: ConversationActionPreview) {
+  if (action.status === 'pending') {
+    return 'flex h-9 w-9 items-center justify-center rounded-xl bg-rose-100 text-rose-700';
+  }
+
+  switch (action.target) {
+    case 'profile':
+      return 'flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700';
+    case 'goal':
+      return 'flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-700';
+    case 'plan':
+      return 'flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-700';
+    default:
+      return 'flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700';
+  }
 }
 
 function goalStatusLabel(status: LearningGoal['status']) {

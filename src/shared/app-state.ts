@@ -104,6 +104,30 @@ export type ConversationMessage = {
   content: string;
 };
 
+export type ConversationActionScope = 'profile' | 'goal' | 'plan';
+export type ConversationActionKind = 'profile_update' | 'goal_update' | 'plan_update' | 'plan_generation' | 'unknown';
+export type ConversationActionStatus = 'proposed' | 'pending';
+
+export type ConversationActionChange = {
+  field: string;
+  label: string;
+  before: string | null;
+  after: string | null;
+};
+
+export type ConversationActionPreview = {
+  id: string;
+  kind: ConversationActionKind;
+  target: ConversationActionScope;
+  scopes: ConversationActionScope[];
+  status: ConversationActionStatus;
+  title: string;
+  summary: string;
+  reason: string;
+  sourceSuggestion: string;
+  changes: ConversationActionChange[];
+};
+
 export type AppState = {
   profile: UserProfile;
   dashboard: {
@@ -125,6 +149,7 @@ export type AppState = {
     tags: string[];
     messages: ConversationMessage[];
     suggestions: string[];
+    actionPreviews: ConversationActionPreview[];
   };
   reflection: {
     period: string;
@@ -148,7 +173,246 @@ export type AppState = {
   };
 };
 
-export const seedState: AppState = {
+const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
+const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
+
+function getActiveConversationGoal(goals: LearningGoal[], activeGoalId: string) {
+  return goals.find((goal) => goal.id === activeGoalId) ?? goals[0] ?? null;
+}
+
+function getActiveConversationDraft(plan: LearningPlanState) {
+  return plan.drafts.find((draft) => draft.goalId === plan.activeGoalId) ?? plan.drafts[0] ?? null;
+}
+
+function createConversationActionId(sourceSuggestion: string, index: number) {
+  const normalized = sourceSuggestion
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24);
+
+  return `conversation-action-${normalized || 'preview'}-${index + 1}`;
+}
+
+function parseSuggestionStatus(sourceSuggestion: string) {
+  const trimmed = sourceSuggestion.trim();
+  if (trimmed.startsWith('进行中：')) {
+    return {
+      status: 'pending' as const,
+      content: trimmed.slice('进行中：'.length).trim(),
+    };
+  }
+
+  if (trimmed.startsWith('采纳：')) {
+    return {
+      status: 'proposed' as const,
+      content: trimmed.slice('采纳：'.length).trim(),
+    };
+  }
+
+  return {
+    status: 'proposed' as const,
+    content: trimmed,
+  };
+}
+
+function inferConversationActionTarget(content: string): ConversationActionScope {
+  if (/(画像|时间窗口|节奏|偏好|优势|阻碍)/.test(content)) {
+    return 'profile';
+  }
+
+  if (/(目标|主目标|成功标准|优先级)/.test(content)) {
+    return 'goal';
+  }
+
+  return 'plan';
+}
+
+function buildGenericConversationActionPreview({
+  sourceSuggestion,
+  status,
+  content,
+  index,
+}: {
+  sourceSuggestion: string;
+  status: ConversationActionStatus;
+  content: string;
+  index: number;
+}): ConversationActionPreview {
+  const target = inferConversationActionTarget(content);
+  const kindByTarget: Record<ConversationActionScope, ConversationActionKind> = {
+    profile: 'profile_update',
+    goal: 'goal_update',
+    plan: 'plan_update',
+  };
+
+  return {
+    id: createConversationActionId(sourceSuggestion, index),
+    kind: kindByTarget[target],
+    target,
+    scopes: [target],
+    status,
+    title: '结构化建议预览',
+    summary: `把原始建议整理为可确认的${target === 'profile' ? '画像' : target === 'goal' ? '目标' : '计划'}变更预览。`,
+    reason: '这一步先把自然语言建议转成稳定结构，后续确认/拒绝和持久化才能复用同一个动作模型。',
+    sourceSuggestion,
+    changes: [
+      {
+        field: 'conversation.suggestion',
+        label: '原始建议',
+        before: sourceSuggestion,
+        after: content,
+      },
+    ],
+  };
+}
+
+export function resolveConversationState(
+  state: Pick<AppState, 'profile' | 'goals' | 'plan' | 'conversation' | 'settings'>,
+): AppState['conversation'] {
+  const activeGoal = getActiveConversationGoal(state.goals, state.plan.activeGoalId);
+  const activeDraft = getActiveConversationDraft(state.plan);
+  const relatedGoal = activeGoal?.title ?? EMPTY_RELATED_GOAL_LABEL;
+  const relatedPlan = activeDraft?.title ?? EMPTY_RELATED_PLAN_LABEL;
+  const planGenerationProvider = state.settings.providers.find((provider) => provider.id === state.settings.routing.planGeneration)?.label
+    ?? state.settings.routing.planGeneration;
+  const suggestions = state.conversation.suggestions.map((item) => item.trim()).filter(Boolean);
+
+  const actionPreviews = suggestions.length
+    ? suggestions.map((sourceSuggestion, index) => {
+      const { status, content } = parseSuggestionStatus(sourceSuggestion);
+
+      if (/直接读取当前目标/.test(content) && /(plan draft|草案)/i.test(content)) {
+        return {
+          id: createConversationActionId(sourceSuggestion, index),
+          kind: 'plan_update',
+          target: 'plan',
+          scopes: ['goal', 'plan'],
+          status,
+          title: '计划页跟随当前目标草案',
+          summary: `让计划页直接绑定当前主目标「${relatedGoal}」对应的草案，而不是停留在展示映射层。`,
+          reason: '目标与计划需要单一真实来源，否则后续对话调整和计划比较会建立在不稳定的展示关系上。',
+          sourceSuggestion,
+          changes: [
+            {
+              field: 'plan.binding',
+              label: '计划页绑定方式',
+              before: '目标与计划可能只在界面层做弱关联',
+              after: `计划页直接读取当前主目标「${relatedGoal}」的独立草案`,
+            },
+            {
+              field: 'conversation.relatedPlan',
+              label: '当前关联计划',
+              before: '对话只描述计划，不保证与主目标同步',
+              after: relatedPlan,
+            },
+          ],
+        } satisfies ConversationActionPreview;
+      }
+
+      if (/新目标/.test(content) && /(自动补|首版草案|草案)/.test(content)) {
+        return {
+          id: createConversationActionId(sourceSuggestion, index),
+          kind: 'goal_update',
+          target: 'goal',
+          scopes: ['goal', 'plan'],
+          status,
+          title: '新目标创建后自动补首版草案',
+          summary: '把“创建目标”扩展成“创建目标并生成首版计划草案”的连续动作，减少目标创建后的空白期。',
+          reason: '新目标如果没有对应草案，计划页、对话调整和后续确认动作都会缺少可作用的计划对象。',
+          sourceSuggestion,
+          changes: [
+            {
+              field: 'goal.creation.followUp',
+              label: '目标创建后的系统动作',
+              before: '仅创建目标记录',
+              after: '创建目标后自动补首版计划草案',
+            },
+            {
+              field: 'plan.initialDraft',
+              label: '新目标初始计划状态',
+              before: '可能出现“有目标但无草案”的空状态',
+              after: '新目标创建后立即拥有可编辑的首版草案',
+            },
+          ],
+        } satisfies ConversationActionPreview;
+      }
+
+      if (/(真实 ai|ai provider|provider)/i.test(content) && /(生成计划|计划)/.test(content)) {
+        return {
+          id: createConversationActionId(sourceSuggestion, index),
+          kind: 'plan_generation',
+          target: 'plan',
+          scopes: ['plan'],
+          status: 'pending',
+          title: '接入真实 Provider 计划生成',
+          summary: `把当前的本地规则模板生成，升级为通过 ${planGenerationProvider} 路由执行的真实计划生成。`,
+          reason: '只有先把建议映射成结构化动作，后续统一 AI service 才能在不直接改页面状态的前提下接入真实模型调用。',
+          sourceSuggestion,
+          changes: [
+            {
+              field: 'plan.generationMode',
+              label: '计划生成方式',
+              before: '本地规则模板生成',
+              after: `统一 AI service 通过 ${planGenerationProvider} 路由执行真实生成`,
+            },
+            {
+              field: 'settings.routing.planGeneration',
+              label: '计划生成路由',
+              before: `${planGenerationProvider} 已被选中，但尚未进入运行时`,
+              after: '路由配置会直接影响实际模型调用目标',
+            },
+          ],
+        } satisfies ConversationActionPreview;
+      }
+
+      if (/(画像|时间窗口|节奏|偏好)/.test(content)) {
+        return {
+          id: createConversationActionId(sourceSuggestion, index),
+          kind: 'profile_update',
+          target: 'profile',
+          scopes: ['profile', 'plan'],
+          status,
+          title: '画像调整预览',
+          summary: '把对话里的画像建议整理成可确认字段，后续再决定是否落库并联动重排计划。',
+          reason: '画像是计划生成和调整的上游约束，先结构化预览，才能避免对话直接改动已有计划。',
+          sourceSuggestion,
+          changes: [
+            {
+              field: 'profile.bestStudyWindow',
+              label: '学习窗口',
+              before: state.profile.bestStudyWindow,
+              after: '按对话建议更新默认执行窗口',
+            },
+            {
+              field: 'profile.planImpact',
+              label: '计划节奏依据',
+              before: state.profile.planImpact[0] ?? '暂无明确节奏说明',
+              after: '新的画像变化将作为后续计划调整依据',
+            },
+          ],
+        } satisfies ConversationActionPreview;
+      }
+
+      return buildGenericConversationActionPreview({
+        sourceSuggestion,
+        status,
+        content,
+        index,
+      });
+    })
+    : (state.conversation.actionPreviews ?? []);
+
+  return {
+    ...state.conversation,
+    relatedGoal,
+    relatedPlan,
+    suggestions,
+    actionPreviews,
+  };
+}
+
+const baseSeedState: AppState = {
   profile: {
     name: 'Baymax',
     identity: '前端背景、希望系统化补足 Python 与 AI 应用能力',
@@ -242,6 +506,7 @@ export const seedState: AppState = {
       { id: 'm3', role: 'system', content: '建议按目标保存独立计划草案，切换主目标时直接切换对应草案，而不是只做展示映射。' },
     ],
     suggestions: ['采纳：计划页直接读取当前目标的 plan draft', '采纳：新目标创建后自动补首版草案', '进行中：真实 AI Provider 生成计划仍待接入'],
+    actionPreviews: [],
   },
   reflection: {
     period: '本周',
@@ -268,4 +533,9 @@ export const seedState: AppState = {
       generalChat: 'openai',
     },
   },
+};
+
+export const seedState: AppState = {
+  ...baseSeedState,
+  conversation: resolveConversationState(baseSeedState),
 };

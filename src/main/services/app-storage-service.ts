@@ -1,15 +1,12 @@
 import type { AppState, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
-import { seedState } from '../../shared/app-state.js';
+import { resolveConversationState, seedState } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
-import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getActiveDraft, getNextSnapshotVersion } from '../../shared/plan-draft.js';
+import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
 import { normalizeSecretInput, toSafeProviderConfig } from '../../shared/provider-config.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
-
-const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
-const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
 
 export class AppStorageService {
   constructor(
@@ -96,7 +93,7 @@ export class AppStorageService {
     });
 
     const nextPlanState = ensurePlanDrafts(persistedGoals, snapshot.plan, snapshot.profile);
-    const nextState = this.sanitizeState(this.withResolvedConversationLinks({
+    const nextState = this.sanitizeState(this.withResolvedConversationState({
       ...snapshot,
       goals: persistedGoals,
       plan: nextPlanState,
@@ -126,7 +123,7 @@ export class AppStorageService {
       snapshot.profile,
     );
 
-    const nextState = this.sanitizeState(this.withResolvedConversationLinks({
+    const nextState = this.sanitizeState(this.withResolvedConversationState({
       ...snapshot,
       goals: nextGoals,
       plan: nextPlanState,
@@ -146,7 +143,7 @@ export class AppStorageService {
     }
 
     const ensuredPlanState = ensurePlanDrafts(snapshot.goals, { ...snapshot.plan, activeGoalId: goalId }, snapshot.profile);
-    const nextState = this.sanitizeState(this.withResolvedConversationLinks({
+    const nextState = this.sanitizeState(this.withResolvedConversationState({
       ...snapshot,
       plan: ensuredPlanState,
       conversation: snapshot.conversation,
@@ -299,7 +296,7 @@ export class AppStorageService {
 
   private hydratePlanState(state: AppState): AppState {
     const nextPlanState = ensurePlanDrafts(state.goals, state.plan, state.profile);
-    return this.withResolvedConversationLinks({
+    return this.withResolvedConversationState({
       ...state,
       plan: nextPlanState,
     });
@@ -347,17 +344,10 @@ export class AppStorageService {
     );
   }
 
-  private withResolvedConversationLinks(state: AppState): AppState {
-    const activeGoal = state.goals.find((goal) => goal.id === state.plan.activeGoalId) ?? state.goals[0] ?? null;
-    const activeDraft = getActiveDraft(state.plan);
-
+  private withResolvedConversationState(state: AppState): AppState {
     return {
       ...state,
-      conversation: {
-        ...state.conversation,
-        relatedGoal: activeGoal?.title ?? EMPTY_RELATED_GOAL_LABEL,
-        relatedPlan: activeDraft?.title ?? EMPTY_RELATED_PLAN_LABEL,
-      },
+      conversation: resolveConversationState(state),
     };
   }
 

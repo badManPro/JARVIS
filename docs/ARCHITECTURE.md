@@ -39,7 +39,7 @@
 负责：
 - 规划问答
 - 用户意图提取
-- 对画像与计划的变更映射
+- 对画像、目标、计划的变更映射与结构化 action preview
 
 ### 2.5 任务与复盘模块
 负责：
@@ -64,7 +64,7 @@ Renderer 先按以下状态切分：
 1. profile：用户画像、偏好、风险与影响解释
 2. goals：目标列表、主目标、状态与成功标准
 3. plan drafts：按目标归属的阶段计划草案、阶段任务与当前激活目标
-4. conversation：当前会话、消息流、建议动作
+4. conversation：当前会话、消息流、建议动作与 action preview
 5. settings：主题、启动页、Provider 列表、用途路由策略
 
 这样做的目的：
@@ -104,7 +104,7 @@ Renderer 先按以下状态切分：
    - 单独保存 Provider secret
    - 不让 renderer 直接读取明文 secret
 
-当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / conversation / reflection / settings` 仍主要由快照承接，留待后续继续拆表。
+当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection / settings` 仍主要由快照承接，`conversation` 目前也仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。
 
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：
@@ -140,4 +140,9 @@ Preload 当前暴露：
 5. 计划页通过 `saveLearningPlanDraft` / `regenerateLearningPlanDraft` 支持草案保存、重生成与快照归档
 6. 应用偏好 / 路由策略与 Provider 基础配置通过 `saveAppState` / `upsertProviderConfig` 更新，secret 继续走独立安全存储
 
-当前仍未覆盖：目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。
+当前对话页额外具备一层只读结构化映射：
+- `conversation.suggestions` 仍保留原始自然语言建议
+- `conversation.actionPreviews` 会基于当前目标、计划、画像与 route 配置回填结构化预览
+- 该预览层当前只负责解释潜在变更，不直接写入实体表
+
+当前仍未覆盖：action preview 的确认/拒绝与实体落库、目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。
