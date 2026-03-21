@@ -136,15 +136,25 @@ export function PageContent({ page }: { page: PageDefinition }) {
 function ConversationContent() {
   const state = useAppStore();
   const reviewConversationActionPreview = useAppStore((store) => store.reviewConversationActionPreview);
+  const applyAcceptedConversationActionPreviews = useAppStore((store) => store.applyAcceptedConversationActionPreviews);
   const conversation = useMemo(() => resolveConversationState(state), [state]);
   const [updatingActionId, setUpdatingActionId] = useState<string | null>(null);
+  const [applyingAccepted, setApplyingAccepted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const unreviewedCount = useMemo(
     () => conversation.actionPreviews.filter((item) => item.reviewable && item.reviewStatus === 'unreviewed').length,
     [conversation.actionPreviews],
   );
   const acceptedCount = useMemo(
-    () => conversation.actionPreviews.filter((item) => item.reviewStatus === 'accepted').length,
+    () => conversation.actionPreviews.filter((item) => item.reviewStatus === 'accepted' && item.status === 'proposed').length,
+    [conversation.actionPreviews],
+  );
+  const acceptedExecutableCount = useMemo(
+    () => conversation.actionPreviews.filter((item) => item.reviewStatus === 'accepted' && item.status === 'proposed' && Boolean(item.execution)).length,
+    [conversation.actionPreviews],
+  );
+  const appliedCount = useMemo(
+    () => conversation.actionPreviews.filter((item) => item.status === 'applied').length,
     [conversation.actionPreviews],
   );
   const rejectedCount = useMemo(
@@ -152,11 +162,12 @@ function ConversationContent() {
     [conversation.actionPreviews],
   );
   const pendingCount = useMemo(
-    () => conversation.actionPreviews.filter((item) => !item.reviewable).length,
+    () => conversation.actionPreviews.filter((item) => item.status === 'pending').length,
     [conversation.actionPreviews],
   );
 
   const onReviewAction = async (payload: { actionId: string; reviewStatus: ConversationActionReviewStatus }) => {
+    const currentAction = conversation.actionPreviews.find((item) => item.id === payload.actionId);
     setUpdatingActionId(payload.actionId);
     setNotice(null);
 
@@ -164,7 +175,11 @@ function ConversationContent() {
       await reviewConversationActionPreview(payload);
       switch (payload.reviewStatus) {
         case 'accepted':
-          setNotice('该预览已标记为“接受”，后续 Task 3 会把已接受动作接到真实实体写入。');
+          setNotice(
+            currentAction?.execution
+              ? '该预览已加入待应用列表，点击“应用已接受变更”后会真正写入本地实体。'
+              : '该预览已标记为接受，但它目前仍是解释型预览，真正应用时会被跳过。',
+          );
           break;
         case 'rejected':
           setNotice('该预览已标记为“暂不采纳”，当前不会进入后续执行。');
@@ -179,6 +194,30 @@ function ConversationContent() {
       setNotice(error instanceof Error ? error.message : '更新预览审核状态失败');
     } finally {
       setUpdatingActionId(null);
+    }
+  };
+
+  const onApplyAcceptedActions = async () => {
+    setApplyingAccepted(true);
+    setNotice(null);
+
+    try {
+      const result = await applyAcceptedConversationActionPreviews();
+      if (result.appliedActionIds.length) {
+        setNotice(
+          result.skippedActionIds.length
+            ? `已将 ${result.appliedActionIds.length} 条已接受预览写入本地实体，另有 ${result.skippedActionIds.length} 条解释型预览被跳过。`
+            : `已将 ${result.appliedActionIds.length} 条已接受预览写入画像、目标或计划实体，并同步刷新当前页面状态。`,
+        );
+      } else if (result.skippedActionIds.length) {
+        setNotice(`当前没有可执行的已接受预览；已跳过 ${result.skippedActionIds.length} 条解释型预览。`);
+      } else {
+        setNotice('当前没有待应用的已接受预览。');
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '应用已接受预览失败');
+    } finally {
+      setApplyingAccepted(false);
     }
   };
 
@@ -199,7 +238,7 @@ function ConversationContent() {
 
       <Card className="border-slate-200 bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.12),_transparent_40%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))]">
         <SectionTitle>结构化动作预览</SectionTitle>
-        <Muted className="mt-2">当前阶段允许逐条确认或拒绝预览，但仍不直接写入画像、目标或计划实体。</Muted>
+        <Muted className="mt-2">先逐条确认，再把已接受且可执行的预览统一写入画像、目标或计划实体；仅展示型预览会在应用时被跳过。</Muted>
 
         <div className="mt-4 flex flex-wrap gap-2">
           {conversation.tags.map((tag) => (
@@ -209,9 +248,24 @@ function ConversationContent() {
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="待你决定" value={String(unreviewedCount)} />
-          <StatCard label="已接受" value={String(acceptedCount)} />
+          <StatCard label="待应用" value={String(acceptedCount)} />
+          <StatCard label="已应用" value={String(appliedCount)} />
           <StatCard label="已拒绝" value={String(rejectedCount)} />
           <StatCard label="仍待接入" value={String(pendingCount)} />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/90 px-3 py-3">
+          <div className="text-sm text-slate-600">
+            当前有 {acceptedCount} 条已接受预览，其中 {acceptedExecutableCount} 条可直接写入实体。
+          </div>
+          <button
+            className={successButtonClassName}
+            type="button"
+            onClick={() => void onApplyAcceptedActions()}
+            disabled={applyingAccepted || acceptedCount === 0}
+          >
+            {applyingAccepted ? '应用中…' : `应用已接受变更${acceptedCount ? `（${acceptedCount}）` : ''}`}
+          </button>
         </div>
 
         {notice ? (
@@ -230,7 +284,7 @@ function ConversationContent() {
             ))}
           </div>
         ) : (
-          <Muted className="mt-4">当前还没有可映射的结构化建议，后续对话建议会先在这里进入预览层。</Muted>
+          <Muted className="mt-4">当前还没有可映射的结构化建议，后续对话建议会先在这里进入预览、审核和应用链路。</Muted>
         )}
       </Card>
     </div>
@@ -291,13 +345,17 @@ function ConversationActionPreviewCard({
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
         <div className="text-sm text-slate-600">
-          {action.reviewable
-            ? (action.reviewStatus === 'unreviewed'
-              ? '你可以先确认或拒绝这条预览，实体写入会在下一步任务接入。'
-              : `当前审核结果：${conversationActionReviewLabel(action)}${action.reviewedAt ? ` · ${formatDateTime(action.reviewedAt)}` : ''}`)
-            : '这条建议仍依赖后续运行时接入，目前只保留为占位预览。'}
+          {action.status === 'applied'
+            ? '这条预览已经写入本地实体，相关页面状态已同步刷新。'
+            : action.reviewable
+              ? (action.reviewStatus === 'unreviewed'
+                ? '你可以先确认或拒绝这条预览；接受后再统一应用到真实实体。'
+                : `当前审核结果：${conversationActionReviewLabel(action)}${action.reviewedAt ? ` · ${formatDateTime(action.reviewedAt)}` : ''}`)
+              : '这条建议仍依赖后续运行时接入，目前只保留为占位预览。'}
         </div>
-        {action.reviewable ? (
+        {action.status === 'applied' ? (
+          <Badge className="bg-sky-100 text-sky-800">已写入实体</Badge>
+        ) : action.reviewable ? (
           <div className="flex flex-wrap gap-2">
             <button
               className={successButtonClassName}
@@ -1915,6 +1973,8 @@ function conversationActionStatusLabel(status: ConversationActionStatus) {
       return '待确认';
     case 'pending':
       return '进行中';
+    case 'applied':
+      return '已应用';
     default:
       return status;
   }
@@ -1956,12 +2016,18 @@ function conversationActionStatusBadgeClassName(status: ConversationActionStatus
       return 'bg-emerald-100 text-emerald-800';
     case 'pending':
       return 'bg-rose-100 text-rose-800';
+    case 'applied':
+      return 'bg-sky-100 text-sky-800';
     default:
       return 'bg-slate-100 text-slate-700';
   }
 }
 
 function conversationActionReviewLabel(action: ConversationActionPreview) {
+  if (action.status === 'applied') {
+    return '已应用';
+  }
+
   if (!action.reviewable) {
     return '尚不可确认';
   }
@@ -1979,6 +2045,10 @@ function conversationActionReviewLabel(action: ConversationActionPreview) {
 }
 
 function conversationActionReviewBadgeClassName(action: ConversationActionPreview) {
+  if (action.status === 'applied') {
+    return 'bg-sky-100 text-sky-800';
+  }
+
   if (!action.reviewable) {
     return 'bg-slate-100 text-slate-700';
   }

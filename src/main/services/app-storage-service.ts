@@ -1,5 +1,5 @@
-import type { AppState, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
-import { resolveConversationState, seedState } from '../../shared/app-state.js';
+import type { AppState, ApplyConversationActionPreviewsResult, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
+import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
@@ -213,6 +213,27 @@ export class AppStorageService {
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
     return this.loadAppState();
+  }
+
+  applyAcceptedConversationActionPreviews(): ApplyConversationActionPreviewsResult {
+    const snapshot = this.loadAppState();
+    const result = applyAcceptedConversationActionPreviews(snapshot);
+
+    if (!result.appliedActionIds.length) {
+      return {
+        ...result,
+        state: snapshot,
+      };
+    }
+
+    const nextState = this.sanitizeState(this.hydratePlanState(result.state));
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+
+    return {
+      ...result,
+      state: this.loadAppState(),
+    };
   }
 
   listProviderConfigs() {

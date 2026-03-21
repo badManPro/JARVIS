@@ -39,7 +39,7 @@
 负责：
 - 规划问答
 - 用户意图提取
-- 对画像、目标、计划的变更映射、结构化 action preview 与审核状态
+- 对画像、目标、计划的变更映射、结构化 action preview、审核状态与应用状态
 
 ### 2.5 任务与复盘模块
 负责：
@@ -64,7 +64,7 @@ Renderer 先按以下状态切分：
 1. profile：用户画像、偏好、风险与影响解释
 2. goals：目标列表、主目标、状态与成功标准
 3. plan drafts：按目标归属的阶段计划草案、阶段任务与当前激活目标
-4. conversation：当前会话、消息流、建议动作、action preview 与审核状态
+4. conversation：当前会话、消息流、建议动作、action preview、审核状态与应用状态
 5. settings：主题、启动页、Provider 列表、用途路由策略
 
 这样做的目的：
@@ -127,23 +127,26 @@ Preload 当前暴露：
 - `setActiveGoal`
 - `saveLearningPlanDraft`
 - `regenerateLearningPlanDraft`
+- `applyAcceptedConversationActionPreviews`
 - `listProviderConfigs`
 - `upsertProviderConfig`
 - `saveProviderSecret`
 - `clearProviderSecret`
 
-这意味着当前已经具备六类真实交互：
+这意味着当前已经具备七类真实交互：
 1. 用户画像关键字段通过 `saveUserProfile` 写入本地 SQLite
 2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并落到 `learning_goals`
 3. 目标切换通过 `setActiveGoal` 持久化 `active_goal_id`，并让计划页直接读取该目标对应的独立草案
 4. 目标删除通过 `removeLearningGoal` 同步清理 `learning_goals`、目标关联计划草案与版本快照，并处理 active goal 回退
 5. 计划页通过 `saveLearningPlanDraft` / `regenerateLearningPlanDraft` 支持草案保存、重生成与快照归档
-6. 应用偏好 / 路由策略与 Provider 基础配置通过 `saveAppState` / `upsertProviderConfig` 更新，secret 继续走独立安全存储
+6. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态
+7. 应用偏好 / 路由策略与 Provider 基础配置通过 `saveAppState` / `upsertProviderConfig` 更新，secret 继续走独立安全存储
 
-当前对话页额外具备一层“可审核但未落库”的结构化映射：
+当前对话页额外具备一层“先审核、再应用”的结构化映射：
 - `conversation.suggestions` 仍保留原始自然语言建议
 - `conversation.actionPreviews` 会基于当前目标、计划、画像与 route 配置回填结构化预览
 - `actionPreviews.reviewStatus` 会随用户确认/拒绝保留在快照里
-- 该预览层当前只负责解释和审核潜在变更，不直接写入实体表
+- 已接受且带执行 payload 的 preview 会通过主进程统一应用到结构化实体，再把 preview 标记为 `applied`
+- 暂时仍不为动作来源与操作时间单独建表，相关审计留给下一任务
 
-当前仍未覆盖：已确认 action preview 的实体落库、动作来源与操作时间、目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。
+当前仍未覆盖：动作来源与操作时间、目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。

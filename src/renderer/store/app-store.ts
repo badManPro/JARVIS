@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { AppState, ConversationActionReviewStatus, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
-import { resolveConversationState, seedState, updateConversationActionPreviewReview } from '@shared/app-state';
+import type { AppState, ApplyConversationActionPreviewsResult, ConversationActionReviewStatus, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
+import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState, updateConversationActionPreviewReview } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
@@ -17,6 +17,7 @@ type AppStore = AppState & {
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
   reviewConversationActionPreview: (payload: { actionId: string; reviewStatus: ConversationActionReviewStatus }) => Promise<void>;
+  applyAcceptedConversationActionPreviews: () => Promise<ApplyConversationActionPreviewsResult>;
   refreshProviderConfigs: () => Promise<void>;
   upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<void>;
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
@@ -277,6 +278,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } satisfies AppState;
     const persistedState = await bridge.saveAppState(nextState);
     set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  applyAcceptedConversationActionPreviews: async () => {
+    const bridge = getBridge();
+    const currentState = get();
+
+    if (!bridge) {
+      const result = applyAcceptedConversationActionPreviews(extractAppState(currentState));
+      set({ ...result.state, hydrated: true, hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。' });
+      return result;
+    }
+
+    const result = await bridge.applyAcceptedConversationActionPreviews();
+    set({ ...result.state, hydrated: true, hydrationError: null });
+    return result;
   },
   refreshProviderConfigs: async () => {
     const bridge = getBridge();

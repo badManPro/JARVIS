@@ -14,6 +14,7 @@ const learningCompanion: LearningCompanionBridge = {
     setActiveGoal: (goalId) => ipcRenderer.invoke('storage:set-active-goal', goalId),
     saveLearningPlanDraft: (draft) => ipcRenderer.invoke('storage:save-learning-plan-draft', draft),
     regenerateLearningPlanDraft: (payload) => ipcRenderer.invoke('storage:regenerate-learning-plan-draft', payload),
+    applyAcceptedConversationActionPreviews: () => ipcRenderer.invoke('storage:apply-accepted-conversation-action-previews'),
     listProviderConfigs: () => ipcRenderer.invoke('storage:list-provider-configs'),
     upsertProviderConfig: (payload) => ipcRenderer.invoke('storage:upsert-provider-config', payload),
     saveProviderSecret: (payload) => ipcRenderer.invoke('storage:save-provider-secret', payload),

@@ -45,6 +45,7 @@ function registerIpcHandlers() {
   ipcMain.handle('storage:set-active-goal', async (_event, goalId) => getStorageService().setActiveGoal(goalId));
   ipcMain.handle('storage:save-learning-plan-draft', async (_event, draft) => getStorageService().saveLearningPlanDraft(draft));
   ipcMain.handle('storage:regenerate-learning-plan-draft', async (_event, payload) => getStorageService().regenerateLearningPlanDraft(payload.goalId, payload.snapshotDraft));
+  ipcMain.handle('storage:apply-accepted-conversation-action-previews', async () => getStorageService().applyAcceptedConversationActionPreviews());
   ipcMain.handle('storage:list-provider-configs', async () => getStorageService().listProviderConfigs());
   ipcMain.handle('storage:upsert-provider-config', async (_event, payload) => getStorageService().upsertProviderConfig(payload));
   ipcMain.handle('storage:save-provider-secret', async (_event, payload) => getStorageService().saveProviderSecret(payload));

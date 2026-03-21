@@ -106,7 +106,7 @@ export type ConversationMessage = {
 
 export type ConversationActionScope = 'profile' | 'goal' | 'plan';
 export type ConversationActionKind = 'profile_update' | 'goal_update' | 'plan_update' | 'plan_generation' | 'unknown';
-export type ConversationActionStatus = 'proposed' | 'pending';
+export type ConversationActionStatus = 'proposed' | 'pending' | 'applied';
 export type ConversationActionReviewStatus = 'unreviewed' | 'accepted' | 'rejected';
 
 export type ConversationActionChange = {
@@ -115,6 +115,23 @@ export type ConversationActionChange = {
   before: string | null;
   after: string | null;
 };
+
+export type ConversationActionExecution =
+  | {
+    type: 'profile_update';
+    nextProfile: UserProfile;
+  }
+  | {
+    type: 'goal_update';
+    goalId: string;
+    nextGoal: LearningGoal;
+  }
+  | {
+    type: 'plan_update';
+    goalId: string;
+    draftId: string;
+    nextDraft: LearningPlanDraft;
+  };
 
 export type ConversationActionPreview = {
   id: string;
@@ -130,6 +147,13 @@ export type ConversationActionPreview = {
   reason: string;
   sourceSuggestion: string;
   changes: ConversationActionChange[];
+  execution?: ConversationActionExecution;
+};
+
+export type ApplyConversationActionPreviewsResult = {
+  state: AppState;
+  appliedActionIds: string[];
+  skippedActionIds: string[];
 };
 
 export type AppState = {
@@ -232,6 +256,122 @@ function inferConversationActionTarget(content: string): ConversationActionScope
   return 'plan';
 }
 
+function normalizeConversationActionStatus(status?: string): ConversationActionStatus {
+  switch (status) {
+    case 'pending':
+    case 'applied':
+    case 'proposed':
+      return status;
+    default:
+      return 'proposed';
+  }
+}
+
+function dedupeStrings(values: string[]) {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
+}
+
+function cloneLearningPlanDraft(draft: LearningPlanDraft): LearningPlanDraft {
+  return {
+    ...draft,
+    basis: [...draft.basis],
+    stages: draft.stages.map((stage) => ({ ...stage })),
+    tasks: draft.tasks.map((task) => ({ ...task })),
+  };
+}
+
+function buildConversationGeneratedTaskId(actionId: string, index: number) {
+  return `${actionId}-task-${index + 1}`;
+}
+
+function extractQuotedContent(content: string) {
+  const quoted = content.match(/[「“"]([^」”"]+)[」”"]/);
+  return quoted?.[1]?.trim() ?? null;
+}
+
+function extractStudyWindow(content: string) {
+  const explicit = content.match(/((?:工作日|周末)?(?:早间|早上|上午|午间|下午|晚间|晚上)?\s*\d{1,2}:\d{2}\s*[-~到至]\s*\d{1,2}:\d{2})/);
+  if (explicit?.[1]) {
+    return explicit[1].replace(/\s+/g, ' ').trim();
+  }
+
+  if (/周末/.test(content)) {
+    return '周末上午 09:00 - 11:00';
+  }
+
+  if (/(早间|早上|上午)/.test(content)) {
+    return '工作日早间 07:00 - 08:00';
+  }
+
+  if (/(晚间|晚上|夜间)/.test(content)) {
+    return '工作日晚间 20:30 - 21:15';
+  }
+
+  return null;
+}
+
+function extractGoalPriority(content: string): LearningGoal['priority'] | null {
+  const match = content.match(/\b(P[123])\b/i);
+  return (match?.[1]?.toUpperCase() as LearningGoal['priority'] | undefined) ?? null;
+}
+
+function extractGoalCycle(content: string) {
+  const match = content.match(/(\d+\s*(?:周|天|个月))/);
+  return match?.[1]?.replace(/\s+/g, ' ').trim() ?? null;
+}
+
+function extractGoalSuccessMetric(content: string) {
+  const quoted = extractQuotedContent(content);
+  if (quoted && /(成功标准|衡量标准)/.test(content)) {
+    return quoted;
+  }
+
+  const direct = content.match(/(?:成功标准|衡量标准)(?:改为|调整为|设为)?[：:\s]*([^，。]+)/);
+  if (direct?.[1]) {
+    return direct[1].trim();
+  }
+
+  return null;
+}
+
+function extractGoalTitle(content: string) {
+  const quoted = extractQuotedContent(content);
+  if (quoted && /(主目标|目标)/.test(content)) {
+    return quoted;
+  }
+
+  const direct = content.match(/(?:主目标|目标)(?:改成|调整为|设为)[：:\s]*([^，。]+)/);
+  if (direct?.[1]) {
+    return direct[1].trim();
+  }
+
+  return null;
+}
+
+function extractPlanTitle(content: string) {
+  const quoted = extractQuotedContent(content);
+  if (quoted && /(计划标题|标题|计划)/.test(content)) {
+    return quoted;
+  }
+
+  const direct = content.match(/(?:计划标题|标题|计划)(?:改成|调整为|设为)[：:\s]*([^，。]+)/);
+  if (direct?.[1]) {
+    return direct[1].trim();
+  }
+
+  return null;
+}
+
+function extractAppendedTaskTitle(content: string) {
+  const quoted = extractQuotedContent(content);
+  if (quoted && /(任务|行动)/.test(content)) {
+    return quoted;
+  }
+
+  const direct = content.match(/(?:补一个|新增|加入)([^，。]*?(?:任务|行动))/);
+  return direct?.[1]?.trim() ?? null;
+}
+
 function isConversationActionReviewable(status: ConversationActionStatus) {
   return status === 'proposed';
 }
@@ -257,21 +397,32 @@ function buildConversationActionPreview(
   };
 }
 
-function applyStoredConversationActionReviewState(
+function mergeStoredConversationActionState(
   preview: ConversationActionPreview,
   storedPreview?: ConversationActionPreview,
 ): ConversationActionPreview {
-  if (!preview.reviewable) {
+  const status = storedPreview?.status === 'applied'
+    ? 'applied'
+    : normalizeConversationActionStatus(preview.status);
+  const reviewable = isConversationActionReviewable(status);
+
+  if (status === 'pending') {
     return {
       ...preview,
+      status,
+      reviewable,
       reviewStatus: 'unreviewed',
       reviewedAt: undefined,
     };
   }
 
-  const reviewStatus = normalizeConversationActionReviewStatus(storedPreview?.reviewStatus);
+  const reviewStatus = status === 'applied'
+    ? 'accepted'
+    : normalizeConversationActionReviewStatus(storedPreview?.reviewStatus);
   return {
     ...preview,
+    status,
+    reviewable,
     reviewStatus,
     reviewedAt: reviewStatus === 'unreviewed' ? undefined : storedPreview?.reviewedAt,
   };
@@ -316,6 +467,252 @@ function buildGenericConversationActionPreview({
   });
 }
 
+function buildProfileAdjustmentPreview({
+  actionId,
+  sourceSuggestion,
+  status,
+  content,
+  profile,
+}: {
+  actionId: string;
+  sourceSuggestion: string;
+  status: ConversationActionStatus;
+  content: string;
+  profile: UserProfile;
+}): ConversationActionPreview | null {
+  if (!/(画像|时间窗口|学习窗口|节奏|偏好)/.test(content)) {
+    return null;
+  }
+
+  const nextBestStudyWindow = extractStudyWindow(content);
+  const nextPlanImpact = dedupeStrings([
+    ...profile.planImpact,
+    `对话确认：后续计划优先围绕${nextBestStudyWindow ?? profile.bestStudyWindow}安排执行窗口。`,
+  ]);
+  const nextProfile: UserProfile = {
+    ...profile,
+    bestStudyWindow: nextBestStudyWindow ?? profile.bestStudyWindow,
+    planImpact: nextPlanImpact,
+  };
+
+  if (
+    nextProfile.bestStudyWindow === profile.bestStudyWindow
+    && JSON.stringify(nextProfile.planImpact) === JSON.stringify(profile.planImpact)
+  ) {
+    return null;
+  }
+
+  return buildConversationActionPreview({
+    id: actionId,
+    kind: 'profile_update',
+    target: 'profile',
+    scopes: ['profile', 'plan'],
+    status,
+    title: '画像调整预览',
+    summary: '把对话里的画像变化整理成可执行补丁，确认后会写回用户画像并影响后续计划依据。',
+    reason: '画像是计划调整的上游约束，先以结构化补丁落库，才能让后续计划建议建立在最新上下文上。',
+    sourceSuggestion,
+    changes: [
+      {
+        field: 'profile.bestStudyWindow',
+        label: '学习窗口',
+        before: profile.bestStudyWindow,
+        after: nextProfile.bestStudyWindow,
+      },
+      {
+        field: 'profile.planImpact',
+        label: '计划影响说明',
+        before: profile.planImpact[profile.planImpact.length - 1] ?? '暂无额外说明',
+        after: nextProfile.planImpact[nextProfile.planImpact.length - 1] ?? '暂无额外说明',
+      },
+    ],
+    execution: {
+      type: 'profile_update',
+      nextProfile,
+    },
+  });
+}
+
+function buildGoalAdjustmentPreview({
+  actionId,
+  sourceSuggestion,
+  status,
+  content,
+  goal,
+}: {
+  actionId: string;
+  sourceSuggestion: string;
+  status: ConversationActionStatus;
+  content: string;
+  goal: LearningGoal | null;
+}): ConversationActionPreview | null {
+  if (!goal || !/(目标|主目标|成功标准|优先级|周期)/.test(content)) {
+    return null;
+  }
+
+  const nextGoal: LearningGoal = {
+    ...goal,
+    title: extractGoalTitle(content) ?? goal.title,
+    cycle: extractGoalCycle(content) ?? goal.cycle,
+    priority: extractGoalPriority(content) ?? goal.priority,
+    successMetric: extractGoalSuccessMetric(content) ?? goal.successMetric,
+  };
+
+  const changes: ConversationActionChange[] = [];
+  if (nextGoal.title !== goal.title) {
+    changes.push({
+      field: 'goal.title',
+      label: '当前主目标',
+      before: goal.title,
+      after: nextGoal.title,
+    });
+  }
+  if (nextGoal.cycle !== goal.cycle) {
+    changes.push({
+      field: 'goal.cycle',
+      label: '目标周期',
+      before: goal.cycle,
+      after: nextGoal.cycle,
+    });
+  }
+  if (nextGoal.priority !== goal.priority) {
+    changes.push({
+      field: 'goal.priority',
+      label: '目标优先级',
+      before: goal.priority,
+      after: nextGoal.priority,
+    });
+  }
+  if (nextGoal.successMetric !== goal.successMetric) {
+    changes.push({
+      field: 'goal.successMetric',
+      label: '成功标准',
+      before: goal.successMetric,
+      after: nextGoal.successMetric,
+    });
+  }
+
+  if (!changes.length) {
+    return null;
+  }
+
+  return buildConversationActionPreview({
+    id: actionId,
+    kind: 'goal_update',
+    target: 'goal',
+    scopes: ['goal', 'plan'],
+    status,
+    title: '目标调整预览',
+    summary: `将当前主目标「${goal.title}」的关键约束整理成可确认变更。`,
+    reason: '目标是计划草案的锚点，先更新目标实体，计划页和对话上下文才能立即对齐。',
+    sourceSuggestion,
+    changes,
+    execution: {
+      type: 'goal_update',
+      goalId: goal.id,
+      nextGoal,
+    },
+  });
+}
+
+function buildPlanAdjustmentPreview({
+  actionId,
+  sourceSuggestion,
+  status,
+  content,
+  draft,
+}: {
+  actionId: string;
+  sourceSuggestion: string;
+  status: ConversationActionStatus;
+  content: string;
+  draft: LearningPlanDraft | null;
+}): ConversationActionPreview | null {
+  if (!draft || !/(计划|阶段|任务|草案)/.test(content)) {
+    return null;
+  }
+
+  const nextDraft = cloneLearningPlanDraft(draft);
+  const nextTitle = extractPlanTitle(content);
+  if (nextTitle) {
+    nextDraft.title = nextTitle;
+  }
+
+  const taskTitle = extractAppendedTaskTitle(content);
+  if (!nextTitle && !taskTitle) {
+    return null;
+  }
+
+  if (taskTitle && !nextDraft.tasks.some((task) => task.title === taskTitle)) {
+    nextDraft.tasks.push({
+      id: buildConversationGeneratedTaskId(actionId, nextDraft.tasks.length),
+      title: taskTitle,
+      duration: '30 分钟',
+      status: 'todo',
+      note: '来自对话确认后的计划补充动作。',
+    });
+  }
+
+  const nextBasis = dedupeStrings([...nextDraft.basis, `对话调整：${content}`]);
+  nextDraft.basis = nextBasis;
+
+  const changes: ConversationActionChange[] = [];
+  if (nextDraft.title !== draft.title) {
+    changes.push({
+      field: 'plan.title',
+      label: '计划标题',
+      before: draft.title,
+      after: nextDraft.title,
+    });
+  }
+
+  const previousTask = draft.tasks[draft.tasks.length - 1];
+  const appendedTask = nextDraft.tasks[nextDraft.tasks.length - 1];
+  if (nextDraft.tasks.length !== draft.tasks.length && appendedTask) {
+    changes.push({
+      field: 'plan.tasks',
+      label: '计划任务补充',
+      before: previousTask?.title ?? '暂无额外任务',
+      after: appendedTask.title,
+    });
+  }
+
+  if (nextDraft.basis[nextDraft.basis.length - 1] !== draft.basis[draft.basis.length - 1]) {
+    changes.push({
+      field: 'plan.basis',
+      label: '计划依据',
+      before: draft.basis[draft.basis.length - 1] ?? '暂无额外依据',
+      after: nextDraft.basis[nextDraft.basis.length - 1] ?? '暂无额外依据',
+    });
+  }
+
+  if (!changes.length) {
+    return null;
+  }
+
+  return buildConversationActionPreview({
+    id: actionId,
+    kind: 'plan_update',
+    target: 'plan',
+    scopes: ['plan'],
+    status,
+    title: '计划调整预览',
+    summary: `把当前主目标对应草案「${draft.title}」整理成可直接落库的计划补丁。`,
+    reason: '计划层需要接收来自对话的结构化调整，但必须在确认后才进入真实草案，避免直接覆盖人工编辑。',
+    sourceSuggestion,
+    changes,
+    execution: {
+      type: 'plan_update',
+      goalId: draft.goalId,
+      draftId: draft.id,
+      nextDraft: {
+        ...nextDraft,
+        updatedAt: draft.updatedAt,
+      },
+    },
+  });
+}
+
 export function resolveConversationState(
   state: Pick<AppState, 'profile' | 'goals' | 'plan' | 'conversation' | 'settings'>,
 ): AppState['conversation'] {
@@ -333,9 +730,32 @@ export function resolveConversationState(
       const { status, content } = parseSuggestionStatus(sourceSuggestion);
       const previewId = createConversationActionId(sourceSuggestion, index);
       const storedPreview = storedPreviewById.get(previewId);
+      const actionablePreview = buildProfileAdjustmentPreview({
+        actionId: previewId,
+        sourceSuggestion,
+        status,
+        content,
+        profile: state.profile,
+      }) ?? buildGoalAdjustmentPreview({
+        actionId: previewId,
+        sourceSuggestion,
+        status,
+        content,
+        goal: activeGoal,
+      }) ?? buildPlanAdjustmentPreview({
+        actionId: previewId,
+        sourceSuggestion,
+        status,
+        content,
+        draft: activeDraft,
+      });
+
+      if (actionablePreview) {
+        return mergeStoredConversationActionState(actionablePreview, storedPreview);
+      }
 
       if (/直接读取当前目标/.test(content) && /(plan draft|草案)/i.test(content)) {
-        return applyStoredConversationActionReviewState(buildConversationActionPreview({
+        return mergeStoredConversationActionState(buildConversationActionPreview({
           id: previewId,
           kind: 'plan_update',
           target: 'plan',
@@ -363,7 +783,7 @@ export function resolveConversationState(
       }
 
       if (/新目标/.test(content) && /(自动补|首版草案|草案)/.test(content)) {
-        return applyStoredConversationActionReviewState(buildConversationActionPreview({
+        return mergeStoredConversationActionState(buildConversationActionPreview({
           id: previewId,
           kind: 'goal_update',
           target: 'goal',
@@ -391,7 +811,7 @@ export function resolveConversationState(
       }
 
       if (/(真实 ai|ai provider|provider)/i.test(content) && /(生成计划|计划)/.test(content)) {
-        return applyStoredConversationActionReviewState(buildConversationActionPreview({
+        return mergeStoredConversationActionState(buildConversationActionPreview({
           id: previewId,
           kind: 'plan_generation',
           target: 'plan',
@@ -418,35 +838,7 @@ export function resolveConversationState(
         }), storedPreview);
       }
 
-      if (/(画像|时间窗口|节奏|偏好)/.test(content)) {
-        return applyStoredConversationActionReviewState(buildConversationActionPreview({
-          id: previewId,
-          kind: 'profile_update',
-          target: 'profile',
-          scopes: ['profile', 'plan'],
-          status,
-          title: '画像调整预览',
-          summary: '把对话里的画像建议整理成可确认字段，后续再决定是否落库并联动重排计划。',
-          reason: '画像是计划生成和调整的上游约束，先结构化预览，才能避免对话直接改动已有计划。',
-          sourceSuggestion,
-          changes: [
-            {
-              field: 'profile.bestStudyWindow',
-              label: '学习窗口',
-              before: state.profile.bestStudyWindow,
-              after: '按对话建议更新默认执行窗口',
-            },
-            {
-              field: 'profile.planImpact',
-              label: '计划节奏依据',
-              before: state.profile.planImpact[0] ?? '暂无明确节奏说明',
-              after: '新的画像变化将作为后续计划调整依据',
-            },
-          ],
-        }), storedPreview);
-      }
-
-      return applyStoredConversationActionReviewState(buildGenericConversationActionPreview({
+      return mergeStoredConversationActionState(buildGenericConversationActionPreview({
         sourceSuggestion,
         status,
         content,
@@ -486,6 +878,110 @@ export function updateConversationActionPreviewReview(
         reviewedAt: reviewStatus === 'unreviewed' ? undefined : (payload.reviewedAt ?? new Date().toISOString()),
       };
     }),
+  };
+}
+
+export function applyAcceptedConversationActionPreviews(state: AppState): ApplyConversationActionPreviewsResult {
+  let nextProfile = state.profile;
+  let nextGoals = state.goals.map((goal) => ({ ...goal }));
+  let nextPlan: LearningPlanState = {
+    ...state.plan,
+    drafts: state.plan.drafts.map((draft) => cloneLearningPlanDraft(draft)),
+    snapshots: state.plan.snapshots.map((snapshot) => ({
+      ...snapshot,
+      basis: [...snapshot.basis],
+      stages: snapshot.stages.map((stage) => ({ ...stage })),
+      tasks: snapshot.tasks.map((task) => ({ ...task })),
+    })),
+  };
+
+  const appliedActionIds: string[] = [];
+  const skippedActionIds: string[] = [];
+
+  state.conversation.actionPreviews.forEach((preview) => {
+    if (preview.reviewStatus !== 'accepted' || preview.status !== 'proposed') {
+      return;
+    }
+
+    if (!preview.execution) {
+      skippedActionIds.push(preview.id);
+      return;
+    }
+
+    const execution = preview.execution;
+
+    switch (execution.type) {
+      case 'profile_update':
+        nextProfile = {
+          ...execution.nextProfile,
+          strengths: [...execution.nextProfile.strengths],
+          blockers: [...execution.nextProfile.blockers],
+          planImpact: [...execution.nextProfile.planImpact],
+        };
+        appliedActionIds.push(preview.id);
+        break;
+      case 'goal_update': {
+        const targetIndex = nextGoals.findIndex((goal) => goal.id === execution.goalId);
+        if (targetIndex === -1) {
+          skippedActionIds.push(preview.id);
+          break;
+        }
+
+        nextGoals[targetIndex] = { ...execution.nextGoal };
+        appliedActionIds.push(preview.id);
+        break;
+      }
+      case 'plan_update': {
+        const targetIndex = nextPlan.drafts.findIndex((draft) => draft.id === execution.draftId || draft.goalId === execution.goalId);
+        if (targetIndex === -1) {
+          skippedActionIds.push(preview.id);
+          break;
+        }
+
+        nextPlan.drafts[targetIndex] = cloneLearningPlanDraft({
+          ...execution.nextDraft,
+          updatedAt: new Date().toISOString(),
+        });
+        appliedActionIds.push(preview.id);
+        break;
+      }
+      default:
+        skippedActionIds.push(preview.id);
+    }
+  });
+
+  const nextConversation = resolveConversationState({
+    profile: nextProfile,
+    goals: nextGoals,
+    plan: nextPlan,
+    settings: state.settings,
+    conversation: {
+      ...state.conversation,
+      actionPreviews: state.conversation.actionPreviews.map((preview) => {
+        if (!appliedActionIds.includes(preview.id)) {
+          return preview;
+        }
+
+        return {
+          ...preview,
+          status: 'applied',
+          reviewable: false,
+          reviewStatus: 'accepted',
+        };
+      }),
+    },
+  });
+
+  return {
+    state: {
+      ...state,
+      profile: nextProfile,
+      goals: nextGoals,
+      plan: nextPlan,
+      conversation: nextConversation,
+    },
+    appliedActionIds,
+    skippedActionIds,
   };
 }
 
@@ -576,13 +1072,18 @@ const baseSeedState: AppState = {
     title: '学习伴侣下一阶段推进',
     relatedGoal: '补齐 Python + AI 应用开发基础',
     relatedPlan: 'Python + AI 工具开发草案',
-    tags: ['画像更新', '计划重排', '产品实现边界'],
+    tags: ['画像更新', '目标调整', '计划调整'],
     messages: [
-      { id: 'm1', role: 'user', content: '我希望这个产品先把 C 端体验做好，不要像后台系统。' },
-      { id: 'm2', role: 'assistant', content: '已将界面原则收敛为“首屏先给动作、少配置先可用、解释优先于炫技”。' },
-      { id: 'm3', role: 'system', content: '建议按目标保存独立计划草案，切换主目标时直接切换对应草案，而不是只做展示映射。' },
+      { id: 'm1', role: 'user', content: '我最近更适合工作日晚间 20:30 - 21:15 学习，想把当前主目标压缩到 6 周。' },
+      { id: 'm2', role: 'assistant', content: '已整理出画像、目标和计划三个层次的候选变更，等待你逐条确认。' },
+      { id: 'm3', role: 'system', content: '建议先更新学习窗口与目标周期，再给当前计划补一条本周可交付任务。' },
     ],
-    suggestions: ['采纳：计划页直接读取当前目标的 plan draft', '采纳：新目标创建后自动补首版草案', '进行中：真实 AI Provider 生成计划仍待接入'],
+    suggestions: [
+      '采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',
+      '采纳：把当前主目标周期改为 6 周，并把成功标准调整为完成一个可演示的本地优先 AI MVP',
+      '采纳：把计划标题改成「Python + AI MVP 冲刺草案」，并新增任务「拆解本周 MVP 功能清单」',
+      '进行中：真实 AI Provider 生成计划仍待接入',
+    ],
     actionPreviews: [],
   },
   reflection: {
