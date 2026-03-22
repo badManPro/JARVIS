@@ -32,6 +32,7 @@
 - 首页现会基于真实任务执行与复盘输入展示结构化“今日优先动作”和“风险提醒”，并把复盘摘要与补充动作下沉为辅助信息
 - 复盘页已支持日 / 周 / 阶段周期切换、结构化输入表单、本地保存与建议区；手动输入会落到 `reflection_entries`
 - SQLite 初始化现已切换为显式 schema migration runner，并通过 `PRAGMA user_version` 管理数据库版本升级
+- Main 存储层现会在 load/save 路径执行关键一致性检查，自动修复 stale plan snapshot 引用和指向缺失 provider 的 route
 
 ## 技术栈
 - Electron
@@ -133,6 +134,7 @@ npm run build
 - 删除目标时，会同步清理它的计划草案与版本快照；如果删的是当前主目标，会自动回退到剩余目标中的第一项，没有剩余目标时则回到空状态
 - 对话相关数据目前仍主要保留在 `app_snapshots`，但范围已收敛为会话标题、消息、suggestions 与 action preview 审核轨迹；主进程加载时会基于这些 suggestions 回填结构化 `actionPreviews`，并支持把已接受且可执行的预览写回结构化实体表
 - `conversation.actionPreviews` 已补齐来源标签与时间线元数据（建议生成 / 审核 / 写入），并随应用快照一起持久化
+- 主进程现在会在结构化状态装载时修复 `learning_plan_snapshots.draft_id` 等关键计划引用，并在 route 指向缺失 provider 时回退到稳定默认值
 - Main 侧统一 AI service 已具备 route 解析、Provider 前置校验、runtime 摘要和 adapter 抽象，并已接到 `profile_extraction` / `plan_generation` / `plan_adjustment` 的真实业务入口
 - 对话建议提取和计划调整建议统一回流到 `conversation.suggestions`，继续复用现有 action preview 的审核与应用边界
 - Provider 健康状态现可由设置页手动检查，并会随着真实 capability 调用成功 / 失败自动回写到 `provider_configs.health_status`
@@ -143,10 +145,10 @@ npm run build
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. `Phase 5 / Task 3`：增加关键数据一致性检查
-2. `Phase 5 / Task 4`：为删除 / 重排 / 重生成等高风险动作补事务保护
+1. `Phase 5 / Task 4`：为删除 / 重排 / 重生成等高风险动作补事务保护
+2. `Phase 6 / Task 1`：完成端到端验收、打包和发布前检查
 3. 为关键链路补更多集成级验收
 4. 继续细化 AI runtime 的 tracing / metrics 与排障体验
 
 ## 当前推荐下一任务
-- `Phase 5 / Task 3`：增加关键数据一致性检查
+- `Phase 5 / Task 4`：为删除 / 重排 / 重生成等高风险动作补事务保护

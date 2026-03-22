@@ -119,7 +119,7 @@ Renderer 先按以下状态切分：
 
 当前主进程会在 `load/save` 时把 `profile / goals / plan drafts / reflection.entries / settings` 同步到规范化表，并把 `conversation` 的会话态写回 `app_snapshots`；`dashboard / reflection` 会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；其中首页首屏会进一步把这些信号整理成 `priorityAction` 与 `riskSignals`，直接回答“现在先做什么”和“当前主要风险是什么”。这意味着 `app_snapshots` 已不再承担整份 Zustand 状态兜底，只保留仍未拆表的对话域。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路。
 
-SQLite schema 的演进现在也走显式版本管理：`createDatabase()` 启动时会读取 `PRAGMA user_version`，按顺序执行 migration runner，把旧 schema 升级到当前支持版本，而不再继续依赖散落在初始化代码中的临时条件分支。
+SQLite schema 的演进现在也走显式版本管理：`createDatabase()` 启动时会读取 `PRAGMA user_version`，按顺序执行 migration runner，把旧 schema 升级到当前支持版本，而不再继续依赖散落在初始化代码中的临时条件分支。除此之外，主进程还会在状态 load/save 边界执行关键一致性归一化，修复 stale plan snapshot 引用和指向缺失 provider 的 route，避免结构化真源被局部脏数据拖偏。
 
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { AppState } from '../../shared/app-state.js';
 import { seedState } from '../../shared/app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import { createPlanSnapshot } from '../../shared/plan-draft.js';
 import { createDatabase } from '../db/client.js';
 import { appSnapshots } from '../db/schema.js';
 import { AiRequestLogRepository } from '../repositories/ai-request-log-repository.js';
@@ -107,6 +108,7 @@ function createHarness(options: {
   return {
     db,
     service,
+    entitiesRepository,
     settingsRepository,
   };
 }
@@ -239,6 +241,71 @@ test('saveAppState stores only conversation state in app_snapshots payload', () 
   assert.equal('settings' in payload, false);
   assert.equal('reflection' in payload, false);
   assert.equal('dashboard' in payload, false);
+});
+
+test('initialize repairs stale structured plan snapshot references before returning app state', () => {
+  const { service, entitiesRepository, settingsRepository } = createHarness();
+  const primaryGoal = seedState.goals[0];
+  assert.ok(primaryGoal);
+  const primaryDraft = seedState.plan.drafts.find((draft) => draft.goalId === primaryGoal.id);
+  const orphanDraft = seedState.plan.drafts.find((draft) => draft.goalId !== primaryGoal.id);
+  assert.ok(primaryDraft);
+  assert.ok(orphanDraft);
+
+  entitiesRepository.saveUserProfile(seedState.profile);
+  entitiesRepository.replaceLearningGoals([primaryGoal]);
+  entitiesRepository.saveLearningPlanState({
+    activeGoalId: 'missing-goal',
+    drafts: [{ ...primaryDraft }],
+    snapshots: [
+      {
+        ...createPlanSnapshot(primaryDraft, 1, '2026-03-22T08:00:00.000Z'),
+        draftId: 'stale-draft-id',
+      },
+      {
+        ...createPlanSnapshot(orphanDraft, 1, '2026-03-22T08:30:00.000Z'),
+        goalId: 'missing-goal',
+        draftId: 'plan-missing-goal',
+      },
+    ],
+  });
+  settingsRepository.saveSettings(seedState.settings);
+
+  const initialized = service.initialize();
+
+  assert.equal(initialized.plan.activeGoalId, primaryGoal.id);
+  assert.equal(initialized.plan.drafts.length, 1);
+  assert.equal(initialized.plan.snapshots.length, 1);
+  assert.equal(initialized.plan.snapshots[0]?.draftId, initialized.plan.drafts[0]?.id);
+
+  const reloaded = service.loadAppState();
+  assert.equal(reloaded.plan.snapshots.length, 1);
+  assert.equal(reloaded.plan.snapshots[0]?.draftId, reloaded.plan.drafts[0]?.id);
+});
+
+test('saveAppState repairs invalid provider routing before persisting settings', () => {
+  const { service, settingsRepository } = createHarness();
+  const initialState = service.initialize();
+
+  const persistedState = service.saveAppState({
+    ...initialState,
+    settings: {
+      ...initialState.settings,
+      routing: {
+        ...initialState.settings.routing,
+        generalChat: 'custom',
+        planAdjustment: 'custom',
+      },
+    },
+  });
+
+  assert.equal(persistedState.settings.routing.generalChat, 'openai');
+  assert.equal(persistedState.settings.routing.planAdjustment, 'glm');
+
+  const persistedSettings = settingsRepository.loadSettings();
+  assert.ok(persistedSettings);
+  assert.equal(persistedSettings.routing.generalChat, 'openai');
+  assert.equal(persistedSettings.routing.planAdjustment, 'glm');
 });
 
 test('runProfileExtraction writes AI suggestions into conversation preview flow', async () => {

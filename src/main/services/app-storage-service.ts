@@ -27,6 +27,7 @@ import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
 import { SettingsRepository } from '../repositories/settings-repository.js';
+import { normalizeAppStateConsistency, type AppStateConsistencyIssue } from './state-consistency.js';
 import type { AiRuntimeService } from './ai-service.js';
 
 const capabilityRouteKeyMap = {
@@ -57,14 +58,14 @@ export class AppStorageService {
 
     const legacySnapshot = this.appStateRepository.loadLegacyState();
     if (legacySnapshot) {
-      const hydratedFromSnapshot = this.hydratePlanState(legacySnapshot);
+      const hydratedFromSnapshot = this.prepareState(legacySnapshot).state;
       const merged = this.withProviderSecrets(hydratedFromSnapshot);
       this.persistStructuredState(merged);
       this.appStateRepository.save(merged);
       return merged;
     }
 
-    const initialState = this.withProviderSecrets(this.hydratePlanState(this.withSnapshotConversation(seedState)));
+    const initialState = this.withProviderSecrets(this.prepareState(this.withSnapshotConversation(seedState)).state);
     this.persistStructuredState(initialState);
     this.appStateRepository.save(initialState);
     return initialState;
@@ -80,14 +81,14 @@ export class AppStorageService {
 
     const legacySnapshot = this.appStateRepository.loadLegacyState();
     if (legacySnapshot) {
-      const hydratedFromSnapshot = this.hydratePlanState(legacySnapshot);
+      const hydratedFromSnapshot = this.prepareState(legacySnapshot).state;
       const merged = this.withProviderSecrets(hydratedFromSnapshot);
       this.persistStructuredState(merged);
       this.appStateRepository.save(merged);
       return merged;
     }
 
-    const hydratedFromSnapshot = this.hydratePlanState(this.withSnapshotConversation(seedState));
+    const hydratedFromSnapshot = this.prepareState(this.withSnapshotConversation(seedState)).state;
     const merged = this.withProviderSecrets(hydratedFromSnapshot);
     this.persistStructuredState(merged);
     this.appStateRepository.save(merged);
@@ -95,7 +96,7 @@ export class AppStorageService {
   }
 
   saveAppState(state: AppState) {
-    const hydrated = this.hydratePlanState(state);
+    const hydrated = this.prepareState(state).state;
     const sanitized = this.sanitizeState(hydrated);
     this.persistStructuredState(sanitized);
     this.appStateRepository.save(sanitized);
@@ -113,10 +114,10 @@ export class AppStorageService {
 
   saveUserProfile(profile: UserProfile) {
     const snapshot = this.loadAppState();
-    const nextState = this.sanitizeState(this.hydratePlanState({
+    const nextState = this.sanitizeState(this.prepareState({
       ...snapshot,
       profile,
-    }));
+    }).state);
 
     this.entitiesRepository.saveUserProfile(profile);
     this.persistStructuredState(nextState);
@@ -202,13 +203,13 @@ export class AppStorageService {
     }
 
     const normalizedDraft = this.normalizeLearningPlanDraft(draft, previousDraft);
-    const nextState = this.sanitizeState(this.hydratePlanState({
+    const nextState = this.sanitizeState(this.prepareState({
       ...snapshot,
       plan: {
         ...snapshot.plan,
         drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? normalizedDraft : item)),
       },
-    }));
+    }).state);
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
@@ -217,7 +218,7 @@ export class AppStorageService {
 
   updatePlanTaskStatus(input: UpdatePlanTaskStatusInput) {
     const snapshot = this.loadAppState();
-    const nextState = this.sanitizeState(this.hydratePlanState(applyPlanTaskStatusUpdate(snapshot, input)));
+    const nextState = this.sanitizeState(this.prepareState(applyPlanTaskStatusUpdate(snapshot, input)).state);
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
@@ -226,7 +227,7 @@ export class AppStorageService {
 
   saveReflectionEntry(input: SaveReflectionEntryInput) {
     const snapshot = this.loadAppState();
-    const nextState = this.sanitizeState(this.hydratePlanState(applyReflectionEntrySave(snapshot, input)));
+    const nextState = this.sanitizeState(this.prepareState(applyReflectionEntrySave(snapshot, input)).state);
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
@@ -314,14 +315,14 @@ export class AppStorageService {
         })),
       }, previousDraft);
 
-      const nextState = this.sanitizeState(this.hydratePlanState(this.withProviderHealthStatus({
+      const nextState = this.sanitizeState(this.prepareState(this.withProviderHealthStatus({
         ...snapshot,
         plan: {
           ...snapshot.plan,
           drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? regeneratedDraft : item)),
           snapshots: [archivedSnapshot, ...snapshot.plan.snapshots],
         },
-      }, providerId, 'ready')));
+      }, providerId, 'ready')).state);
 
       this.persistStructuredState(nextState);
       this.appStateRepository.save(nextState);
@@ -381,7 +382,7 @@ export class AppStorageService {
       };
     }
 
-    const nextState = this.sanitizeState(this.hydratePlanState(result.state));
+    const nextState = this.sanitizeState(this.prepareState(result.state).state);
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
 
@@ -475,7 +476,7 @@ export class AppStorageService {
       return null;
     }
 
-    return this.hydratePlanState(this.withSnapshotConversation({
+    const prepared = this.prepareState(this.withSnapshotConversation({
       ...seedState,
       profile,
       goals,
@@ -486,6 +487,13 @@ export class AppStorageService {
       },
       settings: this.settingsRepository.loadSettings() ?? seedState.settings,
     }));
+
+    if (prepared.repaired) {
+      this.reportConsistencyIssues('structured-load', prepared.issues);
+      this.persistStructuredState(prepared.state);
+    }
+
+    return prepared.state;
   }
 
   private persistStructuredState(state: AppState) {
@@ -496,12 +504,12 @@ export class AppStorageService {
     this.settingsRepository.saveSettings(state.settings);
   }
 
-  private hydratePlanState(state: AppState): AppState {
-    const nextPlanState = ensurePlanDrafts(state.goals, state.plan, state.profile);
-    return syncExecutionDerivedState(this.withResolvedConversationState({
-      ...state,
-      plan: nextPlanState,
-    }));
+  private prepareState(state: AppState) {
+    const normalized = normalizeAppStateConsistency(state);
+    return {
+      ...normalized,
+      state: syncExecutionDerivedState(this.withResolvedConversationState(normalized.state)),
+    };
   }
 
   private sanitizeState(state: AppState): AppState {
@@ -516,6 +524,14 @@ export class AppStorageService {
         })),
       },
     };
+  }
+
+  private reportConsistencyIssues(context: string, issues: AppStateConsistencyIssue[]) {
+    if (!issues.length) {
+      return;
+    }
+
+    console.warn(`[AppStorageService] repaired ${issues.length} consistency issue(s) during ${context}: ${issues.map((issue) => issue.message).join(' | ')}`);
   }
 
   private withProviderSecrets(state: AppState): AppState {
@@ -612,13 +628,13 @@ export class AppStorageService {
       ? this.dedupeSuggestions([...state.conversation.suggestions, ...normalizedSuggestions])
       : normalizedSuggestions;
 
-    const nextState = this.sanitizeState(this.hydratePlanState({
+    const nextState = this.sanitizeState(this.prepareState({
       ...state,
       conversation: {
         ...state.conversation,
         suggestions: nextSuggestions,
       },
-    }));
+    }).state);
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
