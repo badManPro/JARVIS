@@ -1,7 +1,23 @@
 import { create } from 'zustand';
-import type { AppState, ApplyConversationActionPreviewsResult, ConversationActionReviewStatus, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
+import type {
+  AppState,
+  ApplyConversationActionPreviewsResult,
+  ConversationActionReviewStatus,
+  LearningPlanDraft,
+  ProviderConfig,
+  ProviderId,
+  ProviderSecretInput,
+  UpdatePlanTaskStatusInput,
+  UserProfile,
+} from '@shared/app-state';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
-import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState, updateConversationActionPreviewReview } from '@shared/app-state';
+import {
+  applyAcceptedConversationActionPreviews,
+  resolveConversationState,
+  seedState,
+  updateConversationActionPreviewReview,
+  updatePlanTaskStatus as applyPlanTaskStatusUpdate,
+} from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
@@ -18,6 +34,7 @@ type AppStore = AppState & {
   removeLearningGoal: (goalId: string) => Promise<void>;
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
+  updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<void>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
   runProfileExtraction: () => Promise<AppState>;
   generatePlanAdjustmentSuggestions: (payload: { goalId: string }) => Promise<AppState>;
@@ -256,6 +273,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     const persistedState = await bridge.saveLearningPlanDraft(draft);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  updatePlanTaskStatus: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      set((state) => ({
+        ...state,
+        ...applyPlanTaskStatusUpdate(extractAppState(state), payload),
+        hydrated: true,
+        hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+      }));
+      return;
+    }
+
+    const persistedState = await bridge.updatePlanTaskStatus(payload);
     set({ ...persistedState, hydrated: true, hydrationError: null });
   },
   regenerateLearningPlanDraft: async (payload) => {

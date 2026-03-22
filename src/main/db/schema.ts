@@ -63,6 +63,8 @@ export const planTasks = sqliteTable('plan_tasks', {
   duration: text('duration').notNull(),
   status: text('status').notNull(),
   note: text('note').notNull(),
+  statusNote: text('status_note').notNull(),
+  statusUpdatedAt: integer('status_updated_at', { mode: 'timestamp_ms' }),
   sortOrder: integer('sort_order').notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });

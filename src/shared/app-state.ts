@@ -1,6 +1,6 @@
 export type ProviderId = 'openai' | 'glm' | 'kimi' | 'deepseek' | 'custom';
 export type GoalStatus = 'active' | 'paused' | 'completed';
-export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'delayed';
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'delayed' | 'skipped';
 export type HealthStatus = 'unknown' | 'ready' | 'warning';
 
 export type ModelCapability =
@@ -57,6 +57,8 @@ export type PlanTask = {
   duration: string;
   status: TaskStatus;
   note: string;
+  statusNote?: string;
+  statusUpdatedAt?: string;
 };
 
 export type LearningPlanStage = {
@@ -161,6 +163,21 @@ export type ApplyConversationActionPreviewsResult = {
   skippedActionIds: string[];
 };
 
+export type ReflectionTaskExecution = {
+  taskId: string;
+  taskTitle: string;
+  status: Exclude<TaskStatus, 'todo'>;
+  note: string;
+  updatedAt: string;
+};
+
+export type UpdatePlanTaskStatusInput = {
+  draftId: string;
+  taskId: string;
+  status: TaskStatus;
+  statusNote?: string;
+};
+
 export type AppState = {
   profile: UserProfile;
   dashboard: {
@@ -191,6 +208,7 @@ export type AppState = {
     deviation: string;
     insight: string;
     nextActions: string[];
+    recentTaskExecutions: ReflectionTaskExecution[];
   };
   settings: {
     theme: string;
@@ -215,6 +233,189 @@ function getActiveConversationGoal(goals: LearningGoal[], activeGoalId: string) 
 
 function getActiveConversationDraft(plan: LearningPlanState) {
   return plan.drafts.find((draft) => draft.goalId === plan.activeGoalId) ?? plan.drafts[0] ?? null;
+}
+
+function normalizeTaskStatus(status?: string): TaskStatus {
+  switch (status) {
+    case 'todo':
+    case 'in_progress':
+    case 'done':
+    case 'delayed':
+    case 'skipped':
+      return status;
+    default:
+      return 'todo';
+  }
+}
+
+function normalizePlanTask(task: PlanTask): PlanTask {
+  return {
+    ...task,
+    status: normalizeTaskStatus(task.status),
+    statusNote: task.statusNote?.trim() ?? '',
+    statusUpdatedAt: task.statusUpdatedAt,
+  };
+}
+
+function parseTaskDurationMinutes(duration: string) {
+  const normalized = duration.trim();
+  if (!normalized) {
+    return 0;
+  }
+
+  const hourRangeMatch = normalized.match(/(\d+(?:\.\d+)?)\s*[-~到至]\s*(\d+(?:\.\d+)?)\s*小时/);
+  if (hourRangeMatch) {
+    const start = Number(hourRangeMatch[1]);
+    const end = Number(hourRangeMatch[2]);
+    return Math.round(((start + end) / 2) * 60);
+  }
+
+  const minuteRangeMatch = normalized.match(/(\d+(?:\.\d+)?)\s*[-~到至]\s*(\d+(?:\.\d+)?)\s*分钟?/);
+  if (minuteRangeMatch) {
+    const start = Number(minuteRangeMatch[1]);
+    const end = Number(minuteRangeMatch[2]);
+    return Math.round((start + end) / 2);
+  }
+
+  const hourMatch = normalized.match(/(\d+(?:\.\d+)?)\s*小时/);
+  const minuteMatch = normalized.match(/(\d+(?:\.\d+)?)\s*分钟?/);
+  const hours = hourMatch ? Number(hourMatch[1]) : 0;
+  const minutes = minuteMatch ? Number(minuteMatch[1]) : 0;
+
+  if (hours || minutes) {
+    return Math.round((hours * 60) + minutes);
+  }
+
+  const fallbackNumber = normalized.match(/\d+(?:\.\d+)?/);
+  return fallbackNumber ? Math.round(Number(fallbackNumber[0])) : 0;
+}
+
+function formatMinutes(totalMinutes: number) {
+  if (totalMinutes <= 0) {
+    return '0 分钟';
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (!hours) {
+    return `${minutes} 分钟`;
+  }
+
+  if (!minutes) {
+    return `${hours} 小时`;
+  }
+
+  return `${hours} 小时 ${minutes} 分钟`;
+}
+
+function pickCurrentStage(draft: LearningPlanDraft | null) {
+  if (!draft) {
+    return '暂无阶段';
+  }
+
+  return draft.stages.find((stage) => stage.progress !== '已完成')?.title
+    ?? draft.stages[draft.stages.length - 1]?.title
+    ?? draft.title;
+}
+
+function buildTaskStatusSummary(tasks: PlanTask[]) {
+  const doneTasks = tasks.filter((task) => task.status === 'done');
+  const delayedTasks = tasks.filter((task) => task.status === 'delayed');
+  const skippedTasks = tasks.filter((task) => task.status === 'skipped');
+  const inProgressTask = tasks.find((task) => task.status === 'in_progress') ?? null;
+  const nextTodoTask = tasks.find((task) => task.status === 'todo') ?? null;
+
+  return {
+    total: tasks.length,
+    doneTasks,
+    delayedTasks,
+    skippedTasks,
+    inProgressTask,
+    nextTodoTask,
+  };
+}
+
+function buildTaskSummaryLine(tasks: PlanTask[]) {
+  if (!tasks.length) {
+    return '暂无任务';
+  }
+
+  return tasks
+    .slice(0, 2)
+    .map((task) => `${task.title}${task.statusNote ? `（${task.statusNote}）` : ''}`)
+    .join('；');
+}
+
+function buildExecutionInsight(summary: ReturnType<typeof buildTaskStatusSummary>) {
+  if (summary.delayedTasks.length || summary.skippedTasks.length) {
+    return '当前执行节奏出现偏差，下一步应优先处理延后与跳过原因，再决定是否重排计划。';
+  }
+
+  if (summary.doneTasks.length === summary.total && summary.total > 0) {
+    return '当前计划内任务已全部完成，可以进入复盘并准备下一轮调整。';
+  }
+
+  return '当前执行节奏基本稳定，继续保持单次任务可完成的推进方式。';
+}
+
+function buildRecentTaskExecutions(tasks: PlanTask[]): ReflectionTaskExecution[] {
+  return tasks
+    .filter((task): task is PlanTask & { statusUpdatedAt: string } => Boolean(task.statusUpdatedAt) && task.status !== 'todo')
+    .sort((left, right) => new Date(right.statusUpdatedAt ?? 0).getTime() - new Date(left.statusUpdatedAt ?? 0).getTime())
+    .map((task) => ({
+      taskId: task.id,
+      taskTitle: task.title,
+      status: task.status as ReflectionTaskExecution['status'],
+      note: task.statusNote?.trim() || task.note.trim(),
+      updatedAt: task.statusUpdatedAt,
+    }));
+}
+
+function buildExecutionDerivedState(state: AppState) {
+  const activeGoal = getActiveConversationGoal(state.goals, state.plan.activeGoalId);
+  const activeDraft = getActiveConversationDraft(state.plan);
+  const tasks = (activeDraft?.tasks ?? []).map((task) => normalizePlanTask(task));
+  const summary = buildTaskStatusSummary(tasks);
+  const totalMinutes = summary.doneTasks.reduce((minutes, task) => minutes + parseTaskDurationMinutes(task.duration), 0);
+  const recentTaskExecutions = buildRecentTaskExecutions(tasks);
+  const focusTask = summary.inProgressTask ?? summary.nextTodoTask;
+  const completionRate = summary.total ? Math.round((summary.doneTasks.length / summary.total) * 100) : 0;
+  const alerts = [
+    ...summary.delayedTasks.map((task) => `已延后：${task.title}${task.statusNote ? ` · ${task.statusNote}` : ''}`),
+    ...summary.skippedTasks.map((task) => `已跳过：${task.title}${task.statusNote ? ` · ${task.statusNote}` : ''}`),
+  ].slice(0, 3);
+  const nextActions = Array.from(new Set([
+    summary.delayedTasks[0] ? `优先重排：${summary.delayedTasks[0].title}` : null,
+    focusTask ? `${focusTask.status === 'in_progress' ? '继续推进' : '开始执行'}：${focusTask.title}` : '查看复盘并准备下一阶段任务',
+    summary.skippedTasks.length ? '在复盘中补充跳过原因，避免同类阻塞重复出现' : null,
+  ].filter(Boolean) as string[]));
+
+  return {
+    dashboard: {
+      ...state.dashboard,
+      todayFocus: focusTask?.title ?? '查看复盘并准备下一阶段任务',
+      stage: pickCurrentStage(activeDraft),
+      duration: focusTask?.duration ?? '15 分钟',
+      weeklyCompletion: completionRate,
+      alerts,
+      quickActions: nextActions,
+      reflectionSummary: `${activeGoal?.title ?? '当前目标'}已完成 ${summary.doneTasks.length}/${summary.total} 项；延后 ${summary.delayedTasks.length} 项，跳过 ${summary.skippedTasks.length} 项。`,
+    },
+    reflection: {
+      ...state.reflection,
+      completedTasks: summary.doneTasks.length,
+      actualDuration: formatMinutes(totalMinutes),
+      deviation: summary.delayedTasks.length || summary.skippedTasks.length
+        ? [
+          summary.delayedTasks.length ? `延后 ${summary.delayedTasks.length} 项：${buildTaskSummaryLine(summary.delayedTasks)}` : null,
+          summary.skippedTasks.length ? `跳过 ${summary.skippedTasks.length} 项：${buildTaskSummaryLine(summary.skippedTasks)}` : null,
+        ].filter(Boolean).join('；')
+        : '当前没有跳过或延后任务，执行节奏基本稳定。',
+      insight: buildExecutionInsight(summary),
+      nextActions,
+      recentTaskExecutions,
+    },
+  };
 }
 
 function createConversationActionId(sourceSuggestion: string, index: number) {
@@ -1047,6 +1248,65 @@ export function applyAcceptedConversationActionPreviews(state: AppState): ApplyC
   };
 }
 
+export function syncExecutionDerivedState(state: AppState): AppState {
+  const derived = buildExecutionDerivedState(state);
+  return {
+    ...state,
+    dashboard: derived.dashboard,
+    reflection: derived.reflection,
+  };
+}
+
+export function updatePlanTaskStatus(state: AppState, input: UpdatePlanTaskStatusInput): AppState {
+  const changedAt = new Date().toISOString();
+  let matchedDraft = false;
+  let matchedTask = false;
+
+  const nextDrafts = state.plan.drafts.map((draft) => {
+    if (draft.id !== input.draftId) {
+      return cloneLearningPlanDraft(draft);
+    }
+
+    matchedDraft = true;
+    const nextTasks = draft.tasks.map((task) => {
+      const normalizedTask = normalizePlanTask(task);
+      if (task.id !== input.taskId) {
+        return normalizedTask;
+      }
+
+      matchedTask = true;
+      return {
+        ...normalizedTask,
+        status: input.status,
+        statusNote: input.statusNote?.trim() ?? normalizedTask.statusNote ?? '',
+        statusUpdatedAt: changedAt,
+      };
+    });
+
+    return cloneLearningPlanDraft({
+      ...draft,
+      tasks: nextTasks,
+      updatedAt: changedAt,
+    });
+  });
+
+  if (!matchedDraft) {
+    throw new Error('计划草案不存在，无法更新任务状态。');
+  }
+
+  if (!matchedTask) {
+    throw new Error('任务不存在，无法更新状态。');
+  }
+
+  return syncExecutionDerivedState({
+    ...state,
+    plan: {
+      ...state.plan,
+      drafts: nextDrafts,
+    },
+  });
+}
+
 const baseSeedState: AppState = {
   profile: {
     name: 'Baymax',
@@ -1105,8 +1365,24 @@ const baseSeedState: AppState = {
           { title: '阶段 3：做出 MVP', outcome: '完成一个本地优先的学习工具 MVP', progress: '未开始' },
         ],
         tasks: [
-          { id: 'task-python-ai-1', title: '完成 1 个 Python 小脚本练习', duration: '30 分钟', status: 'done', note: '目标是把前端熟悉的流程翻译成 Python 表达。' },
-          { id: 'task-python-ai-2', title: '用 requests 或 fetch 封装一次模型调用', duration: '45 分钟', status: 'in_progress', note: '先把请求、异常处理、返回结构理解清楚。' },
+          {
+            id: 'task-python-ai-1',
+            title: '完成 1 个 Python 小脚本练习',
+            duration: '30 分钟',
+            status: 'done',
+            note: '目标是把前端熟悉的流程翻译成 Python 表达。',
+            statusNote: '已完成一次脚本练习，并记录了输入输出结构。',
+            statusUpdatedAt: '2026-03-21T11:00:00.000Z',
+          },
+          {
+            id: 'task-python-ai-2',
+            title: '用 requests 或 fetch 封装一次模型调用',
+            duration: '45 分钟',
+            status: 'in_progress',
+            note: '先把请求、异常处理、返回结构理解清楚。',
+            statusNote: '正在验证真实 Provider 的错误归一化与路由命中。',
+            statusUpdatedAt: '2026-03-22T09:30:00.000Z',
+          },
           { id: 'task-python-ai-3', title: '规划本地优先 MVP 的最小功能清单', duration: '30 分钟', status: 'todo', note: '只保留真正能验证学习价值的功能。' },
         ],
       },
@@ -1122,7 +1398,15 @@ const baseSeedState: AppState = {
           { title: '阶段 3：连续输出', outcome: '连续 4 周完成结构化复盘', progress: '未开始' },
         ],
         tasks: [
-          { id: 'task-writing-1', title: '整理一份复盘模板首版', duration: '25 分钟', status: 'in_progress', note: '模板要足够短，避免每次写作启动成本过高。' },
+          {
+            id: 'task-writing-1',
+            title: '整理一份复盘模板首版',
+            duration: '25 分钟',
+            status: 'in_progress',
+            note: '模板要足够短，避免每次写作启动成本过高。',
+            statusNote: '已整理出输入 / 决策 / 踩坑 / 下一步四段式骨架。',
+            statusUpdatedAt: '2026-03-20T20:00:00.000Z',
+          },
           { id: 'task-writing-2', title: '把最近一次开发迭代改写成复盘', duration: '35 分钟', status: 'todo', note: '优先写真实发生过的决策与取舍。' },
           { id: 'task-writing-3', title: '设定每周固定复盘时段', duration: '10 分钟', status: 'todo', note: '建议绑定到周末较完整的学习窗口。' },
         ],
@@ -1155,6 +1439,7 @@ const baseSeedState: AppState = {
     deviation: '比计划少 1 小时，主要因临时事务打断。',
     insight: '用真实交付物驱动开发时，连续性更稳定。',
     nextActions: ['保持单次任务 45 分钟以内', '优先做能直接增强产品骨架的事项', '下阶段接持久层，不扩展过多页面功能'],
+    recentTaskExecutions: [],
   },
   settings: {
     theme: '跟随系统',
@@ -1176,6 +1461,6 @@ const baseSeedState: AppState = {
 };
 
 export const seedState: AppState = {
-  ...baseSeedState,
+  ...syncExecutionDerivedState(baseSeedState),
   conversation: resolveConversationState(baseSeedState),
 };

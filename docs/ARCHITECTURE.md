@@ -100,6 +100,7 @@ Renderer 先按以下状态切分：
    - 保存某个草案下的阶段列表，使用 `draft_id + sort_order` 维护顺序
 7. `plan_tasks`
    - 保存某个草案下的任务项，使用 `draft_id + sort_order` 维护顺序
+   - 额外记录 `status_note` 与 `status_updated_at`，承接完成 / 跳过 / 延后等真实执行信号
 8. `provider_secrets`
    - 单独保存 Provider secret
    - 不让 renderer 直接读取明文 secret
@@ -113,7 +114,7 @@ Renderer 先按以下状态切分：
    - 结构化保存 capability 调用的 Provider、模型、状态、耗时、时间戳和错误摘要
    - 不保存 prompt、对话正文或 suggestion 明细，避免扩大敏感内容落库范围
 
-当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 仍主要由快照承接，`conversation` 目前也仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。
+当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 现在会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，`conversation` 目前仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。
 
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：
@@ -136,6 +137,7 @@ Preload 当前暴露：
 - `removeLearningGoal`
 - `setActiveGoal`
 - `saveLearningPlanDraft`
+- `updatePlanTaskStatus`
 - `regenerateLearningPlanDraft`
 - `runProfileExtraction`
 - `generatePlanAdjustmentSuggestions`
@@ -148,19 +150,20 @@ Preload 当前暴露：
 - `getAiRuntimeSummary`
 - `getAiObservability`
 
-这意味着当前已经具备十二类真实交互：
+这意味着当前已经具备十三类真实交互：
 1. 用户画像关键字段通过 `saveUserProfile` 写入本地 SQLite
 2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并落到 `learning_goals`
 3. 目标切换通过 `setActiveGoal` 持久化 `active_goal_id`，并让计划页直接读取该目标对应的独立草案
 4. 目标删除通过 `removeLearningGoal` 同步清理 `learning_goals`、目标关联计划草案与版本快照，并处理 active goal 回退
 5. 计划页通过 `saveLearningPlanDraft` 支持草案手动保存
-6. 计划页通过 `regenerateLearningPlanDraft` 走 `plan_generation`，并在重生成前归档快照
-7. 对话页通过 `runProfileExtraction` 走 `profile_extraction`，把模型返回 suggestions 回流到 action preview
-8. 计划页通过 `generatePlanAdjustmentSuggestions` 走 `plan_adjustment`，把调整建议回流到对话预览
-9. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态
-10. 设置页与配置页可通过 `saveAppState` / `upsertProviderConfig` / `getAiRuntimeSummary` 更新路由并直接查看每个 capability 当前命中的 Provider、模型、健康状态和阻塞原因
-11. 设置页可通过 `runProviderHealthCheck` 对单个 Provider 触发真实连通性探测，并把结果回写到 `provider_configs.health_status`
-12. 设置页可通过 `getAiObservability` 查看 capability 请求总览与最近请求日志，并在真实 capability 调用后立即刷新
+6. 计划页通过 `updatePlanTaskStatus` 支持对单个任务执行开始 / 完成 / 跳过 / 延后，并立即刷新首页与复盘输入
+7. 计划页通过 `regenerateLearningPlanDraft` 走 `plan_generation`，并在重生成前归档快照
+8. 对话页通过 `runProfileExtraction` 走 `profile_extraction`，把模型返回 suggestions 回流到 action preview
+9. 计划页通过 `generatePlanAdjustmentSuggestions` 走 `plan_adjustment`，把调整建议回流到对话预览
+10. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态
+11. 设置页与配置页可通过 `saveAppState` / `upsertProviderConfig` / `getAiRuntimeSummary` 更新路由并直接查看每个 capability 当前命中的 Provider、模型、健康状态和阻塞原因
+12. 设置页可通过 `runProviderHealthCheck` 对单个 Provider 触发真实连通性探测，并把结果回写到 `provider_configs.health_status`
+13. 设置页可通过 `getAiObservability` 查看 capability 请求总览与最近请求日志，并在真实 capability 调用后立即刷新
 
 当前对话页额外具备一层“先审核、再应用”的结构化映射：
 - `conversation.suggestions` 仍保留原始自然语言建议，但现在既可以来自本地 seed，也可以来自 `profile_extraction` / `plan_adjustment`
@@ -169,5 +172,6 @@ Preload 当前暴露：
 - 已接受且带执行 payload 的 preview 会通过主进程统一应用到结构化实体，再把 preview 标记为 `applied`
 - 动作来源标签、建议生成时间、审核时间、写入时间附着在 `actionPreviews` 上，并随 `app_snapshots` 一起持久化；目前仍未单独建表
 - capability 调用级日志则已拆到 `ai_request_logs`，与快照解耦，并由设置页展示最小可观测性摘要
+- 首页与复盘页的关键摘要现由任务执行状态派生，不再只依赖 seed 文案或手写快照
 
 当前仍未覆盖：目标排序、计划版本回滚、`reflection_summary` 的业务接入，以及更细粒度的调用 tracing / metrics。

@@ -13,6 +13,7 @@ const learningCompanion: LearningCompanionBridge = {
     removeLearningGoal: (goalId) => ipcRenderer.invoke('storage:remove-learning-goal', goalId),
     setActiveGoal: (goalId) => ipcRenderer.invoke('storage:set-active-goal', goalId),
     saveLearningPlanDraft: (draft) => ipcRenderer.invoke('storage:save-learning-plan-draft', draft),
+    updatePlanTaskStatus: (payload) => ipcRenderer.invoke('storage:update-plan-task-status', payload),
     regenerateLearningPlanDraft: (payload) => ipcRenderer.invoke('storage:regenerate-learning-plan-draft', payload),
     runProfileExtraction: () => ipcRenderer.invoke('storage:run-profile-extraction'),
     generatePlanAdjustmentSuggestions: (payload) => ipcRenderer.invoke('storage:generate-plan-adjustment-suggestions', payload),

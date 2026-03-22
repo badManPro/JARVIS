@@ -115,6 +115,8 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
       duration TEXT NOT NULL,
       status TEXT NOT NULL,
       note TEXT NOT NULL,
+      status_note TEXT NOT NULL DEFAULT '',
+      status_updated_at INTEGER,
       sort_order INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY(draft_id) REFERENCES learning_plan_drafts(id) ON DELETE CASCADE
@@ -239,11 +241,22 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
         duration TEXT NOT NULL,
         status TEXT NOT NULL,
         note TEXT NOT NULL,
+        status_note TEXT NOT NULL DEFAULT '',
+        status_updated_at INTEGER,
         sort_order INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         FOREIGN KEY(draft_id) REFERENCES learning_plan_drafts(id) ON DELETE CASCADE
       );
     `);
+  }
+
+  const planTasksColumns = sqlite.prepare('PRAGMA table_info(plan_tasks)').all() as Array<{ name: string }>;
+  if (!planTasksColumns.some((column) => column.name === 'status_note')) {
+    sqlite.exec('ALTER TABLE plan_tasks ADD COLUMN status_note TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!planTasksColumns.some((column) => column.name === 'status_updated_at')) {
+    sqlite.exec('ALTER TABLE plan_tasks ADD COLUMN status_updated_at INTEGER;');
   }
 
   return {

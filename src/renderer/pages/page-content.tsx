@@ -124,6 +124,28 @@ export function PageContent({ page }: { page: PageDefinition }) {
               ))}
             </ul>
           </Card>
+          <Card className="lg:col-span-2">
+            <div className="flex items-center justify-between gap-3">
+              <SectionTitle>最近执行记录</SectionTitle>
+              <Badge className="bg-slate-100 text-slate-700">{state.reflection.recentTaskExecutions.length} 条</Badge>
+            </div>
+            {state.reflection.recentTaskExecutions.length ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {state.reflection.recentTaskExecutions.map((item) => (
+                  <div key={`${item.taskId}-${item.updatedAt}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-medium text-slate-900">{item.taskTitle}</div>
+                      <Badge className={taskStatusBadgeClassName(item.status)}>{taskStatusLabel(item.status)}</Badge>
+                    </div>
+                    <div className="mt-2 text-slate-600">{item.note || '未填写执行备注'}</div>
+                    <div className="mt-3 text-xs text-slate-500">最近流转：{formatDateTime(item.updatedAt)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Muted className="mt-4">当前还没有真实任务执行记录。去计划页标记一次完成、跳过或延后后，这里会自动回填。</Muted>
+            )}
+          </Card>
         </div>
       );
     case 'settings':
@@ -432,6 +454,7 @@ const taskStatusOptions: Array<{ value: TaskStatus; label: string }> = [
   { value: 'in_progress', label: '进行中' },
   { value: 'done', label: '已完成' },
   { value: 'delayed', label: '已延后' },
+  { value: 'skipped', label: '已跳过' },
 ];
 
 function cloneLearningPlanDraft(draft: LearningPlanDraft): LearningPlanDraft {
@@ -487,6 +510,7 @@ function createEmptyTask(draftId: string, index: number): PlanTask {
     duration: '',
     status: 'todo',
     note: '',
+    statusNote: '',
   };
 }
 
@@ -626,6 +650,7 @@ function PlansContent() {
   const hydrationError = useAppStore((state) => state.hydrationError);
   const setActiveGoal = useAppStore((state) => state.setActiveGoal);
   const saveLearningPlanDraft = useAppStore((state) => state.saveLearningPlanDraft);
+  const updatePlanTaskStatus = useAppStore((state) => state.updatePlanTaskStatus);
   const regenerateLearningPlanDraft = useAppStore((state) => state.regenerateLearningPlanDraft);
   const generatePlanAdjustmentSuggestions = useAppStore((state) => state.generatePlanAdjustmentSuggestions);
 
@@ -643,11 +668,13 @@ function PlansContent() {
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [adjustingPlan, setAdjustingPlan] = useState(false);
+  const [executingTaskId, setExecutingTaskId] = useState<string | null>(null);
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [lastRegeneratedAt, setLastRegeneratedAt] = useState<string | null>(null);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(latestSnapshot?.id ?? null);
+  const [executionNotes, setExecutionNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!activePlanDraft) {
@@ -655,6 +682,7 @@ function PlansContent() {
       setEditing(false);
       setNotice(null);
       setShowRegenerateConfirm(false);
+      setExecutionNotes({});
       return;
     }
 
@@ -663,11 +691,13 @@ function PlansContent() {
       setDraft(cloneLearningPlanDraft(activePlanDraft));
       setEditing(false);
       setNotice(null);
+      setExecutionNotes(Object.fromEntries(activePlanDraft.tasks.map((task) => [task.id, task.statusNote ?? ''])));
       return;
     }
 
     if (!editing && activePlanDraft.updatedAt !== draft?.updatedAt) {
       setDraft(cloneLearningPlanDraft(activePlanDraft));
+      setExecutionNotes(Object.fromEntries(activePlanDraft.tasks.map((task) => [task.id, task.statusNote ?? ''])));
     }
   }, [activePlanDraft, draft?.id, draft?.updatedAt, editing]);
 
@@ -785,6 +815,34 @@ function PlansContent() {
       setNotice(error instanceof Error ? error.message : '计划草案保存失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onExecuteTaskStatus = async (payload: { taskId: string; status: TaskStatus }) => {
+    if (!draft) return;
+
+    const statusNote = executionNotes[payload.taskId]?.trim() ?? '';
+    if ((payload.status === 'delayed' || payload.status === 'skipped') && !statusNote) {
+      setNotice(`请先为${payload.status === 'delayed' ? '延后' : '跳过'}填写原因，再执行状态流转。`);
+      return;
+    }
+
+    setExecutingTaskId(payload.taskId);
+    setNotice(null);
+    try {
+      await updatePlanTaskStatus({
+        draftId: draft.id,
+        taskId: payload.taskId,
+        status: payload.status,
+        statusNote,
+      });
+
+      const actionLabel = taskStatusActionLabel(payload.status);
+      setNotice(`${actionLabel}已写入本地执行记录，首页与复盘输入已同步刷新。`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '更新任务状态失败');
+    } finally {
+      setExecutingTaskId(null);
     }
   };
 
@@ -1184,8 +1242,71 @@ function PlansContent() {
                     disabled={!editing || saving || regenerating}
                   />
                 </Field>
+                {!editing ? (
+                  <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">执行动作</div>
+                        <div className="mt-1 text-xs text-slate-500">这里的状态流转会直接写入本地任务执行记录，并回流到首页与复盘输入。</div>
+                      </div>
+                      <Badge className={taskStatusBadgeClassName(task.status)}>{taskStatusLabel(task.status)}</Badge>
+                    </div>
+                    <Field label={task.status === 'delayed' || task.status === 'skipped' ? '执行原因' : '执行备注'} className="mt-4">
+                      <textarea
+                        className={textareaClassName}
+                        rows={3}
+                        value={executionNotes[task.id] ?? task.statusNote ?? ''}
+                        onChange={(event) => setExecutionNotes((current) => ({ ...current, [task.id]: event.target.value }))}
+                        disabled={saving || regenerating || adjustingPlan || executingTaskId === task.id}
+                        placeholder={task.status === 'delayed' || task.status === 'skipped' ? '例如：被临时任务打断，顺延到周末上午。' : '可选：记录完成结果、卡点或下一步。'}
+                      />
+                    </Field>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        className={secondaryButtonClassName}
+                        type="button"
+                        onClick={() => void onExecuteTaskStatus({ taskId: task.id, status: 'in_progress' })}
+                        disabled={saving || regenerating || adjustingPlan || executingTaskId === task.id || task.status === 'in_progress'}
+                      >
+                        开始
+                      </button>
+                      <button
+                        className={secondaryButtonClassName}
+                        type="button"
+                        onClick={() => void onExecuteTaskStatus({ taskId: task.id, status: 'done' })}
+                        disabled={saving || regenerating || adjustingPlan || executingTaskId === task.id || task.status === 'done'}
+                      >
+                        完成
+                      </button>
+                      <button
+                        className={secondaryButtonClassName}
+                        type="button"
+                        onClick={() => void onExecuteTaskStatus({ taskId: task.id, status: 'delayed' })}
+                        disabled={saving || regenerating || adjustingPlan || executingTaskId === task.id || task.status === 'delayed'}
+                      >
+                        延后
+                      </button>
+                      <button
+                        className={secondaryButtonClassName}
+                        type="button"
+                        onClick={() => void onExecuteTaskStatus({ taskId: task.id, status: 'skipped' })}
+                        disabled={saving || regenerating || adjustingPlan || executingTaskId === task.id || task.status === 'skipped'}
+                      >
+                        跳过
+                      </button>
+                    </div>
+                    {task.statusUpdatedAt ? (
+                      <div className="mt-3 text-xs text-slate-500">
+                        最近流转：{formatDateTime(task.statusUpdatedAt)}
+                        {task.statusNote?.trim() ? ` · ${task.statusNote.trim()}` : ''}
+                      </div>
+                    ) : (
+                      <div className="mt-3 text-xs text-slate-500">还没有真实执行记录。写入一次动作后，这里会显示最近流转时间和原因。</div>
+                    )}
+                  </div>
+                ) : null}
                 <div className="mt-4 flex items-center justify-between gap-3">
-                  <Badge className="bg-slate-100 text-slate-700">{taskStatusLabel(task.status)}</Badge>
+                  <Badge className={taskStatusBadgeClassName(task.status)}>{taskStatusLabel(task.status)}</Badge>
                   {editing ? (
                     <button
                       className={dangerButtonClassName}
@@ -2523,8 +2644,40 @@ function taskStatusLabel(status: TaskStatus) {
       return '已完成';
     case 'delayed':
       return '已延后';
+    case 'skipped':
+      return '已跳过';
     default:
       return status;
+  }
+}
+
+function taskStatusActionLabel(status: TaskStatus) {
+  switch (status) {
+    case 'in_progress':
+      return '开始执行';
+    case 'done':
+      return '标记完成';
+    case 'delayed':
+      return '标记延后';
+    case 'skipped':
+      return '标记跳过';
+    default:
+      return '更新状态';
+  }
+}
+
+function taskStatusBadgeClassName(status: TaskStatus) {
+  switch (status) {
+    case 'done':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'in_progress':
+      return 'bg-blue-100 text-blue-800';
+    case 'delayed':
+      return 'bg-amber-100 text-amber-800';
+    case 'skipped':
+      return 'bg-rose-100 text-rose-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
   }
 }
 

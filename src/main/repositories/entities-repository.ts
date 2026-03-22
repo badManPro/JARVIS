@@ -171,6 +171,8 @@ export class EntitiesRepository {
             duration: taskRow.duration,
             status: taskRow.status as PlanTask['status'],
             note: taskRow.note,
+            statusNote: taskRow.statusNote,
+            statusUpdatedAt: taskRow.statusUpdatedAt?.toISOString(),
           }));
 
         return {
@@ -308,6 +310,8 @@ export class EntitiesRepository {
       duration: task.duration,
       status: task.status,
       note: task.note,
+      statusNote: task.statusNote?.trim() ?? '',
+      statusUpdatedAt: task.statusUpdatedAt ? new Date(task.statusUpdatedAt) : null,
       sortOrder: index,
       updatedAt: now,
     })));

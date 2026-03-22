@@ -364,6 +364,39 @@ test('runProviderHealthCheck persists the returned health status', async () => {
   assert.equal(response.aiRuntimeSummary.find((item) => item.capability === 'plan_generation')?.healthStatus, 'ready');
 });
 
+test('updatePlanTaskStatus persists execution metadata and refreshes dashboard/reflection inputs', () => {
+  const { service } = createHarness();
+  const initialState = service.initialize();
+  const activeDraft = initialState.plan.drafts.find((draft) => draft.goalId === initialState.plan.activeGoalId);
+  assert.ok(activeDraft);
+
+  const nextState = service.updatePlanTaskStatus({
+    draftId: activeDraft.id,
+    taskId: 'task-python-ai-3',
+    status: 'delayed',
+    statusNote: '本周先完成任务日志与最小可观测性收尾。',
+  });
+
+  const updatedDraft = nextState.plan.drafts.find((draft) => draft.id === activeDraft.id);
+  const updatedTask = updatedDraft?.tasks.find((task) => task.id === 'task-python-ai-3');
+  assert.ok(updatedTask);
+  assert.equal(updatedTask.status, 'delayed');
+  assert.equal(updatedTask.statusNote, '本周先完成任务日志与最小可观测性收尾。');
+  assert.match(updatedTask.statusUpdatedAt ?? '', /\d{4}-\d{2}-\d{2}T/);
+  assert.match(nextState.dashboard.reflectionSummary, /延后 1 项/);
+  assert.equal(nextState.reflection.completedTasks, 1);
+  assert.equal(
+    nextState.reflection.recentTaskExecutions.some((item) => item.taskId === 'task-python-ai-3' && item.status === 'delayed'),
+    true,
+  );
+
+  const reloaded = service.loadAppState();
+  const persistedDraft = reloaded.plan.drafts.find((draft) => draft.id === activeDraft.id);
+  const persistedTask = persistedDraft?.tasks.find((task) => task.id === 'task-python-ai-3');
+  assert.ok(persistedTask);
+  assert.equal(persistedTask.statusNote, '本周先完成任务日志与最小可观测性收尾。');
+});
+
 test('regenerateLearningPlanDraft marks the routed provider as warning when AI execution fails', async () => {
   const snapshot = cloneState({
     settings: {

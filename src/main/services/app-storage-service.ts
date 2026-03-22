@@ -1,6 +1,21 @@
-import type { AppState, ApplyConversationActionPreviewsResult, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
+import type {
+  AppState,
+  ApplyConversationActionPreviewsResult,
+  LearningPlanDraft,
+  ProviderConfig,
+  ProviderId,
+  ProviderSecretInput,
+  UpdatePlanTaskStatusInput,
+  UserProfile,
+} from '../../shared/app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResponse, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
-import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState } from '../../shared/app-state.js';
+import {
+  applyAcceptedConversationActionPreviews,
+  resolveConversationState,
+  seedState,
+  syncExecutionDerivedState,
+  updatePlanTaskStatus as applyPlanTaskStatusUpdate,
+} from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import { createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
@@ -184,6 +199,15 @@ export class AppStorageService {
         drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? normalizedDraft : item)),
       },
     }));
+
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+    return this.loadAppState();
+  }
+
+  updatePlanTaskStatus(input: UpdatePlanTaskStatusInput) {
+    const snapshot = this.loadAppState();
+    const nextState = this.sanitizeState(this.hydratePlanState(applyPlanTaskStatusUpdate(snapshot, input)));
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
@@ -449,10 +473,10 @@ export class AppStorageService {
 
   private hydratePlanState(state: AppState): AppState {
     const nextPlanState = ensurePlanDrafts(state.goals, state.plan, state.profile);
-    return this.withResolvedConversationState({
+    return syncExecutionDerivedState(this.withResolvedConversationState({
       ...state,
       plan: nextPlanState,
-    });
+    }));
   }
 
   private sanitizeState(state: AppState): AppState {
@@ -616,8 +640,8 @@ export class AppStorageService {
 
   private collectPlanAdjustmentFeedback(state: AppState, draft: LearningPlanDraft) {
     const taskFeedback = draft.tasks
-      .filter((task) => task.status === 'delayed' || task.status === 'in_progress')
-      .map((task) => `任务反馈：${task.title} 当前状态为 ${task.status}`);
+      .filter((task) => task.status === 'delayed' || task.status === 'in_progress' || task.status === 'skipped')
+      .map((task) => `任务反馈：${task.title} 当前状态为 ${task.status}${task.statusNote ? `，备注：${task.statusNote}` : ''}`);
 
     const feedback = this.dedupeSuggestions([
       state.reflection.deviation,
@@ -665,7 +689,10 @@ export class AppStorageService {
           id: task.id?.trim() || `${fallback.id}-task-${Date.now()}-${index + 1}`,
           title: task.title.trim(),
           duration: task.duration.trim(),
+          status: task.status ?? 'todo',
           note: task.note.trim(),
+          statusNote: task.statusNote?.trim() ?? '',
+          statusUpdatedAt: task.statusUpdatedAt,
         }))
         .filter((task) => task.title || task.note),
       updatedAt: new Date().toISOString(),
@@ -689,7 +716,10 @@ export class AppStorageService {
         id: task.id?.trim() || `${fallback.id}-snapshot-task-${index + 1}`,
         title: task.title.trim(),
         duration: task.duration.trim(),
+        status: task.status ?? 'todo',
         note: task.note.trim(),
+        statusNote: task.statusNote?.trim() ?? '',
+        statusUpdatedAt: task.statusUpdatedAt,
       })),
       updatedAt: draft.updatedAt ?? fallback.updatedAt,
     };
