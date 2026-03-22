@@ -18,6 +18,8 @@ type AppStore = AppState & {
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
+  runProfileExtraction: () => Promise<AppState>;
+  generatePlanAdjustmentSuggestions: (payload: { goalId: string }) => Promise<AppState>;
   reviewConversationActionPreview: (payload: { actionId: string; reviewStatus: ConversationActionReviewStatus }) => Promise<void>;
   applyAcceptedConversationActionPreviews: () => Promise<ApplyConversationActionPreviewsResult>;
   refreshProviderConfigs: () => Promise<void>;
@@ -260,6 +262,26 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const persistedState = await bridge.regenerateLearningPlanDraft(payload);
     set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  runProfileExtraction: async () => {
+    const bridge = getBridge();
+    if (!bridge) {
+      throw new Error('learningCompanion bridge 不可用，无法执行画像提取。');
+    }
+
+    const persistedState = await bridge.runProfileExtraction();
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+    return persistedState;
+  },
+  generatePlanAdjustmentSuggestions: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      throw new Error('learningCompanion bridge 不可用，无法执行计划调整建议生成。');
+    }
+
+    const persistedState = await bridge.generatePlanAdjustmentSuggestions(payload);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+    return persistedState;
   },
   reviewConversationActionPreview: async (payload) => {
     const bridge = getBridge();

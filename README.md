@@ -23,6 +23,8 @@
 - Main 侧已接入统一 AI service、OpenAI-compatible provider adapter 与 capability route 解析
 - 设置相关数据已拆到 `app_settings` / `provider_configs` / `model_routing`，不再只靠 snapshot 承接
 - 设置页已支持展示 AI runtime 摘要，直接看到每个 capability 当前会命中哪个 Provider、是否具备执行前置条件
+- 对话页已支持通过 `profile_extraction` 从当前对话提取结构化建议，并直接回流到 action preview 审核链路
+- 学习计划页已支持通过 `plan_generation` 真实重生成草案，并通过 `plan_adjustment` 生成调整建议回流到对话预览
 
 ## 技术栈
 - Electron
@@ -120,15 +122,15 @@ npm run build
 - 删除目标时，会同步清理它的计划草案与版本快照；如果删的是当前主目标，会自动回退到剩余目标中的第一项，没有剩余目标时则回到空状态
 - 对话相关数据仍主要保留在 `app_snapshots`，但主进程会在加载时把 `conversation.suggestions` 回填为结构化 `actionPreviews`，并支持把已接受且可执行的预览写回结构化实体表
 - `conversation.actionPreviews` 已补齐来源标签与时间线元数据（建议生成 / 审核 / 写入），并随应用快照一起持久化
-- Main 侧统一 AI service 已具备 route 解析、Provider 前置校验、runtime 摘要和 adapter 抽象，但具体业务能力尚未接到画像提取 / 计划生成链路
-- 当前计划草案仍由本地规则模板生成，尚未把 `plan_generation` / `profile_extraction` 接到真实业务入口
-- 当前尚未提供版本回滚、目标排序、请求日志、真正的在线模型调用链路等更高阶动作
+- Main 侧统一 AI service 已具备 route 解析、Provider 前置校验、runtime 摘要和 adapter 抽象，并已接到 `profile_extraction` / `plan_generation` / `plan_adjustment` 的真实业务入口
+- 对话建议提取和计划调整建议统一回流到 `conversation.suggestions`，继续复用现有 action preview 的审核与应用边界
+- 当前尚未提供版本回滚、目标排序、Provider 健康检查、请求日志、`reflection_summary` 业务接入等更高阶动作
 
 ## 下一步建议
-1. 把 `profile_extraction` / `plan_generation` / `plan_adjustment` 接到真实业务链路
-2. 增加 Provider 健康检查与基础错误提示
-3. 为真实 Provider 调用补齐请求日志与最小可观测性
-4. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
+1. 增加 Provider 健康检查与基础错误提示
+2. 为真实 Provider 调用补齐请求日志与最小可观测性
+3. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
+4. 为 `reflection_summary` 和后续复盘闭环补业务入口
 
 ## 当前推荐下一任务
-- `Phase 3 / Task 2`：接入 `profile_extraction` / `plan_generation` / `plan_adjustment`
+- `Phase 3 / Task 3`：增加 Provider 健康检查与基础错误提示

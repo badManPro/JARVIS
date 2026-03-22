@@ -2,7 +2,7 @@ import type { AppState, ApplyConversationActionPreviewsResult, LearningPlanDraft
 import type { AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
-import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
+import { createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
 import { normalizeSecretInput, toSafeProviderConfig } from '../../shared/provider-config.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
@@ -180,7 +180,24 @@ export class AppStorageService {
     return this.loadAppState();
   }
 
-  regenerateLearningPlanDraft(goalId: string, snapshotDraft?: LearningPlanDraft | null) {
+  async runProfileExtraction() {
+    const snapshot = this.loadAppState();
+    const result = await this.aiService.execute(snapshot.settings, {
+      capability: 'profile_extraction',
+      conversation: snapshot.conversation,
+      profile: snapshot.profile,
+      goals: snapshot.goals,
+      plan: snapshot.plan,
+    });
+
+    if (result.capability !== 'profile_extraction') {
+      throw new Error('画像提取返回了意外结果。');
+    }
+
+    return this.persistConversationSuggestions(snapshot, result.suggestions, 'replace');
+  }
+
+  async regenerateLearningPlanDraft(goalId: string, snapshotDraft?: LearningPlanDraft | null) {
     const snapshot = this.loadAppState();
     const targetGoal = snapshot.goals.find((goal) => goal.id === goalId);
     if (!targetGoal) {
@@ -197,14 +214,37 @@ export class AppStorageService {
       : this.normalizeSnapshotDraft(previousDraft, previousDraft);
     const nextSnapshotVersion = getNextSnapshotVersion(snapshot.plan.snapshots, goalId);
     const archivedSnapshot = createPlanSnapshot(archivedDraft, nextSnapshotVersion);
-    const regeneratedDraft = this.normalizeLearningPlanDraft(
-      {
-        ...createPlanDraft(targetGoal, snapshot.profile, 'regenerated'),
-        id: previousDraft.id,
-        goalId: previousDraft.goalId,
-      },
-      previousDraft,
-    );
+    const result = await this.aiService.execute(snapshot.settings, {
+      capability: 'plan_generation',
+      goal: targetGoal,
+      profile: snapshot.profile,
+      currentDraft: previousDraft,
+    });
+
+    if (result.capability !== 'plan_generation') {
+      throw new Error('计划生成返回了意外结果。');
+    }
+
+    const regeneratedDraft = this.normalizeLearningPlanDraft({
+      ...previousDraft,
+      id: previousDraft.id,
+      goalId: previousDraft.goalId,
+      title: result.draft.title,
+      summary: result.draft.summary,
+      basis: result.draft.basis,
+      stages: result.draft.stages.map((stage) => ({
+        title: stage.title,
+        outcome: stage.outcome,
+        progress: stage.progress ?? '未开始',
+      })),
+      tasks: result.draft.tasks.map((task, index) => ({
+        id: `${previousDraft.id}-ai-task-${index + 1}`,
+        title: task.title,
+        duration: task.duration,
+        note: task.note,
+        status: task.status ?? 'todo',
+      })),
+    }, previousDraft);
 
     const nextState = this.sanitizeState(this.hydratePlanState({
       ...snapshot,
@@ -218,6 +258,34 @@ export class AppStorageService {
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
     return this.loadAppState();
+  }
+
+  async generatePlanAdjustmentSuggestions(goalId: string) {
+    const snapshot = this.loadAppState();
+    const targetGoal = snapshot.goals.find((goal) => goal.id === goalId);
+    if (!targetGoal) {
+      throw new Error('目标不存在，无法生成计划调整建议。');
+    }
+
+    const currentDraft = snapshot.plan.drafts.find((draft) => draft.goalId === goalId);
+    if (!currentDraft) {
+      throw new Error('计划草案不存在，无法生成调整建议。');
+    }
+
+    const result = await this.aiService.execute(snapshot.settings, {
+      capability: 'plan_adjustment',
+      goal: targetGoal,
+      profile: snapshot.profile,
+      currentDraft,
+      feedback: this.collectPlanAdjustmentFeedback(snapshot, currentDraft),
+    });
+
+    if (result.capability !== 'plan_adjustment') {
+      throw new Error('计划调整返回了意外结果。');
+    }
+
+    const suggestions = this.parseSuggestionText(result.text);
+    return this.persistConversationSuggestions(snapshot, suggestions, 'append');
   }
 
   applyAcceptedConversationActionPreviews(): ApplyConversationActionPreviewsResult {
@@ -381,6 +449,63 @@ export class AppStorageService {
       ...state,
       conversation: resolveConversationState(state),
     };
+  }
+
+  private persistConversationSuggestions(
+    state: AppState,
+    suggestions: string[],
+    mode: 'replace' | 'append',
+  ) {
+    const normalizedSuggestions = this.dedupeSuggestions(suggestions);
+    if (!normalizedSuggestions.length) {
+      throw new Error('Provider 未返回可用于预览的建议。');
+    }
+
+    const nextSuggestions = mode === 'append'
+      ? this.dedupeSuggestions([...state.conversation.suggestions, ...normalizedSuggestions])
+      : normalizedSuggestions;
+
+    const nextState = this.sanitizeState(this.hydratePlanState({
+      ...state,
+      conversation: {
+        ...state.conversation,
+        suggestions: nextSuggestions,
+      },
+    }));
+
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+    return this.loadAppState();
+  }
+
+  private parseSuggestionText(text: string) {
+    return this.dedupeSuggestions(text
+      .split('\n')
+      .map((line) => line.trim().replace(/^[*-]\s*/, '').replace(/^\d+[.)、]\s*/, ''))
+      .filter(Boolean));
+  }
+
+  private dedupeSuggestions(values: string[]) {
+    return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
+  }
+
+  private collectPlanAdjustmentFeedback(state: AppState, draft: LearningPlanDraft) {
+    const taskFeedback = draft.tasks
+      .filter((task) => task.status === 'delayed' || task.status === 'in_progress')
+      .map((task) => `任务反馈：${task.title} 当前状态为 ${task.status}`);
+
+    const feedback = this.dedupeSuggestions([
+      state.reflection.deviation,
+      state.reflection.insight,
+      ...state.reflection.nextActions.map((item) => `复盘建议：${item}`),
+      ...taskFeedback,
+    ]);
+
+    if (!feedback.length) {
+      throw new Error('当前缺少可用于计划调整的反馈。');
+    }
+
+    return feedback;
   }
 
   private normalizeLearningPlanDraft(draft: LearningPlanDraft, fallback: LearningPlanDraft): LearningPlanDraft {

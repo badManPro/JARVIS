@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AppState } from '../../shared/app-state.js';
 import { seedState } from '../../shared/app-state.js';
-import type { AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import type { AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { createDatabase } from '../db/client.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
@@ -64,7 +64,11 @@ function createRuntimeSummary(settings: AppState['settings']): AiRuntimeSummaryI
   });
 }
 
-function createHarness(snapshotState?: AppState) {
+function createHarness(options: {
+  snapshotState?: AppState;
+  aiExecute?: (settings: AppState['settings'], request: AiRequest) => Promise<AiResult>;
+} = {}) {
+  const { snapshotState, aiExecute } = options;
   const { db } = createDatabase(':memory:');
   const appStateRepository = new AppStateRepository(db);
   const entitiesRepository = new EntitiesRepository(db);
@@ -82,9 +86,9 @@ function createHarness(snapshotState?: AppState) {
     providerSecretRepository,
     {
       getRuntimeSummary: (settings) => createRuntimeSummary(settings),
-      execute: async () => {
+      execute: aiExecute ?? (async () => {
         throw new Error('execute is not used in this test');
-      },
+      }),
     },
   );
 
@@ -111,7 +115,7 @@ test('initialize migrates snapshot settings into structured settings tables', ()
       },
     },
   });
-  const { service, settingsRepository } = createHarness(snapshot);
+  const { service, settingsRepository } = createHarness({ snapshotState: snapshot });
 
   service.initialize();
 
@@ -156,6 +160,129 @@ test('saveAppState persists provider configs and routing into structured setting
   assert.equal(persistedSettings.routing.reflectionSummary, 'openai');
   assert.equal(persistedSettings.providers.find((provider) => provider.id === 'deepseek')?.enabled, true);
   assert.equal(persistedSettings.providers.find((provider) => provider.id === 'deepseek')?.model, 'deepseek-reasoner');
+});
+
+test('runProfileExtraction writes AI suggestions into conversation preview flow', async () => {
+  const executeCalls: AiRequest[] = [];
+  const { service } = createHarness({
+    aiExecute: async (_settings, request) => {
+      executeCalls.push(request);
+      return {
+        capability: 'profile_extraction',
+        providerId: 'openai',
+        providerLabel: 'OpenAI / GPT',
+        model: 'gpt-4.1-mini',
+        suggestions: [
+          '采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',
+          '采纳：把当前主目标周期改为 6 周，并把成功标准调整为完成一个可演示的本地优先 AI MVP',
+          '采纳：把计划标题改成「AI 强化学习冲刺草案」，并新增任务「拆解本周 MVP 功能清单」',
+        ],
+      };
+    },
+  });
+
+  service.initialize();
+
+  const nextState = await service.runProfileExtraction();
+
+  assert.equal(executeCalls.length, 1);
+  assert.equal(executeCalls[0]?.capability, 'profile_extraction');
+  assert.deepEqual(nextState.conversation.suggestions, [
+    '采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',
+    '采纳：把当前主目标周期改为 6 周，并把成功标准调整为完成一个可演示的本地优先 AI MVP',
+    '采纳：把计划标题改成「AI 强化学习冲刺草案」，并新增任务「拆解本周 MVP 功能清单」',
+  ]);
+  assert.equal(nextState.conversation.actionPreviews.length, 3);
+  assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.execution?.type === 'profile_update'), true);
+  assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.execution?.type === 'goal_update'), true);
+  assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.execution?.type === 'plan_update'), true);
+});
+
+test('regenerateLearningPlanDraft archives the current draft and replaces it with AI-generated content', async () => {
+  const executeCalls: AiRequest[] = [];
+  const { service } = createHarness({
+    aiExecute: async (_settings, request) => {
+      executeCalls.push(request);
+      return {
+        capability: 'plan_generation',
+        providerId: 'deepseek',
+        providerLabel: 'DeepSeek',
+        model: 'deepseek-chat',
+        draft: {
+          title: 'AI 生成的冲刺草案',
+          summary: '由真实 Provider 返回的计划草案。',
+          basis: ['统一 runtime 已接入真实计划生成'],
+          stages: [
+            { title: '阶段 1', outcome: '梳理能力边界', progress: '未开始' },
+            { title: '阶段 2', outcome: '接入主进程入口', progress: '未开始' },
+          ],
+          tasks: [
+            { title: '补 capability bridge', duration: '30 分钟', note: '先打通 bridge', status: 'todo' },
+            { title: '验证 AI 输出落库', duration: '45 分钟', note: '覆盖草案和快照', status: 'todo' },
+          ],
+        },
+      };
+    },
+  });
+
+  const initialState = service.initialize();
+  const goalId = initialState.plan.activeGoalId;
+  const previousDraft = initialState.plan.drafts.find((draft) => draft.goalId === goalId);
+  assert.ok(previousDraft);
+
+  const nextState = await service.regenerateLearningPlanDraft(goalId, previousDraft);
+  const nextDraft = nextState.plan.drafts.find((draft) => draft.goalId === goalId);
+
+  assert.equal(executeCalls.length, 1);
+  assert.equal(executeCalls[0]?.capability, 'plan_generation');
+  assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_generation' }>).goal.id, goalId);
+  assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_generation' }>).currentDraft?.id, previousDraft.id);
+  assert.ok(nextDraft);
+  assert.equal(nextDraft.title, 'AI 生成的冲刺草案');
+  assert.equal(nextDraft.summary, '由真实 Provider 返回的计划草案。');
+  assert.equal(nextState.plan.snapshots[0]?.title, previousDraft.title);
+});
+
+test('generatePlanAdjustmentSuggestions merges AI suggestions back into the conversation preview flow', async () => {
+  const executeCalls: AiRequest[] = [];
+  const snapshot = cloneState({
+    conversation: {
+      ...seedState.conversation,
+      suggestions: ['采纳：把学习窗口调整为工作日晚间 20:30 - 21:15'],
+    },
+  });
+  const { service } = createHarness({
+    snapshotState: snapshot,
+    aiExecute: async (_settings, request) => {
+      executeCalls.push(request);
+      return {
+        capability: 'plan_adjustment',
+        providerId: 'deepseek',
+        providerLabel: 'DeepSeek',
+        model: 'deepseek-chat',
+        text: [
+          '采纳：把计划标题改成「AI 调整版草案」，并新增任务「安排一次 30 分钟复盘」',
+          '采纳：把计划标题改成「AI 调整版草案」，并新增任务「安排一次 30 分钟复盘」',
+          '进行中：把真实 AI Provider 的计划调整建议接入当前预览链路',
+        ].join('\n'),
+      };
+    },
+  });
+
+  const initialState = service.initialize();
+  const goalId = initialState.plan.activeGoalId;
+  const nextState = await service.generatePlanAdjustmentSuggestions(goalId);
+
+  assert.equal(executeCalls.length, 1);
+  assert.equal(executeCalls[0]?.capability, 'plan_adjustment');
+  assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_adjustment' }>).goal.id, goalId);
+  assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_adjustment' }>).feedback.includes(seedState.reflection.deviation), true);
+  assert.deepEqual(nextState.conversation.suggestions, [
+    '采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',
+    '采纳：把计划标题改成「AI 调整版草案」，并新增任务「安排一次 30 分钟复盘」',
+    '进行中：把真实 AI Provider 的计划调整建议接入当前预览链路',
+  ]);
+  assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.title === '计划调整预览'), true);
 });
 
 test('getAiRuntimeSummary reflects structured route changes and secret readiness', () => {

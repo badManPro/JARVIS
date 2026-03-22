@@ -136,10 +136,12 @@ export function PageContent({ page }: { page: PageDefinition }) {
 
 function ConversationContent() {
   const state = useAppStore();
+  const runProfileExtraction = useAppStore((store) => store.runProfileExtraction);
   const reviewConversationActionPreview = useAppStore((store) => store.reviewConversationActionPreview);
   const applyAcceptedConversationActionPreviews = useAppStore((store) => store.applyAcceptedConversationActionPreviews);
   const conversation = useMemo(() => resolveConversationState(state), [state]);
   const [updatingActionId, setUpdatingActionId] = useState<string | null>(null);
+  const [extractingSuggestions, setExtractingSuggestions] = useState(false);
   const [applyingAccepted, setApplyingAccepted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const unreviewedCount = useMemo(
@@ -195,6 +197,21 @@ function ConversationContent() {
       setNotice(error instanceof Error ? error.message : '更新预览审核状态失败');
     } finally {
       setUpdatingActionId(null);
+    }
+  };
+
+  const onRunProfileExtraction = async () => {
+    setExtractingSuggestions(true);
+    setNotice(null);
+
+    try {
+      const nextState = await runProfileExtraction();
+      const nextConversation = resolveConversationState(nextState);
+      setNotice(`已从当前对话提取 ${nextConversation.suggestions.length} 条建议，并生成 ${nextConversation.actionPreviews.length} 张结构化预览。`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '对话建议提取失败');
+    } finally {
+      setExtractingSuggestions(false);
     }
   };
 
@@ -259,14 +276,25 @@ function ConversationContent() {
           <div className="text-sm text-slate-600">
             当前有 {acceptedCount} 条已接受预览，其中 {acceptedExecutableCount} 条可直接写入实体。
           </div>
-          <button
-            className={successButtonClassName}
-            type="button"
-            onClick={() => void onApplyAcceptedActions()}
-            disabled={applyingAccepted || acceptedCount === 0}
-          >
-            {applyingAccepted ? '应用中…' : `应用已接受变更${acceptedCount ? `（${acceptedCount}）` : ''}`}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={secondaryButtonClassName}
+              type="button"
+              onClick={() => void onRunProfileExtraction()}
+              disabled={extractingSuggestions || applyingAccepted}
+            >
+              <Sparkles className="mr-1 inline h-4 w-4" />
+              {extractingSuggestions ? '提取中…' : '从当前对话提取建议'}
+            </button>
+            <button
+              className={successButtonClassName}
+              type="button"
+              onClick={() => void onApplyAcceptedActions()}
+              disabled={extractingSuggestions || applyingAccepted || acceptedCount === 0}
+            >
+              {applyingAccepted ? '应用中…' : `应用已接受变更${acceptedCount ? `（${acceptedCount}）` : ''}`}
+            </button>
+          </div>
         </div>
 
         {notice ? (
@@ -600,6 +628,7 @@ function PlansContent() {
   const setActiveGoal = useAppStore((state) => state.setActiveGoal);
   const saveLearningPlanDraft = useAppStore((state) => state.saveLearningPlanDraft);
   const regenerateLearningPlanDraft = useAppStore((state) => state.regenerateLearningPlanDraft);
+  const generatePlanAdjustmentSuggestions = useAppStore((state) => state.generatePlanAdjustmentSuggestions);
 
   const activeGoal = goals.find((goal) => goal.id === activeGoalId) ?? goals[0] ?? null;
   const activePlanDraft = getActivePlanDraft(planDrafts, activeGoalId);
@@ -614,6 +643,7 @@ function PlansContent() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [adjustingPlan, setAdjustingPlan] = useState(false);
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
@@ -777,11 +807,26 @@ function PlansContent() {
       setLastRegeneratedAt(new Date().toLocaleString('zh-CN'));
       setEditing(false);
       setShowRegenerateConfirm(false);
-      setNotice(`计划已重生成，覆盖前的草案已归档为版本快照 v${nextSnapshotVersion}。`);
+      setNotice(`AI 已重生成计划，覆盖前的草案已归档为版本快照 v${nextSnapshotVersion}。`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '计划重生成失败');
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  const onGenerateAdjustmentSuggestions = async () => {
+    if (!activeGoal) return;
+
+    setAdjustingPlan(true);
+    setNotice(null);
+    try {
+      await generatePlanAdjustmentSuggestions({ goalId: activeGoal.id });
+      setNotice('已基于当前草案与复盘反馈生成计划调整建议，并回流到对话预览。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '生成计划调整建议失败');
+    } finally {
+      setAdjustingPlan(false);
     }
   };
 
@@ -822,21 +867,30 @@ function PlansContent() {
                 className={secondaryButtonClassName}
                 type="button"
                 onClick={onOpenRegenerateConfirm}
-                disabled={saving || regenerating}
+                disabled={saving || regenerating || adjustingPlan}
               >
                 <RefreshCcw className="mr-1 inline h-4 w-4" />
                 {regenerating ? '重生成中…' : '重新生成计划'}
               </button>
+              <button
+                className={secondaryButtonClassName}
+                type="button"
+                onClick={() => void onGenerateAdjustmentSuggestions()}
+                disabled={saving || regenerating || adjustingPlan}
+              >
+                <Sparkles className="mr-1 inline h-4 w-4" />
+                {adjustingPlan ? '生成中…' : '生成调整建议'}
+              </button>
               <button className={editing ? successButtonClassName : secondaryButtonClassName} type="button" onClick={() => {
                 setEditing((current) => !current);
                 setNotice(null);
-              }} disabled={saving || regenerating}>
+              }} disabled={saving || regenerating || adjustingPlan}>
                 {editing ? '结束编辑' : '编辑草案'}
               </button>
-              <button className={primaryButtonClassName} type="button" onClick={() => void onSave()} disabled={!editing || saving || regenerating || !hasChanges}>
+              <button className={primaryButtonClassName} type="button" onClick={() => void onSave()} disabled={!editing || saving || regenerating || adjustingPlan || !hasChanges}>
                 {saving ? '保存中…' : '保存计划'}
               </button>
-              <button className={secondaryButtonClassName} type="button" onClick={restoreDraft} disabled={saving || regenerating || !hasChanges}>
+              <button className={secondaryButtonClassName} type="button" onClick={restoreDraft} disabled={saving || regenerating || adjustingPlan || !hasChanges}>
                 还原当前值
               </button>
             </div>
