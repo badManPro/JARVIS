@@ -82,10 +82,10 @@ Renderer 先按以下状态切分：
 
 ## 6. 当前已落地的数据与存储边界
 ### 6.1 SQLite + Drizzle 基础结构
-当前采用“快照兜底 + 规范化实体表并行”的过渡方案：
+当前采用“结构化实体为真源 + 受限快照补位”的过渡方案：
 1. `app_snapshots`
-   - 继续保存当前 Zustand 业务状态快照
-   - 作为兼容层与回退层，避免演进期间丢失页面状态
+   - 仅保存尚未结构化的对话会话态：`conversation.title / tags / messages / suggestions / actionPreviews`
+   - 作为兼容层与回退层，承接对话审核轨迹与会话上下文，不再冗余保存整份 `AppState`
 2. `user_profiles`
    - 规范化保存用户画像主体字段
    - `strengths / blockers / planImpact` 先以 JSON 文本列承载
@@ -117,7 +117,7 @@ Renderer 先按以下状态切分：
    - 结构化保存 `daily / weekly / stage` 三个复盘周期的手动输入
    - 当前保存偏差说明、难度匹配、时间分配、自评、复盘结论和后续动作
 
-当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / reflection / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 现在会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；其中首页首屏会进一步把这些信号整理成 `priorityAction` 与 `riskSignals`，直接回答“现在先做什么”和“当前主要风险是什么”；`conversation` 目前仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路。
+当前主进程会在 `load/save` 时把 `profile / goals / plan drafts / reflection.entries / settings` 同步到规范化表，并把 `conversation` 的会话态写回 `app_snapshots`；`dashboard / reflection` 会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；其中首页首屏会进一步把这些信号整理成 `priorityAction` 与 `riskSignals`，直接回答“现在先做什么”和“当前主要风险是什么”。这意味着 `app_snapshots` 已不再承担整份 Zustand 状态兜底，只保留仍未拆表的对话域。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路。
 
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：

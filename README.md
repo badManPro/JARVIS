@@ -109,7 +109,7 @@ npm run build
 - preload 安全暴露最小 API，并提供本地数据 / Provider 配置 bridge
 - renderer 应用壳层与左侧导航
 - Zustand 业务状态层：profile / goals / plan drafts / conversation / settings
-- SQLite + Drizzle 基础存储：`app_snapshots` 保存当前应用快照，`app_settings` / `provider_configs` / `model_routing` 保存设置运行时，`provider_secrets` 单独保存 Provider secret
+- SQLite + Drizzle 基础存储：`app_snapshots` 保存对话会话快照，`app_settings` / `provider_configs` / `model_routing` 保存设置运行时，`provider_secrets` 单独保存 Provider secret
 - `learning_plan_drafts` + `plan_stages` + `plan_tasks` 已承接按目标归属的计划草案结构
 - 七个页面的真实内容骨架与跨页面上下文展示
 - 设置页中的多模型 Provider 列表与路由策略展示（仅显示 masked key preview / hasSecret）
@@ -118,7 +118,7 @@ npm run build
 
 ## 当前存储实现说明
 - 数据库位置：Electron `app.getPath('userData')/learning-companion.sqlite`
-- 当前落库策略：保留 `app_snapshots` 作为应用快照，同时把画像 / 目标 / 计划草案继续拆到结构化表中
+- 当前落库策略：以结构化表作为画像 / 目标 / 计划 / 复盘 / 设置的真源，`app_snapshots` 仅保留未结构化的对话会话态
 - Provider secret 单独存于 `provider_secrets`，renderer 仅获取 `keyPreview`、`hasSecret`、`updatedAt` 等安全字段
 - 应用偏好、Provider 基础配置和 capability route 已拆到 `app_settings`、`provider_configs`、`model_routing` 并可在重启后回填
 - `ai_request_logs` 会结构化保存 capability 调用的 Provider、模型、状态、耗时和错误摘要，不保存 prompt / 对话正文
@@ -129,7 +129,7 @@ npm run build
 - 目标页已支持“设为当前目标”，计划页会直接切换到该目标对应的独立草案内容，而不是仅做展示映射
 - 点击“重新生成计划”前，会先把当前草案归档到 `learning_plan_snapshots`、`plan_snapshot_stages`、`plan_snapshot_tasks`，并可在计划页直接选择历史快照做版本对比
 - 删除目标时，会同步清理它的计划草案与版本快照；如果删的是当前主目标，会自动回退到剩余目标中的第一项，没有剩余目标时则回到空状态
-- 对话相关数据仍主要保留在 `app_snapshots`，但主进程会在加载时把 `conversation.suggestions` 回填为结构化 `actionPreviews`，并支持把已接受且可执行的预览写回结构化实体表
+- 对话相关数据目前仍主要保留在 `app_snapshots`，但范围已收敛为会话标题、消息、suggestions 与 action preview 审核轨迹；主进程加载时会基于这些 suggestions 回填结构化 `actionPreviews`，并支持把已接受且可执行的预览写回结构化实体表
 - `conversation.actionPreviews` 已补齐来源标签与时间线元数据（建议生成 / 审核 / 写入），并随应用快照一起持久化
 - Main 侧统一 AI service 已具备 route 解析、Provider 前置校验、runtime 摘要和 adapter 抽象，并已接到 `profile_extraction` / `plan_generation` / `plan_adjustment` 的真实业务入口
 - 对话建议提取和计划调整建议统一回流到 `conversation.suggestions`，继续复用现有 action preview 的审核与应用边界

@@ -4,6 +4,7 @@ import type { AppState } from '../../shared/app-state.js';
 import { seedState } from '../../shared/app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { createDatabase } from '../db/client.js';
+import { appSnapshots } from '../db/schema.js';
 import { AiRequestLogRepository } from '../repositories/ai-request-log-repository.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
@@ -79,7 +80,7 @@ function createHarness(options: {
   const settingsRepository = new SettingsRepository(db);
 
   if (snapshotState) {
-    appStateRepository.save(snapshotState);
+    appStateRepository.saveRaw(snapshotState);
   }
 
   const service = new AppStorageService(
@@ -104,9 +105,20 @@ function createHarness(options: {
   );
 
   return {
+    db,
     service,
     settingsRepository,
   };
+}
+
+function getPersistedSnapshotPayload(db: ReturnType<typeof createDatabase>['db']) {
+  const row = db.select().from(appSnapshots).get();
+  assert.ok(row);
+  return JSON.parse(row.payload) as Record<string, unknown>;
+}
+
+function toPersistedJson<T>(value: T) {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 test('initialize migrates snapshot settings into structured settings tables', () => {
@@ -137,6 +149,30 @@ test('initialize migrates snapshot settings into structured settings tables', ()
   assert.equal(persistedSettings.routing.planGeneration, 'glm');
   assert.equal(persistedSettings.providers.find((provider) => provider.id === 'openai')?.label, 'OpenAI / GPT 备用');
   assert.equal(persistedSettings.providers.find((provider) => provider.id === 'openai')?.enabled, false);
+});
+
+test('initialize rewrites legacy full snapshots into a reduced conversation snapshot payload', () => {
+  const snapshot = cloneState({
+    conversation: {
+      ...seedState.conversation,
+      title: 'Phase 5 数据边界收敛',
+      suggestions: ['采纳：先明确 snapshot 与结构化表的最终边界'],
+    },
+  });
+  const { service, db } = createHarness({ snapshotState: snapshot });
+
+  const initializedState = service.initialize();
+
+  const payload = getPersistedSnapshotPayload(db);
+  const persistedConversation = payload.conversation as AppState['conversation'];
+  assert.equal(payload.version, 2);
+  assert.deepEqual(persistedConversation, toPersistedJson(initializedState.conversation));
+  assert.equal('profile' in payload, false);
+  assert.equal('goals' in payload, false);
+  assert.equal('plan' in payload, false);
+  assert.equal('settings' in payload, false);
+  assert.equal('reflection' in payload, false);
+  assert.equal('dashboard' in payload, false);
 });
 
 test('saveAppState persists provider configs and routing into structured settings', () => {
@@ -171,6 +207,38 @@ test('saveAppState persists provider configs and routing into structured setting
   assert.equal(persistedSettings.routing.reflectionSummary, 'openai');
   assert.equal(persistedSettings.providers.find((provider) => provider.id === 'deepseek')?.enabled, true);
   assert.equal(persistedSettings.providers.find((provider) => provider.id === 'deepseek')?.model, 'deepseek-reasoner');
+});
+
+test('saveAppState stores only conversation state in app_snapshots payload', () => {
+  const { service, db } = createHarness();
+  const initialState = service.initialize();
+
+  const nextState = cloneState({
+    ...initialState,
+    conversation: {
+      ...initialState.conversation,
+      title: '继续收敛 Phase 5 / Task 1',
+      tags: ['数据层', 'snapshot'],
+      messages: [
+        ...initialState.conversation.messages,
+        { id: 'm4', role: 'assistant', content: '下一步开始把 snapshot 收缩到只保存对话会话态。' },
+      ],
+      suggestions: ['采纳：保留对话态，其余字段以结构化表为真源'],
+    },
+  });
+
+  const persistedState = service.saveAppState(nextState);
+
+  const payload = getPersistedSnapshotPayload(db);
+  const persistedConversation = payload.conversation as AppState['conversation'];
+  assert.equal(payload.version, 2);
+  assert.deepEqual(persistedConversation, toPersistedJson(persistedState.conversation));
+  assert.equal('profile' in payload, false);
+  assert.equal('goals' in payload, false);
+  assert.equal('plan' in payload, false);
+  assert.equal('settings' in payload, false);
+  assert.equal('reflection' in payload, false);
+  assert.equal('dashboard' in payload, false);
 });
 
 test('runProfileExtraction writes AI suggestions into conversation preview flow', async () => {

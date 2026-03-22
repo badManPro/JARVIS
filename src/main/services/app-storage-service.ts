@@ -55,16 +55,16 @@ export class AppStorageService {
       return merged;
     }
 
-    const snapshot = this.appStateRepository.load();
-    if (snapshot) {
-      const hydratedFromSnapshot = this.hydratePlanState(snapshot);
+    const legacySnapshot = this.appStateRepository.loadLegacyState();
+    if (legacySnapshot) {
+      const hydratedFromSnapshot = this.hydratePlanState(legacySnapshot);
       const merged = this.withProviderSecrets(hydratedFromSnapshot);
       this.persistStructuredState(merged);
       this.appStateRepository.save(merged);
       return merged;
     }
 
-    const initialState = this.withProviderSecrets(this.hydratePlanState(seedState));
+    const initialState = this.withProviderSecrets(this.hydratePlanState(this.withSnapshotConversation(seedState)));
     this.persistStructuredState(initialState);
     this.appStateRepository.save(initialState);
     return initialState;
@@ -78,8 +78,16 @@ export class AppStorageService {
       return merged;
     }
 
-    const snapshot = this.appStateRepository.load() ?? seedState;
-    const hydratedFromSnapshot = this.hydratePlanState(snapshot);
+    const legacySnapshot = this.appStateRepository.loadLegacyState();
+    if (legacySnapshot) {
+      const hydratedFromSnapshot = this.hydratePlanState(legacySnapshot);
+      const merged = this.withProviderSecrets(hydratedFromSnapshot);
+      this.persistStructuredState(merged);
+      this.appStateRepository.save(merged);
+      return merged;
+    }
+
+    const hydratedFromSnapshot = this.hydratePlanState(this.withSnapshotConversation(seedState));
     const merged = this.withProviderSecrets(hydratedFromSnapshot);
     this.persistStructuredState(merged);
     this.appStateRepository.save(merged);
@@ -467,18 +475,17 @@ export class AppStorageService {
       return null;
     }
 
-    const snapshot = this.appStateRepository.load() ?? seedState;
-    return this.hydratePlanState({
-      ...snapshot,
+    return this.hydratePlanState(this.withSnapshotConversation({
+      ...seedState,
       profile,
       goals,
       plan,
       reflection: {
-        ...snapshot.reflection,
+        ...seedState.reflection,
         entries: this.entitiesRepository.loadReflectionEntries(),
       },
-      settings: this.settingsRepository.loadSettings() ?? snapshot.settings,
-    });
+      settings: this.settingsRepository.loadSettings() ?? seedState.settings,
+    }));
   }
 
   private persistStructuredState(state: AppState) {
@@ -543,6 +550,18 @@ export class AppStorageService {
     return {
       ...state,
       conversation: resolveConversationState(state),
+    };
+  }
+
+  private withSnapshotConversation(state: AppState): AppState {
+    const snapshotConversation = this.appStateRepository.loadConversationState();
+    if (!snapshotConversation) {
+      return state;
+    }
+
+    return {
+      ...state,
+      conversation: snapshotConversation,
     };
   }
 
