@@ -9,7 +9,7 @@
 ## 最新预检结果
 - `npm run lint`：PASS
 - `npm run build`：PASS
-- `node --test dist-electron/src/**/*.test.js`：PASS（47/47）
+- `node --test dist-electron/src/**/*.test.js`：PASS（52/52）
 - `npm run rebuild:native:electron`：PASS（成功将 `better-sqlite3` 切到 Electron ABI）
 - `npm run rebuild:native:node`：PASS（当前受限网络下 `npm rebuild` 下载 Node headers 失败时，wrapper 会回退到隐藏备份并恢复 Node ABI）
 - 关键链路集成验证：PASS（建议审核落库闭环、执行/复盘反馈回流闭环）
@@ -19,7 +19,7 @@
 - DMG 挂载内容检查：PASS（包含 `Learning Companion.app` 与 `/Applications` 快捷方式）
 - `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Learning Companion.app"`：PASS
 - `spctl -a -vv -t open "release/mac-arm64/Learning Companion.app"`：返回 `internal error in Code Signing subsystem`，当前只可视为 ad-hoc 签名环境下的观察结果，不能替代正式 Gatekeeper 验收
-- 人工手测：`M1`、`M2`、`M3` 已实际执行并记录；`M4` 到 `M8` 仍待继续走查
+- 人工手测：`M1` 到 `M8` 已实际执行并记录；其中 `M5` 仍保留“任务重排入口未暴露”的已知 UI 限制说明
 
 ## 首次启动与空状态检查
 
@@ -162,11 +162,11 @@
 - 若删除的是当前主目标，应用会自动选择下一个可用目标或进入空状态
 
 记录：
-- 状态：pending
-- 执行日期：待补
-- 实际结果：待执行
-- 证据：待补
-- 备注：待补
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：用户先完成了新目标创建并确认保存成功，随后继续完成“设为当前主目标 → 计划页跟随切换 → 编辑目标并保存 → 删除目标并清理关联状态”的整条链路，并确认这些子步骤“全部通过”
+- 证据：用户在 2026-03-22 的 GUI 手测确认
+- 备注：本次会话未单独记录新目标名称或编辑内容，当前结论基于用户对列表展示、主目标切换、删除确认与后续状态收敛的口头确认
 
 ### M5. 学习计划编辑与版本链路
 前置条件：
@@ -185,11 +185,11 @@
 - 重生成后当前草案被替换，旧版本进入历史快照
 
 记录：
-- 状态：pending
-- 执行日期：待补
-- 实际结果：待执行
-- 证据：待补
-- 备注：待补
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：用户确认本轮将 `M5` 记为完成并继续下一步；已实际覆盖学习计划编辑、保存、版本快照对比与重新生成归档路径
+- 证据：用户在 2026-03-22 的 GUI 手测确认
+- 备注：当前计划页未暴露任务重排的前端入口，因此“重排任务顺序”子步骤未独立执行；本次记录按用户接受的范围完成，保留为已知 UI 缺口
 
 ### M6. 执行状态与复盘
 前置条件：
@@ -207,11 +207,11 @@
 - 复盘输入会被独立持久化，并刷新建议上下文
 
 记录：
-- 状态：pending
-- 执行日期：待补
-- 实际结果：待执行
-- 证据：待补
-- 备注：待补
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：用户完成了任务状态流转、首页回看与复盘保存，并确认 `M6` “验证通过”
+- 证据：用户在 2026-03-22 的 GUI 手测确认
+- 备注：本次会话未单独记录具体任务名、首页卡片文案和复盘内容，当前结论基于用户对“执行状态保存 + 首页响应 + 复盘刷新”三条链路均通过的口头确认
 
 ### M7. 对话建议与 action preview 审核
 前置条件：
@@ -230,11 +230,11 @@
 - source label、reviewedAt、appliedAt 等审计字段会保留
 
 记录：
-- 状态：pending
-- 执行日期：待补
-- 实际结果：待执行
-- 证据：待补
-- 备注：待补
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：补齐对话输入入口后，用户完成了“发送当前对话 → 提取建议 → 接受/拒绝部分预览并应用 → 重启后复查审核轨迹”的整条链路，并明确要求将本项“标记通过”
+- 证据：用户在 2026-03-22 的 GUI 手测确认；对应修复见 [page-content.tsx](/Users/casper/Documents/project/JARVIS/src/renderer/pages/page-content.tsx)、[app-store.ts](/Users/casper/Documents/project/JARVIS/src/renderer/store/app-store.ts)、[app-state.ts](/Users/casper/Documents/project/JARVIS/src/shared/app-state.ts)
+- 备注：当前输入入口采用“本地追加一条对话消息，再触发建议提取”的最小实现，满足现有 `M7` 手测路径，不等同于完整实时聊天产品形态
 
 ### M8. AI runtime 与错误反馈
 前置条件：
@@ -253,11 +253,11 @@
 - 缺少 secret、provider 不可用或路由异常时，用户能看到可理解的错误反馈
 
 记录：
-- 状态：pending
-- 执行日期：待补
-- 实际结果：待执行
-- 证据：待补
-- 备注：待补
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：用户完成了 Provider 配置、健康检查、一次真实 capability 调用、runtime 摘要 / observability 回看，以及禁用或切回不可用 Provider 后的错误反馈确认，并口头确认“这个也通过”
+- 证据：用户在 2026-03-22 的 GUI 手测确认
+- 备注：本次会话未逐条记录具体 Provider、健康检查返回文案和请求日志明细，当前结论基于用户对“健康检查 + capability 调用 + 可观测性更新 + 错误反馈”整条链路通过的口头确认
 
 ## Go / No-Go 判断
 
@@ -275,6 +275,7 @@
 - `package.json` 仍缺少 `author`
 - 仓库还没有正式发布用的 app icon / DMG branding 资源
 - 还没有 Developer ID 签名、notarization 和 Gatekeeper 放行记录
+- 学习计划页仍未暴露任务重排 UI，`M5` 本轮按用户接受范围记录通过
 - 仍未完成 Release Candidate 级人工首启走查、安装后数据目录行为核验与演示路径确认
 
 这些缺口留给后续任务处理：

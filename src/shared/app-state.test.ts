@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  appendConversationMessage,
   applyAcceptedConversationActionPreviews,
   resolveConversationState,
   saveReflectionEntry,
@@ -74,6 +75,38 @@ test('applyAcceptedConversationActionPreviews records appliedAt and preserves so
   assert.equal(appliedPreview.reviewedAt, '2026-03-22T10:00:00.000Z');
   assert.equal(appliedPreview.status, 'applied');
   assert.match(appliedPreview.appliedAt ?? '', /\d{4}-\d{2}-\d{2}T/);
+});
+
+test('appendConversationMessage appends a trimmed user message without clearing existing suggestions', () => {
+  const resolvedConversation = resolveConversationState({
+    profile: seedState.profile,
+    goals: seedState.goals,
+    plan: seedState.plan,
+    settings: seedState.settings,
+    conversation: {
+      ...seedState.conversation,
+      messages: [],
+      suggestions: ['采纳：把学习窗口调整到周末上午 09:00 - 11:00'],
+      actionPreviews: [],
+    },
+  });
+
+  const nextState = appendConversationMessage(
+    {
+      ...seedState,
+      conversation: resolvedConversation,
+    },
+    {
+      role: 'user',
+      content: '  我最近工作日只够学 30 分钟，想压缩目标周期。  ',
+    },
+  );
+
+  assert.equal(nextState.conversation.messages.length, 1);
+  assert.equal(nextState.conversation.messages[0]?.role, 'user');
+  assert.equal(nextState.conversation.messages[0]?.content, '我最近工作日只够学 30 分钟，想压缩目标周期。');
+  assert.equal(nextState.conversation.suggestions[0], '采纳：把学习窗口调整到周末上午 09:00 - 11:00');
+  assert.equal(nextState.conversation.actionPreviews.length, 1);
 });
 
 test('updatePlanTaskStatus records execution metadata and refreshes dashboard/reflection inputs', () => {

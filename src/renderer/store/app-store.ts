@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   AppState,
   ApplyConversationActionPreviewsResult,
+  ConversationMessage,
   ConversationActionReviewStatus,
   LearningPlanDraft,
   ProviderConfig,
@@ -14,6 +15,7 @@ import type {
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
 import {
   applyAcceptedConversationActionPreviews,
+  appendConversationMessage as applyConversationMessageAppend,
   createEmptyAppState,
   resolveConversationState,
   saveReflectionEntry as applyReflectionEntrySave,
@@ -43,6 +45,7 @@ type AppStore = AppState & {
   runProfileExtraction: () => Promise<AppState>;
   generatePlanAdjustmentSuggestions: (payload: { goalId: string }) => Promise<AppState>;
   reviewConversationActionPreview: (payload: { actionId: string; reviewStatus: ConversationActionReviewStatus }) => Promise<void>;
+  appendConversationMessage: (payload: { role?: ConversationMessage['role']; content: string }) => Promise<void>;
   applyAcceptedConversationActionPreviews: () => Promise<ApplyConversationActionPreviewsResult>;
   refreshProviderConfigs: () => Promise<void>;
   upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<void>;
@@ -372,6 +375,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const diagnostics = await loadRuntimeDiagnostics(bridge);
     set({ ...persistedState, ...diagnostics, hydrated: true, hydrationError: null });
     return persistedState;
+  },
+  appendConversationMessage: async (payload) => {
+    const content = payload.content.trim();
+    if (!content) {
+      return;
+    }
+
+    const nextState = applyConversationMessageAppend(extractAppState(get()), {
+      role: payload.role ?? 'user',
+      content,
+    });
+
+    await get().saveAppState(nextState);
   },
   reviewConversationActionPreview: async (payload) => {
     const bridge = getBridge();

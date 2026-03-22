@@ -1877,6 +1877,43 @@ export function updateConversationActionPreviewReview(
   };
 }
 
+export function appendConversationMessage(
+  state: AppState,
+  payload: {
+    role: ConversationMessage['role'];
+    content: string;
+    id?: string;
+  },
+): AppState {
+  const content = payload.content.trim();
+  if (!content) {
+    return state;
+  }
+
+  const nextConversation = resolveConversationState({
+    profile: state.profile,
+    goals: state.goals,
+    plan: state.plan,
+    settings: state.settings,
+    conversation: {
+      ...state.conversation,
+      messages: [
+        ...state.conversation.messages,
+        {
+          id: payload.id?.trim() || `message-${Date.now()}-${state.conversation.messages.length + 1}`,
+          role: payload.role,
+          content,
+        },
+      ],
+    },
+  });
+
+  return {
+    ...state,
+    conversation: nextConversation,
+  };
+}
+
 export function applyAcceptedConversationActionPreviews(state: AppState): ApplyConversationActionPreviewsResult {
   let nextProfile = state.profile;
   let nextGoals = state.goals.map((goal) => ({ ...goal }));

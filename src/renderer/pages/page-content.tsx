@@ -563,11 +563,14 @@ function ReflectionContent() {
 
 function ConversationContent({ onPageChange }: { onPageChange: (pageId: string) => void }) {
   const state = useAppStore();
+  const appendConversationMessage = useAppStore((store) => store.appendConversationMessage);
   const runProfileExtraction = useAppStore((store) => store.runProfileExtraction);
   const reviewConversationActionPreview = useAppStore((store) => store.reviewConversationActionPreview);
   const applyAcceptedConversationActionPreviews = useAppStore((store) => store.applyAcceptedConversationActionPreviews);
   const conversation = useMemo(() => resolveConversationState(state), [state]);
   const [updatingActionId, setUpdatingActionId] = useState<string | null>(null);
+  const [messageDraft, setMessageDraft] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [extractingSuggestions, setExtractingSuggestions] = useState(false);
   const [applyingAccepted, setApplyingAccepted] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -666,11 +669,55 @@ function ConversationContent({ onPageChange }: { onPageChange: (pageId: string) 
     }
   };
 
+  const onSendMessage = async () => {
+    const content = messageDraft.trim();
+    if (!content) {
+      setNotice('先输入一条消息，再发送到当前对话。');
+      return;
+    }
+
+    setSendingMessage(true);
+    setNotice(null);
+
+    try {
+      await appendConversationMessage({ role: 'user', content });
+      setMessageDraft('');
+      setNotice('已写入当前对话。接下来可以点击“从当前对话提取建议”。');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '写入当前对话失败');
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
   return (
     <div className="grid gap-4 xl:grid-cols-[1.1fr,1fr]">
       <Card>
         <SectionTitle>{conversation.title}</SectionTitle>
         <Muted className="mt-2">目标：{conversation.relatedGoal} · 计划：{conversation.relatedPlan}</Muted>
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 shadow-sm">
+          <div className="text-sm font-medium text-slate-900">补一条当前对话</div>
+          <div className="mt-2 text-sm leading-6 text-slate-600">先写一条真实上下文，再点右侧“从当前对话提取建议”，让结构化预览基于你刚输入的诉求生成。</div>
+          <textarea
+            className={`${textareaClassName} mt-4`}
+            rows={4}
+            placeholder="例如：我最近工作日只能学 30 分钟，想把当前目标压缩到 6 周内完成。"
+            value={messageDraft}
+            onChange={(event) => setMessageDraft(event.target.value)}
+            disabled={sendingMessage || extractingSuggestions || applyingAccepted}
+          />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">当前消息会先写入本地 SQLite，再进入建议提取与审核链路。</div>
+            <button
+              className={primaryButtonClassName}
+              type="button"
+              onClick={() => void onSendMessage()}
+              disabled={sendingMessage || extractingSuggestions || applyingAccepted || !messageDraft.trim()}
+            >
+              {sendingMessage ? '写入中…' : '发送到当前对话'}
+            </button>
+          </div>
+        </div>
         <div className="mt-4 space-y-3">
           {conversation.messages.length ? conversation.messages.map((message) => (
             <div key={message.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
