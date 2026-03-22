@@ -125,6 +125,10 @@ test('release workflow builds macOS and Windows artifacts and publishes them to 
   assert.match(workflow, /release:/);
   assert.match(workflow, /npm run dist:mac:ci/);
   assert.match(workflow, /npm run dist:win:ci/);
+  assert.match(workflow, /GH_REPO:\s*\$\{\{\s*github\.repository\s*\}\}/);
+  assert.match(workflow, /gh release view "\$TAG_NAME" --repo "\$GH_REPO"/);
+  assert.match(workflow, /gh release upload "\$TAG_NAME" "\$\{files\[@\]\}" --clobber --repo "\$GH_REPO"/);
+  assert.match(workflow, /gh release create "\$TAG_NAME" "\$\{files\[@\]\}" --title "\$TAG_NAME" --generate-notes(?: --draft --target "\$GITHUB_SHA")? --repo "\$GH_REPO"/);
   assert.match(workflow, /gh release (create|upload)/);
 });
 

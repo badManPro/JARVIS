@@ -98,6 +98,7 @@ jobs:
       - build-windows
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - name: Download packaged artifacts
@@ -118,14 +119,14 @@ jobs:
             exit 1
           fi
 
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" "${files[@]}" --clobber
+          if gh release view "$TAG_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "${files[@]}" --clobber --repo "$GH_REPO"
             exit 0
           fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            gh release create "$TAG_NAME" "${files[@]}" --title "$TAG_NAME" --generate-notes --draft --target "$GITHUB_SHA"
+            gh release create "$TAG_NAME" "${files[@]}" --title "$TAG_NAME" --generate-notes --draft --target "$GITHUB_SHA" --repo "$GH_REPO"
             exit 0
           fi
 
-          gh release create "$TAG_NAME" "${files[@]}" --title "$TAG_NAME" --generate-notes
+          gh release create "$TAG_NAME" "${files[@]}" --title "$TAG_NAME" --generate-notes --repo "$GH_REPO"
