@@ -1,5 +1,11 @@
 import type { AiPlanGenerationResult, AiProfileExtractionResult, AiProviderAdapter, AiProviderRuntimeConfig, AiRequest, AiResult } from '../../shared/ai-service.js';
 
+const reflectionPeriodLabels = {
+  daily: '日复盘',
+  weekly: '周复盘',
+  stage: '阶段复盘',
+} as const;
+
 function toChatCompletionsUrl(endpoint: string) {
   const base = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
   return new URL('chat/completions', base).toString();
@@ -82,6 +88,27 @@ function describeTransportFailure(error: unknown) {
   return '请求失败，请稍后重试。';
 }
 
+function formatReflectionContext(
+  reflection: Extract<AiRequest, { capability: 'profile_extraction' | 'plan_adjustment' }>['reflection'],
+) {
+  const entryLines = reflection.entries.flatMap((entry) => {
+    const label = entry.label?.trim() || reflectionPeriodLabels[entry.period];
+    return [
+      entry.deviation ? `${label}偏差：${entry.deviation}` : null,
+      entry.obstacle ? `${label}障碍：${entry.obstacle}` : null,
+      entry.insight ? `${label}洞察：${entry.insight}` : null,
+      entry.followUpActions.length ? `${label}后续动作：${entry.followUpActions.join('；')}` : null,
+      entry.nextActions.length ? `${label}建议动作：${entry.nextActions.join('；')}` : null,
+    ].filter(Boolean) as string[];
+  });
+
+  return [
+    reflection.deviation ? `当前默认复盘偏差：${reflection.deviation}` : null,
+    reflection.insight ? `当前默认复盘洞察：${reflection.insight}` : null,
+    ...entryLines,
+  ].filter(Boolean) as string[];
+}
+
 function buildPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'plan_generation' }>) {
   return [
     '你是一个学习规划助手。请只输出 JSON，不要输出 Markdown。',
@@ -107,12 +134,19 @@ function buildProfileExtractionPrompt(request: Extract<AiRequest, { capability: 
     '输出格式：{"suggestions":["采纳：...","采纳：..."]}',
     '要求：建议必须是中文短句，优先使用以下可被系统识别的表达：',
     '1. 调整学习窗口: 采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',
-    '2. 调整目标周期/成功标准: 采纳：把当前主目标周期改为 6 周，并把成功标准调整为完成一个可演示的本地优先 AI MVP',
-    '3. 调整计划标题/任务: 采纳：把计划标题改成「Python + AI MVP 冲刺草案」，并新增任务「拆解本周 MVP 功能清单」',
-    '4. 未落地能力占位: 进行中：真实 AI Provider 生成计划仍待接入',
-    '请根据以下对话生成 2-4 条建议，尽量覆盖画像、目标和计划。',
+    '2. 调整时间预算: 采纳：把时间预算调整为工作日 30 分钟，周末 2 小时',
+    '3. 调整节奏偏好: 采纳：把节奏偏好调整为更轻量、每次 30 分钟推进',
+    '4. 补充阻力因素: 采纳：把阻力因素补充为「工作日连续时间不足」',
+    '5. 补充计划影响: 采纳：把计划影响说明补充为「后续计划优先拆成 30 分钟内的小步」',
+    '6. 调整目标周期/成功标准: 采纳：把当前主目标周期改为 6 周，并把成功标准调整为完成一个可演示的本地优先 AI MVP',
+    '7. 调整计划标题/任务: 采纳：把计划标题改成「Python + AI MVP 冲刺草案」，并新增任务「拆解本周 MVP 功能清单」',
+    '8. 未落地能力占位: 进行中：真实 AI Provider 生成计划仍待接入',
+    '每条建议只改一个字段；如果复盘显示节奏、预算、阻力或计划约束发生变化，优先先给画像建议。',
+    '请综合以下对话和复盘上下文生成 2-4 条建议，尽量覆盖画像、目标和计划。',
     `对话标题：${request.conversation.title}`,
     ...request.conversation.messages.map((message) => `${message.role}: ${message.content}`),
+    '复盘上下文：',
+    ...formatReflectionContext(request.reflection),
   ].join('\n');
 }
 
@@ -121,8 +155,15 @@ function buildTextPrompt(request: Exclude<AiRequest, { capability: 'plan_generat
     case 'plan_adjustment':
       return [
         '你是一个学习计划调整助手。请输出纯文本，不要 Markdown。',
+        '输出 2-4 行中文短句，每行以“采纳：”或“进行中：”开头，优先给出可直接落到计划标题或任务补充的建议。',
         `目标：${request.goal.title}`,
+        `学习窗口：${request.profile.bestStudyWindow}`,
+        `时间预算：${request.profile.timeBudget}`,
+        `节奏偏好：${request.profile.pacePreference}`,
+        `最近计划影响：${request.profile.planImpact[request.profile.planImpact.length - 1] ?? '暂无'}`,
         `当前草案：${request.currentDraft.summary}`,
+        '复盘上下文：',
+        ...formatReflectionContext(request.reflection),
         `反馈：${request.feedback.join('；')}`,
       ].join('\n');
     case 'reflection_summary':

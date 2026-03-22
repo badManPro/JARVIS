@@ -198,6 +198,11 @@ test('runProfileExtraction writes AI suggestions into conversation preview flow'
 
   assert.equal(executeCalls.length, 1);
   assert.equal(executeCalls[0]?.capability, 'profile_extraction');
+  assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'profile_extraction' }>).reflection.entries.length, seedState.reflection.entries.length);
+  assert.equal(
+    (executeCalls[0] as Extract<AiRequest, { capability: 'profile_extraction' }>).reflection.entries.find((entry) => entry.period === 'weekly')?.obstacle,
+    seedState.reflection.entries.find((entry) => entry.period === 'weekly')?.obstacle,
+  );
   assert.deepEqual(nextState.conversation.suggestions, [
     '采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',
     '采纳：把当前主目标周期改为 6 周，并把成功标准调整为完成一个可演示的本地优先 AI MVP',
@@ -287,6 +292,11 @@ test('generatePlanAdjustmentSuggestions merges AI suggestions back into the conv
   assert.equal(executeCalls.length, 1);
   assert.equal(executeCalls[0]?.capability, 'plan_adjustment');
   assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_adjustment' }>).goal.id, goalId);
+  assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_adjustment' }>).reflection.entries.length, seedState.reflection.entries.length);
+  assert.equal(
+    (executeCalls[0] as Extract<AiRequest, { capability: 'plan_adjustment' }>).reflection.entries.find((entry) => entry.period === 'stage')?.insight,
+    seedState.reflection.entries.find((entry) => entry.period === 'stage')?.insight,
+  );
   assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_adjustment' }>).feedback.includes(seedState.reflection.deviation), true);
   assert.deepEqual(nextState.conversation.suggestions, [
     '采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',

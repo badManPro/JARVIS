@@ -136,13 +136,14 @@ npm run build
 - Provider 健康状态现可由设置页手动检查，并会随着真实 capability 调用成功 / 失败自动回写到 `provider_configs.health_status`
 - 设置页现可查看最小可观测性摘要，包括总请求数、成功 / 失败统计、每个 capability 最近请求状态和最近请求列表
 - 复盘页现提供独立 `saveReflectionEntry` 链路，用户可按日 / 周 / 阶段分别编辑复盘输入，并立即刷新建议区与计划调整上下文
+- `profile_extraction` / `plan_adjustment` 现都会显式消费结构化 `reflection` 上下文，画像建议可直接产出学习窗口、时间预算、节奏偏好、阻力因素与计划影响的结构化预览
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. 让复盘结果影响画像与计划调整建议生成
+1. 首页展示今日优先动作与风险提醒
 2. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
 3. 继续细化 AI runtime 的 tracing / metrics 与排障体验
 4. 为关键链路补更多集成级验收
 
 ## 当前推荐下一任务
-- `Phase 4 / Task 3`：复盘结果影响画像与计划调整建议生成
+- `Phase 4 / Task 4`：首页展示今日优先动作与风险提醒

@@ -144,3 +144,40 @@ test('saveReflectionEntry writes structured feedback into the selected reflectio
     true,
   );
 });
+
+test('resolveConversationState parses reflection-driven profile suggestions into executable previews', () => {
+  const suggestions = [
+    '采纳：把时间预算调整为工作日 30 分钟，周末 2 小时',
+    '采纳：把节奏偏好调整为更轻量、每次 30 分钟推进',
+    '采纳：把阻力因素补充为「工作日连续时间不足」',
+    '采纳：把计划影响说明补充为「后续计划优先拆成 30 分钟内的小步」',
+  ];
+  const conversation = resolveConversationState({
+    profile: seedState.profile,
+    goals: seedState.goals,
+    plan: seedState.plan,
+    settings: seedState.settings,
+    conversation: {
+      ...seedState.conversation,
+      suggestions,
+      actionPreviews: [],
+    },
+  });
+
+  const timeBudgetPreview = conversation.actionPreviews.find((preview) => preview.sourceSuggestion === suggestions[0]);
+  const pacePreview = conversation.actionPreviews.find((preview) => preview.sourceSuggestion === suggestions[1]);
+  const blockerPreview = conversation.actionPreviews.find((preview) => preview.sourceSuggestion === suggestions[2]);
+  const planImpactPreview = conversation.actionPreviews.find((preview) => preview.sourceSuggestion === suggestions[3]);
+
+  assert.equal(timeBudgetPreview?.execution?.type, 'profile_update');
+  assert.equal(timeBudgetPreview?.changes.some((change) => change.field === 'profile.timeBudget' && change.after === '工作日 30 分钟，周末 2 小时'), true);
+
+  assert.equal(pacePreview?.execution?.type, 'profile_update');
+  assert.equal(pacePreview?.changes.some((change) => change.field === 'profile.pacePreference' && change.after === '更轻量、每次 30 分钟推进'), true);
+
+  assert.equal(blockerPreview?.execution?.type, 'profile_update');
+  assert.equal(blockerPreview?.changes.some((change) => change.field === 'profile.blockers' && change.after === '工作日连续时间不足'), true);
+
+  assert.equal(planImpactPreview?.execution?.type, 'profile_update');
+  assert.equal(planImpactPreview?.changes.some((change) => change.field === 'profile.planImpact' && change.after === '后续计划优先拆成 30 分钟内的小步'), true);
+});

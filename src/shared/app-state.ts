@@ -691,7 +691,7 @@ function parseSuggestionStatus(sourceSuggestion: string) {
 }
 
 function inferConversationActionTarget(content: string): ConversationActionScope {
-  if (/(画像|时间窗口|节奏|偏好|优势|阻碍)/.test(content)) {
+  if (/(画像|时间窗口|学习窗口|时间预算|节奏|偏好|优势|阻碍|阻力|计划影响)/.test(content)) {
     return 'profile';
   }
 
@@ -754,6 +754,38 @@ function extractStudyWindow(content: string) {
   }
 
   return null;
+}
+
+function trimSuggestionValue(value: string) {
+  return value.replace(/[。！!；;]+$/g, '').trim();
+}
+
+function extractProfileDirectValue(content: string, labels: string[], verbs: string[]) {
+  const quoted = extractQuotedContent(content);
+  if (quoted && labels.some((label) => content.includes(label))) {
+    return trimSuggestionValue(quoted);
+  }
+
+  const labelPattern = labels.join('|');
+  const verbPattern = verbs.join('|');
+  const direct = content.match(new RegExp(`(?:${labelPattern})(?:${verbPattern})[：:\\s]*(.+)$`));
+  return direct?.[1] ? trimSuggestionValue(direct[1]) : null;
+}
+
+function extractTimeBudget(content: string) {
+  return extractProfileDirectValue(content, ['时间预算', '学习预算'], ['调整为', '改为', '设为']);
+}
+
+function extractPacePreference(content: string) {
+  return extractProfileDirectValue(content, ['节奏偏好', '学习节奏', '节奏'], ['调整为', '改为', '设为']);
+}
+
+function extractProfileBlocker(content: string) {
+  return extractProfileDirectValue(content, ['阻力因素', '阻碍因素', '阻力', '阻碍'], ['补充为', '调整为', '改为']);
+}
+
+function extractProfilePlanImpact(content: string) {
+  return extractProfileDirectValue(content, ['计划影响说明', '计划影响'], ['补充为', '调整为', '改为']);
 }
 
 function extractGoalPriority(content: string): LearningGoal['priority'] | null {
@@ -981,23 +1013,36 @@ function buildProfileAdjustmentPreview({
   content: string;
   profile: UserProfile;
 }): ConversationActionPreview | null {
-  if (!/(画像|时间窗口|学习窗口|节奏|偏好)/.test(content)) {
+  if (!/(画像|时间窗口|学习窗口|时间预算|节奏|偏好|阻力|阻碍|计划影响)/.test(content)) {
     return null;
   }
 
   const nextBestStudyWindow = extractStudyWindow(content);
+  const nextTimeBudget = extractTimeBudget(content);
+  const nextPacePreference = extractPacePreference(content);
+  const nextBlocker = extractProfileBlocker(content);
+  const explicitPlanImpact = extractProfilePlanImpact(content);
   const nextPlanImpact = dedupeStrings([
     ...profile.planImpact,
-    `对话确认：后续计划优先围绕${nextBestStudyWindow ?? profile.bestStudyWindow}安排执行窗口。`,
+    ...(explicitPlanImpact ? [explicitPlanImpact] : []),
+    ...(nextBestStudyWindow && nextBestStudyWindow !== profile.bestStudyWindow
+      ? [`对话确认：后续计划优先围绕${nextBestStudyWindow}安排执行窗口。`]
+      : []),
   ]);
   const nextProfile: UserProfile = {
     ...profile,
+    timeBudget: nextTimeBudget ?? profile.timeBudget,
+    pacePreference: nextPacePreference ?? profile.pacePreference,
     bestStudyWindow: nextBestStudyWindow ?? profile.bestStudyWindow,
+    blockers: nextBlocker ? dedupeStrings([...profile.blockers, nextBlocker]) : [...profile.blockers],
     planImpact: nextPlanImpact,
   };
 
   if (
-    nextProfile.bestStudyWindow === profile.bestStudyWindow
+    nextProfile.timeBudget === profile.timeBudget
+    && nextProfile.pacePreference === profile.pacePreference
+    && nextProfile.bestStudyWindow === profile.bestStudyWindow
+    && JSON.stringify(nextProfile.blockers) === JSON.stringify(profile.blockers)
     && JSON.stringify(nextProfile.planImpact) === JSON.stringify(profile.planImpact)
   ) {
     return null;
@@ -1015,10 +1060,28 @@ function buildProfileAdjustmentPreview({
     sourceSuggestion,
     changes: [
       {
+        field: 'profile.timeBudget',
+        label: '时间预算',
+        before: profile.timeBudget,
+        after: nextProfile.timeBudget,
+      },
+      {
+        field: 'profile.pacePreference',
+        label: '节奏偏好',
+        before: profile.pacePreference,
+        after: nextProfile.pacePreference,
+      },
+      {
         field: 'profile.bestStudyWindow',
         label: '学习窗口',
         before: profile.bestStudyWindow,
         after: nextProfile.bestStudyWindow,
+      },
+      {
+        field: 'profile.blockers',
+        label: '阻力因素',
+        before: profile.blockers[profile.blockers.length - 1] ?? '暂无额外阻力',
+        after: nextProfile.blockers[nextProfile.blockers.length - 1] ?? '暂无额外阻力',
       },
       {
         field: 'profile.planImpact',
@@ -1026,7 +1089,7 @@ function buildProfileAdjustmentPreview({
         before: profile.planImpact[profile.planImpact.length - 1] ?? '暂无额外说明',
         after: nextProfile.planImpact[nextProfile.planImpact.length - 1] ?? '暂无额外说明',
       },
-    ],
+    ].filter((change) => change.before !== change.after),
     execution: {
       type: 'profile_update',
       nextProfile,

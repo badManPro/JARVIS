@@ -109,6 +109,7 @@ test('AiService rejects profile_extraction when the routed provider secret is mi
       profile: seedState.profile,
       goals: seedState.goals,
       plan: seedState.plan,
+      reflection: seedState.reflection,
     }),
     /OpenAI \/ GPT.*Secret/,
   );

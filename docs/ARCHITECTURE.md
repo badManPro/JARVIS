@@ -117,7 +117,7 @@ Renderer 先按以下状态切分：
    - 结构化保存 `daily / weekly / stage` 三个复盘周期的手动输入
    - 当前保存偏差说明、难度匹配、时间分配、自评、复盘结论和后续动作
 
-当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / reflection / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 现在会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；`conversation` 目前仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。
+当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / reflection / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 现在会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；`conversation` 目前仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路。
 
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：
@@ -163,8 +163,8 @@ Preload 当前暴露：
 6. 计划页通过 `updatePlanTaskStatus` 支持对单个任务执行开始 / 完成 / 跳过 / 延后，并立即刷新首页与复盘输入
 7. 复盘页通过 `saveReflectionEntry` 按日 / 周 / 阶段写入结构化复盘输入，并立即刷新建议区与后续 AI 上下文
 8. 计划页通过 `regenerateLearningPlanDraft` 走 `plan_generation`，并在重生成前归档快照
-9. 对话页通过 `runProfileExtraction` 走 `profile_extraction`，把模型返回 suggestions 回流到 action preview
-10. 计划页通过 `generatePlanAdjustmentSuggestions` 走 `plan_adjustment`，把调整建议回流到对话预览
+9. 对话页通过 `runProfileExtraction` 走 `profile_extraction`，并同时携带当前对话与结构化复盘上下文，把模型返回 suggestions 回流到 action preview
+10. 计划页通过 `generatePlanAdjustmentSuggestions` 走 `plan_adjustment`，并把当前草案、画像约束与复盘反馈一并交给模型，再把调整建议回流到对话预览
 11. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态
 12. 设置页与配置页可通过 `saveAppState` / `upsertProviderConfig` / `getAiRuntimeSummary` 更新路由并直接查看每个 capability 当前命中的 Provider、模型、健康状态和阻塞原因
 13. 设置页可通过 `runProviderHealthCheck` 对单个 Provider 触发真实连通性探测，并把结果回写到 `provider_configs.health_status`
@@ -173,6 +173,7 @@ Preload 当前暴露：
 当前对话页额外具备一层“先审核、再应用”的结构化映射：
 - `conversation.suggestions` 仍保留原始自然语言建议，但现在既可以来自本地 seed，也可以来自 `profile_extraction` / `plan_adjustment`
 - `conversation.actionPreviews` 会基于当前目标、计划、画像与 route 配置回填结构化预览
+- 当前画像预览已可把学习窗口、时间预算、节奏偏好、阻力因素与计划影响说明解析成可执行 `profile_update`
 - `actionPreviews.reviewStatus` 会随用户确认/拒绝保留在快照里
 - 已接受且带执行 payload 的 preview 会通过主进程统一应用到结构化实体，再把 preview 标记为 `applied`
 - 动作来源标签、建议生成时间、审核时间、写入时间附着在 `actionPreviews` 上，并随 `app_snapshots` 一起持久化；目前仍未单独建表

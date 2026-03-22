@@ -49,6 +49,7 @@ export type AiProfileExtractionRequest = {
   profile: UserProfile;
   goals: AppState['goals'];
   plan: LearningPlanState;
+  reflection: AppState['reflection'];
 };
 
 export type AiPlanAdjustmentRequest = {
@@ -56,6 +57,7 @@ export type AiPlanAdjustmentRequest = {
   goal: LearningGoal;
   profile: UserProfile;
   currentDraft: LearningPlanDraft;
+  reflection: AppState['reflection'];
   feedback: string[];
 };
 

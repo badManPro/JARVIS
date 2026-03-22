@@ -234,6 +234,7 @@ export class AppStorageService {
       profile: snapshot.profile,
       goals: snapshot.goals,
       plan: snapshot.plan,
+      reflection: snapshot.reflection,
     } satisfies Extract<AiRequest, { capability: 'profile_extraction' }>;
 
     try {
@@ -341,6 +342,7 @@ export class AppStorageService {
       goal: targetGoal,
       profile: snapshot.profile,
       currentDraft,
+      reflection: snapshot.reflection,
       feedback: this.collectPlanAdjustmentFeedback(snapshot, currentDraft),
     } satisfies Extract<AiRequest, { capability: 'plan_adjustment' }>;
 
