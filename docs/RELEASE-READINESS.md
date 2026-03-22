@@ -3,19 +3,23 @@
 ## 当前判断
 - 日期：2026-03-22
 - 当前阶段：`Phase 6 / Task 4` 已完成
-- 当前状态：项目已经具备一套可重复执行的自动预检命令、关键业务闭环的集成级自动验证、可生成 macOS arm64 `.app` / `.zip` / `.dmg` 的 packaging pipeline，以及真实首启空状态与首页 onboarding 引导；DMG 内容和 app 签名结构也已完成基础检查
-- 尚未完成：正式发布元数据（`author` / app icon / DMG branding）、Developer ID 签名与 notarization，以及 Release Candidate 级人工回归仍未完成，因此暂不能把当前状态视为“正式可分发发布版”
+- 当前状态：项目已经具备一套可重复执行的自动预检命令、关键业务闭环的集成级自动验证、可生成 macOS arm64 `.app` / `.zip` / `.dmg` 与 Windows x64 `.exe` / `.zip` 的 packaging pipeline，以及通过 GitHub Actions 自动上传双平台产物到 GitHub Releases 的发布工作流；DMG 内容和 macOS app 签名结构也已完成基础检查
+- 尚未完成：正式发布元数据（`author` / app icon / DMG branding）、macOS Developer ID 签名与 notarization、Windows 代码签名/分发信任收口，以及 Release Candidate 级人工回归仍未完成，因此暂不能把当前状态视为“正式可分发发布版”
 
 ## 最新预检结果
 - `npm run lint`：PASS
 - `npm run build`：PASS
-- `node --test dist-electron/src/**/*.test.js`：PASS（52/52）
+- `node --test dist-electron/src/**/*.test.js`：PASS（54/54）
+- `npm run build:main && node --test dist-electron/src/main/packaging-config.test.js`：PASS
 - `npm run rebuild:native:electron`：PASS（成功将 `better-sqlite3` 切到 Electron ABI）
 - `npm run rebuild:native:node`：PASS（当前受限网络下 `npm rebuild` 下载 Node headers 失败时，wrapper 会回退到隐藏备份并恢复 Node ABI）
 - 关键链路集成验证：PASS（建议审核落库闭环、执行/复盘反馈回流闭环）
 - 首次启动与空状态自动验证：PASS（空数据库首启返回真实空状态，dashboard 派生 onboarding checklist）
 - `npm run package`：PASS（生成 `release/mac-arm64/Learning Companion.app`）
 - `npm run dist`：PASS（生成 `release/Learning Companion-0.1.0-arm64.dmg` 与 `release/Learning Companion-0.1.0-arm64-mac.zip`，并在结束后自动恢复 `better-sqlite3` 的 Node ABI）
+- `npm run dist -- --mac --arm64`：PASS（重新生成 macOS arm64 `dmg/zip`）
+- `npm run dist -- --win --x64`：PASS（在 macOS 环境下完成 Windows x64 交叉打包，生成 `release/Learning Companion Setup 0.1.0.exe` 与 `release/Learning Companion-0.1.0-win.zip`）
+- `.github/workflows/release.yml`：PASS（支持 `v*` tag 和手动触发，构建 macOS/Windows 产物并上传到 GitHub Releases）
 - DMG 挂载内容检查：PASS（包含 `Learning Companion.app` 与 `/Applications` 快捷方式）
 - `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Learning Companion.app"`：PASS
 - `spctl -a -vv -t open "release/mac-arm64/Learning Companion.app"`：返回 `internal error in Code Signing subsystem`，当前只可视为 ad-hoc 签名环境下的观察结果，不能替代正式 Gatekeeper 验收

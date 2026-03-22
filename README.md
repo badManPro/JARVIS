@@ -118,6 +118,18 @@ npm run package
 npm run dist
 ```
 
+### 6. 生成 Windows installer
+当前仓库已补 `electron-builder` 的 Windows 目标，但推荐在 GitHub Actions 的 Windows runner 上产出：
+
+```bash
+npm run dist -- --win --x64
+```
+
+### 7. 发布到 GitHub Releases
+- 推送 `v*` tag 后，`.github/workflows/release.yml` 会在 macOS runner 生成 `.dmg/.zip`，在 Windows runner 生成 `.exe/.zip`，然后把产物上传到对应的 GitHub Release。
+- 也可以手动触发 `Release` workflow，并传入一个 tag；这种路径会创建或更新同名 draft release。
+- 本机目前只验证了 macOS 打包链路；Windows 打包以 CI 产物为准，更适合在 GitHub Actions 上执行。
+
 ## 当前骨架包含什么
 - Electron 主进程窗口初始化
 - preload 安全暴露最小 API，并提供本地数据 / Provider 配置 bridge

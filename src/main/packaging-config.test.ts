@@ -18,6 +18,9 @@ type PackageJson = {
     mac?: {
       target?: Array<string | { target: string }>;
     };
+    win?: {
+      target?: Array<string | { target: string }>;
+    };
   };
 };
 
@@ -30,7 +33,7 @@ function readWorkspaceFile(relativePath: string) {
   return fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8');
 }
 
-function normalizeTargets(targets: NonNullable<NonNullable<PackageJson['build']>['mac']>['target']) {
+function normalizeTargets(targets?: Array<string | { target: string }>) {
   return (targets ?? []).map((target) => typeof target === 'string' ? target : target.target);
 }
 
@@ -82,6 +85,31 @@ test('package.json exposes macOS installer-oriented electron-builder config', ()
     'node_modules/better-sqlite3/**/*',
   ]);
   assert.deepEqual(macTargets, ['dmg', 'zip']);
+});
+
+test('package.json exposes Windows installer-oriented electron-builder config', () => {
+  const packageJson = readPackageJson();
+  const builderConfig = packageJson.build;
+  const winTargets = normalizeTargets(builderConfig?.win?.target);
+
+  assert.deepEqual(winTargets, ['nsis', 'zip']);
+});
+
+test('release workflow builds macOS and Windows artifacts and publishes them to GitHub Releases', () => {
+  const workflowPath = path.resolve(process.cwd(), '.github/workflows/release.yml');
+  assert.ok(fs.existsSync(workflowPath));
+
+  const workflow = fs.readFileSync(workflowPath, 'utf8');
+
+  assert.match(workflow, /^name:\s*Release/m);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\s*\n\s*tags:\s*\n\s*-\s*['"]v\*['"]/m);
+  assert.match(workflow, /build-macos:/);
+  assert.match(workflow, /build-windows:/);
+  assert.match(workflow, /release:/);
+  assert.match(workflow, /npm run dist -- --mac --arm64/);
+  assert.match(workflow, /npm run dist -- --win --x64/);
+  assert.match(workflow, /gh release (create|upload)/);
 });
 
 test('main process points to a CommonJS preload build for Electron', () => {
