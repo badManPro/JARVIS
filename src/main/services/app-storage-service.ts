@@ -1,5 +1,5 @@
 import type { AppState, ApplyConversationActionPreviewsResult, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
-import type { AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import type { AiProviderHealthCheckResponse, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import { createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
@@ -182,19 +182,26 @@ export class AppStorageService {
 
   async runProfileExtraction() {
     const snapshot = this.loadAppState();
-    const result = await this.aiService.execute(snapshot.settings, {
-      capability: 'profile_extraction',
-      conversation: snapshot.conversation,
-      profile: snapshot.profile,
-      goals: snapshot.goals,
-      plan: snapshot.plan,
-    });
+    const providerId = snapshot.settings.routing.profileExtraction;
 
-    if (result.capability !== 'profile_extraction') {
-      throw new Error('画像提取返回了意外结果。');
+    try {
+      const result = await this.aiService.execute(snapshot.settings, {
+        capability: 'profile_extraction',
+        conversation: snapshot.conversation,
+        profile: snapshot.profile,
+        goals: snapshot.goals,
+        plan: snapshot.plan,
+      });
+
+      if (result.capability !== 'profile_extraction') {
+        throw new Error('画像提取返回了意外结果。');
+      }
+
+      return this.persistConversationSuggestions(this.withProviderHealthStatus(snapshot, providerId, 'ready'), result.suggestions, 'replace');
+    } catch (error) {
+      this.persistProviderHealthStatus(snapshot, providerId, 'warning');
+      throw error;
     }
-
-    return this.persistConversationSuggestions(snapshot, result.suggestions, 'replace');
   }
 
   async regenerateLearningPlanDraft(goalId: string, snapshotDraft?: LearningPlanDraft | null) {
@@ -214,50 +221,57 @@ export class AppStorageService {
       : this.normalizeSnapshotDraft(previousDraft, previousDraft);
     const nextSnapshotVersion = getNextSnapshotVersion(snapshot.plan.snapshots, goalId);
     const archivedSnapshot = createPlanSnapshot(archivedDraft, nextSnapshotVersion);
-    const result = await this.aiService.execute(snapshot.settings, {
-      capability: 'plan_generation',
-      goal: targetGoal,
-      profile: snapshot.profile,
-      currentDraft: previousDraft,
-    });
+    const providerId = snapshot.settings.routing.planGeneration;
 
-    if (result.capability !== 'plan_generation') {
-      throw new Error('计划生成返回了意外结果。');
+    try {
+      const result = await this.aiService.execute(snapshot.settings, {
+        capability: 'plan_generation',
+        goal: targetGoal,
+        profile: snapshot.profile,
+        currentDraft: previousDraft,
+      });
+
+      if (result.capability !== 'plan_generation') {
+        throw new Error('计划生成返回了意外结果。');
+      }
+
+      const regeneratedDraft = this.normalizeLearningPlanDraft({
+        ...previousDraft,
+        id: previousDraft.id,
+        goalId: previousDraft.goalId,
+        title: result.draft.title,
+        summary: result.draft.summary,
+        basis: result.draft.basis,
+        stages: result.draft.stages.map((stage) => ({
+          title: stage.title,
+          outcome: stage.outcome,
+          progress: stage.progress ?? '未开始',
+        })),
+        tasks: result.draft.tasks.map((task, index) => ({
+          id: `${previousDraft.id}-ai-task-${index + 1}`,
+          title: task.title,
+          duration: task.duration,
+          note: task.note,
+          status: task.status ?? 'todo',
+        })),
+      }, previousDraft);
+
+      const nextState = this.sanitizeState(this.hydratePlanState(this.withProviderHealthStatus({
+        ...snapshot,
+        plan: {
+          ...snapshot.plan,
+          drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? regeneratedDraft : item)),
+          snapshots: [archivedSnapshot, ...snapshot.plan.snapshots],
+        },
+      }, providerId, 'ready')));
+
+      this.persistStructuredState(nextState);
+      this.appStateRepository.save(nextState);
+      return this.loadAppState();
+    } catch (error) {
+      this.persistProviderHealthStatus(snapshot, providerId, 'warning');
+      throw error;
     }
-
-    const regeneratedDraft = this.normalizeLearningPlanDraft({
-      ...previousDraft,
-      id: previousDraft.id,
-      goalId: previousDraft.goalId,
-      title: result.draft.title,
-      summary: result.draft.summary,
-      basis: result.draft.basis,
-      stages: result.draft.stages.map((stage) => ({
-        title: stage.title,
-        outcome: stage.outcome,
-        progress: stage.progress ?? '未开始',
-      })),
-      tasks: result.draft.tasks.map((task, index) => ({
-        id: `${previousDraft.id}-ai-task-${index + 1}`,
-        title: task.title,
-        duration: task.duration,
-        note: task.note,
-        status: task.status ?? 'todo',
-      })),
-    }, previousDraft);
-
-    const nextState = this.sanitizeState(this.hydratePlanState({
-      ...snapshot,
-      plan: {
-        ...snapshot.plan,
-        drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? regeneratedDraft : item)),
-        snapshots: [archivedSnapshot, ...snapshot.plan.snapshots],
-      },
-    }));
-
-    this.persistStructuredState(nextState);
-    this.appStateRepository.save(nextState);
-    return this.loadAppState();
   }
 
   async generatePlanAdjustmentSuggestions(goalId: string) {
@@ -272,20 +286,27 @@ export class AppStorageService {
       throw new Error('计划草案不存在，无法生成调整建议。');
     }
 
-    const result = await this.aiService.execute(snapshot.settings, {
-      capability: 'plan_adjustment',
-      goal: targetGoal,
-      profile: snapshot.profile,
-      currentDraft,
-      feedback: this.collectPlanAdjustmentFeedback(snapshot, currentDraft),
-    });
+    const providerId = snapshot.settings.routing.planAdjustment;
 
-    if (result.capability !== 'plan_adjustment') {
-      throw new Error('计划调整返回了意外结果。');
+    try {
+      const result = await this.aiService.execute(snapshot.settings, {
+        capability: 'plan_adjustment',
+        goal: targetGoal,
+        profile: snapshot.profile,
+        currentDraft,
+        feedback: this.collectPlanAdjustmentFeedback(snapshot, currentDraft),
+      });
+
+      if (result.capability !== 'plan_adjustment') {
+        throw new Error('计划调整返回了意外结果。');
+      }
+
+      const suggestions = this.parseSuggestionText(result.text);
+      return this.persistConversationSuggestions(this.withProviderHealthStatus(snapshot, providerId, 'ready'), suggestions, 'append');
+    } catch (error) {
+      this.persistProviderHealthStatus(snapshot, providerId, 'warning');
+      throw error;
     }
-
-    const suggestions = this.parseSuggestionText(result.text);
-    return this.persistConversationSuggestions(snapshot, suggestions, 'append');
   }
 
   applyAcceptedConversationActionPreviews(): ApplyConversationActionPreviewsResult {
@@ -366,6 +387,18 @@ export class AppStorageService {
 
   getAiRuntimeSummary(): AiRuntimeSummaryItem[] {
     return this.aiService.getRuntimeSummary(this.loadAppState().settings);
+  }
+
+  async runProviderHealthCheck(providerId: ProviderId): Promise<AiProviderHealthCheckResponse> {
+    const snapshot = this.loadAppState();
+    const result = await this.aiService.checkProviderHealth(snapshot.settings, providerId);
+    const nextState = this.persistProviderHealthStatus(snapshot, providerId, result.healthStatus);
+
+    return {
+      providers: nextState.settings.providers,
+      aiRuntimeSummary: this.aiService.getRuntimeSummary(nextState.settings),
+      result,
+    };
   }
 
   private loadStructuredState(): AppState | null {
@@ -449,6 +482,39 @@ export class AppStorageService {
       ...state,
       conversation: resolveConversationState(state),
     };
+  }
+
+  private withProviderHealthStatus(
+    state: AppState,
+    providerId: ProviderId,
+    healthStatus: ProviderConfig['healthStatus'],
+  ): AppState {
+    if (!state.settings.providers.some((provider) => provider.id === providerId)) {
+      return state;
+    }
+
+    return {
+      ...state,
+      settings: {
+        ...state.settings,
+        providers: state.settings.providers.map((provider) => (
+          provider.id === providerId
+            ? { ...provider, healthStatus }
+            : provider
+        )),
+      },
+    };
+  }
+
+  private persistProviderHealthStatus(
+    state: AppState,
+    providerId: ProviderId,
+    healthStatus: ProviderConfig['healthStatus'],
+  ) {
+    const nextState = this.sanitizeState(this.withProviderHealthStatus(state, providerId, healthStatus));
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+    return this.loadAppState();
   }
 
   private persistConversationSuggestions(

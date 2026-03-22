@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AppState } from '../../shared/app-state.js';
 import { seedState } from '../../shared/app-state.js';
-import type { AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import type { AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { createDatabase } from '../db/client.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
@@ -51,6 +51,7 @@ function createRuntimeSummary(settings: AppState['settings']): AiRuntimeSummaryI
       providerLabel: provider?.label ?? providerId,
       model: provider?.model ?? 'unknown',
       ready,
+      healthStatus: provider?.healthStatus ?? 'unknown',
       blockedReason: ready
         ? undefined
         : (!provider
@@ -67,8 +68,9 @@ function createRuntimeSummary(settings: AppState['settings']): AiRuntimeSummaryI
 function createHarness(options: {
   snapshotState?: AppState;
   aiExecute?: (settings: AppState['settings'], request: AiRequest) => Promise<AiResult>;
+  aiCheckHealth?: (settings: AppState['settings'], providerId: AppState['settings']['providers'][number]['id']) => Promise<AiProviderHealthCheckResult>;
 } = {}) {
-  const { snapshotState, aiExecute } = options;
+  const { snapshotState, aiExecute, aiCheckHealth } = options;
   const { db } = createDatabase(':memory:');
   const appStateRepository = new AppStateRepository(db);
   const entitiesRepository = new EntitiesRepository(db);
@@ -86,6 +88,13 @@ function createHarness(options: {
     providerSecretRepository,
     {
       getRuntimeSummary: (settings) => createRuntimeSummary(settings),
+      checkProviderHealth: aiCheckHealth ?? (async (_settings, providerId) => ({
+        providerId,
+        providerLabel: providerId,
+        healthStatus: 'unknown',
+        message: 'not used in this test',
+        checkedAt: new Date().toISOString(),
+      })),
       execute: aiExecute ?? (async () => {
         throw new Error('execute is not used in this test');
       }),
@@ -331,4 +340,87 @@ test('getAiRuntimeSummary reflects structured route changes and secret readiness
   const reroutedPlanGeneration = reroutedSummary.find((item) => item.capability === 'plan_generation');
   assert.ok(reroutedPlanGeneration);
   assert.equal(reroutedPlanGeneration.providerId, 'openai');
+});
+
+test('runProviderHealthCheck persists the returned health status', async () => {
+  const { service } = createHarness({
+    aiCheckHealth: async (_settings, providerId) => ({
+      providerId,
+      providerLabel: 'DeepSeek',
+      healthStatus: 'ready',
+      message: '模型列表接口可访问。',
+      checkedAt: '2026-03-22T20:50:00.000Z',
+    }),
+  });
+  service.initialize();
+
+  const response = await service.runProviderHealthCheck('deepseek');
+
+  assert.equal(response.result.providerId, 'deepseek');
+  assert.equal(response.result.healthStatus, 'ready');
+  assert.equal(response.providers.find((provider) => provider.id === 'deepseek')?.healthStatus, 'ready');
+  assert.equal(response.aiRuntimeSummary.find((item) => item.capability === 'plan_generation')?.healthStatus, 'ready');
+});
+
+test('regenerateLearningPlanDraft marks the routed provider as warning when AI execution fails', async () => {
+  const snapshot = cloneState({
+    settings: {
+      ...seedState.settings,
+      providers: seedState.settings.providers.map((provider) => (
+        provider.id === 'deepseek'
+          ? { ...provider, enabled: true, healthStatus: 'ready' }
+          : provider
+      )),
+    },
+  });
+  const { service } = createHarness({
+    snapshotState: snapshot,
+    aiExecute: async () => {
+      throw new Error('无法连接到 Provider，请检查 Endpoint 或网络。');
+    },
+  });
+
+  const initialState = service.initialize();
+
+  await assert.rejects(
+    () => service.regenerateLearningPlanDraft(initialState.plan.activeGoalId),
+    /无法连接到 Provider/,
+  );
+
+  const persistedState = service.loadAppState();
+  assert.equal(persistedState.settings.providers.find((provider) => provider.id === 'deepseek')?.healthStatus, 'warning');
+});
+
+test('regenerateLearningPlanDraft marks the routed provider as ready after a successful AI response', async () => {
+  const snapshot = cloneState({
+    settings: {
+      ...seedState.settings,
+      providers: seedState.settings.providers.map((provider) => (
+        provider.id === 'deepseek'
+          ? { ...provider, enabled: true, healthStatus: 'warning' }
+          : provider
+      )),
+    },
+  });
+  const { service } = createHarness({
+    snapshotState: snapshot,
+    aiExecute: async () => ({
+      capability: 'plan_generation',
+      providerId: 'deepseek',
+      providerLabel: 'DeepSeek',
+      model: 'deepseek-chat',
+      draft: {
+        title: '恢复健康后的计划草案',
+        summary: 'Provider 调用成功后回写 ready。',
+        basis: ['健康状态应更新'],
+        stages: [{ title: '阶段 1', outcome: '验证回写', progress: '未开始' }],
+        tasks: [{ title: '执行一次成功调用', duration: '20 分钟', note: '检查 healthStatus', status: 'todo' }],
+      },
+    }),
+  });
+
+  const initialState = service.initialize();
+  const nextState = await service.regenerateLearningPlanDraft(initialState.plan.activeGoalId);
+
+  assert.equal(nextState.settings.providers.find((provider) => provider.id === 'deepseek')?.healthStatus, 'ready');
 });

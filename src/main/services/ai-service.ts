@@ -1,5 +1,5 @@
 import type { AppState, ModelCapability, ProviderConfig, ProviderId } from '../../shared/app-state.js';
-import type { AiProviderAdapter, AiProviderRuntimeConfig, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import type { AiProviderAdapter, AiProviderHealthCheckResult, AiProviderRuntimeConfig, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { OpenAiCompatibleProviderAdapter } from './openai-compatible-provider-adapter.js';
 
 const capabilityRouteKeyMap = {
@@ -14,6 +14,7 @@ const runtimeCapabilities = Object.keys(capabilityRouteKeyMap) as ModelCapabilit
 
 export type AiRuntimeService = {
   getRuntimeSummary: (settings: AppState['settings']) => AiRuntimeSummaryItem[];
+  checkProviderHealth: (settings: AppState['settings'], providerId: ProviderId) => Promise<AiProviderHealthCheckResult>;
   execute: (settings: AppState['settings'], request: AiRequest) => Promise<AiResult>;
 };
 
@@ -43,6 +44,7 @@ export class AiService implements AiRuntimeService {
     return runtimeCapabilities.map((capability) => {
       const providerId = settings.routing[capabilityRouteKeyMap[capability]];
       const readiness = this.evaluateProviderReadiness(settings, capability);
+      const provider = settings.providers.find((item) => item.id === providerId);
 
       return {
         capability,
@@ -50,9 +52,71 @@ export class AiService implements AiRuntimeService {
         providerLabel: readiness.providerLabel,
         model: readiness.model,
         ready: readiness.ready,
+        healthStatus: provider?.healthStatus ?? 'unknown',
+        healthHint: this.describeHealthStatus(provider?.healthStatus ?? 'unknown'),
         blockedReason: readiness.blockedReason,
       } satisfies AiRuntimeSummaryItem;
     });
+  }
+
+  async checkProviderHealth(settings: AppState['settings'], providerId: ProviderId) {
+    const checkedAt = new Date().toISOString();
+    const provider = settings.providers.find((item) => item.id === providerId);
+
+    if (!provider) {
+      return {
+        providerId,
+        providerLabel: providerId,
+        healthStatus: 'warning',
+        message: '缺少 Provider 配置。',
+        checkedAt,
+      } satisfies AiProviderHealthCheckResult;
+    }
+
+    if (!provider.enabled) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        healthStatus: 'warning',
+        message: 'Provider 未启用，暂无法执行健康检查。',
+        checkedAt,
+      } satisfies AiProviderHealthCheckResult;
+    }
+
+    if (provider.authMode !== 'none' && !this.options.getSecret(provider.id)?.trim()) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        healthStatus: 'warning',
+        message: '缺少 Secret，暂无法执行健康检查。',
+        checkedAt,
+      } satisfies AiProviderHealthCheckResult;
+    }
+
+    const runtimeProvider = this.toRuntimeProviderConfig(provider);
+    const adapter = this.adapters.find((item) => item.supports(runtimeProvider));
+
+    if (!adapter) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        healthStatus: 'warning',
+        message: `当前没有可处理 ${provider.label} 的 Provider adapter。`,
+        checkedAt,
+      } satisfies AiProviderHealthCheckResult;
+    }
+
+    const result = await adapter.checkHealth({
+      provider: runtimeProvider,
+    });
+
+    return {
+      providerId: provider.id,
+      providerLabel: provider.label,
+      healthStatus: result.ok ? 'ready' : 'warning',
+      message: result.message,
+      checkedAt,
+    } satisfies AiProviderHealthCheckResult;
   }
 
   async execute(settings: AppState['settings'], request: AiRequest) {
@@ -63,10 +127,15 @@ export class AiService implements AiRuntimeService {
       throw new Error(`当前没有可处理 ${provider.label} 的 Provider adapter。`);
     }
 
-    return adapter.execute({
-      provider,
-      request,
-    });
+    try {
+      return await adapter.execute({
+        provider,
+        request,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知 Provider 错误。';
+      throw new Error(`${provider.label} 执行 ${request.capability} 失败：${message} 请在设置页检查 Endpoint、Secret 和健康状态。`);
+    }
   }
 
   private resolveProvider(settings: AppState['settings'], capability: ModelCapability): AiProviderRuntimeConfig {
@@ -80,19 +149,10 @@ export class AiService implements AiRuntimeService {
     }
 
     if (!readiness.ready) {
-      throw new Error(`${provider.label} 当前无法执行 ${capability}：${readiness.blockedReason ?? '缺少运行时前置条件'}。`);
+      throw new Error(`${provider.label} 当前无法执行 ${capability}：${readiness.blockedReason ?? '缺少运行时前置条件'}。请前往设置页检查用途路由、Secret 和 Provider 状态。`);
     }
 
-    return {
-      id: provider.id,
-      label: provider.label,
-      endpoint: provider.endpoint,
-      model: provider.model,
-      authMode: provider.authMode,
-      capabilityTags: provider.capabilityTags,
-      healthStatus: provider.healthStatus,
-      secret: this.options.getSecret(provider.id),
-    };
+    return this.toRuntimeProviderConfig(provider);
   }
 
   private evaluateProviderReadiness(settings: AppState['settings'], capability: ModelCapability): ProviderReadiness {
@@ -138,5 +198,29 @@ export class AiService implements AiRuntimeService {
       ready: false,
       blockedReason,
     };
+  }
+
+  private toRuntimeProviderConfig(provider: ProviderConfig): AiProviderRuntimeConfig {
+    return {
+      id: provider.id,
+      label: provider.label,
+      endpoint: provider.endpoint,
+      model: provider.model,
+      authMode: provider.authMode,
+      capabilityTags: provider.capabilityTags,
+      healthStatus: provider.healthStatus,
+      secret: this.options.getSecret(provider.id),
+    };
+  }
+
+  private describeHealthStatus(healthStatus: ProviderConfig['healthStatus']) {
+    switch (healthStatus) {
+      case 'ready':
+        return '最近一次健康检查或模型调用成功。';
+      case 'warning':
+        return '最近一次健康检查或模型调用失败，请优先检查当前 Provider。';
+      default:
+        return '尚未执行健康检查。';
+    }
   }
 }

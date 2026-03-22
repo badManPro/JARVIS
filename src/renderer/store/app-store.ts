@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AppState, ApplyConversationActionPreviewsResult, ConversationActionReviewStatus, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
-import type { AiRuntimeSummaryItem } from '@shared/ai-service';
+import type { AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
 import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState, updateConversationActionPreviewReview } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
@@ -26,6 +26,7 @@ type AppStore = AppState & {
   upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<void>;
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
   clearProviderSecret: (providerId: ProviderId) => Promise<void>;
+  runProviderHealthCheck: (providerId: ProviderId) => Promise<AiProviderHealthCheckResult>;
   refreshAiRuntimeSummary: () => Promise<void>;
 };
 
@@ -364,6 +365,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
       bridge.getAiRuntimeSummary(),
     ]);
     set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
+  },
+  runProviderHealthCheck: async (providerId) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      throw new Error('learningCompanion bridge 不可用，无法执行 Provider 健康检查。');
+    }
+
+    const response = await bridge.runProviderHealthCheck(providerId);
+    set((state) => ({ ...mergeProviders(state, response.providers), aiRuntimeSummary: response.aiRuntimeSummary, hydrated: true, hydrationError: null }));
+    return response.result;
   },
   refreshAiRuntimeSummary: async () => {
     const bridge = getBridge();

@@ -5,6 +5,11 @@ function toChatCompletionsUrl(endpoint: string) {
   return new URL('chat/completions', base).toString();
 }
 
+function toModelsUrl(endpoint: string) {
+  const base = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+  return new URL('models', base).toString();
+}
+
 function extractJsonPayload(text: string) {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
@@ -38,6 +43,43 @@ function buildHeaders(provider: AiProviderRuntimeConfig) {
   }
 
   return headers;
+}
+
+function describeHttpFailure(status: number, statusText: string) {
+  switch (status) {
+    case 401:
+    case 403:
+      return '认证失败，请检查 Secret 或认证方式。';
+    case 404:
+      return 'Endpoint 不存在或不支持当前 OpenAI-compatible 路径。';
+    case 429:
+      return '请求被限流，请稍后重试。';
+    default:
+      if (status >= 500) {
+        return 'Provider 服务暂时不可用，请稍后重试。';
+      }
+      return `Provider 请求失败（${status} ${statusText}）。`;
+  }
+}
+
+function describeTransportFailure(error: unknown) {
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') {
+      return '连接超时，请检查网络或 Endpoint。';
+    }
+
+    if (/Invalid URL/i.test(error.message)) {
+      return 'Provider Endpoint 无效，请检查地址格式。';
+    }
+
+    if (/fetch failed/i.test(error.message)) {
+      return '无法连接到 Provider，请检查 Endpoint、网络或代理设置。';
+    }
+
+    return error.message;
+  }
+
+  return '请求失败，请稍后重试。';
 }
 
 function buildPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'plan_generation' }>) {
@@ -120,6 +162,42 @@ export class OpenAiCompatibleProviderAdapter implements AiProviderAdapter {
     return Boolean(provider.endpoint.trim());
   }
 
+  async checkHealth(input: {
+    provider: AiProviderRuntimeConfig;
+    signal?: AbortSignal;
+  }) {
+    const { provider, signal } = input;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await this.fetchFn(toModelsUrl(provider.endpoint), {
+        method: 'GET',
+        headers: buildHeaders(provider),
+        signal: signal ?? controller.signal,
+      });
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          message: describeHttpFailure(response.status, response.statusText),
+        };
+      }
+
+      return {
+        ok: true,
+        message: '模型列表接口可访问。',
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: describeTransportFailure(error),
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async execute(input: {
     provider: AiProviderRuntimeConfig;
     request: AiRequest;
@@ -155,7 +233,7 @@ export class OpenAiCompatibleProviderAdapter implements AiProviderAdapter {
       });
 
       if (!response.ok) {
-        throw new Error(`Provider 请求失败（${response.status} ${response.statusText}）。`);
+        throw new Error(describeHttpFailure(response.status, response.statusText));
       }
 
       const payload = await response.json() as {
@@ -199,6 +277,8 @@ export class OpenAiCompatibleProviderAdapter implements AiProviderAdapter {
         model: provider.model,
         text: content,
       };
+    } catch (error) {
+      throw new Error(describeTransportFailure(error));
     } finally {
       clearTimeout(timeout);
     }

@@ -25,6 +25,8 @@
 - 设置页已支持展示 AI runtime 摘要，直接看到每个 capability 当前会命中哪个 Provider、是否具备执行前置条件
 - 对话页已支持通过 `profile_extraction` 从当前对话提取结构化建议，并直接回流到 action preview 审核链路
 - 学习计划页已支持通过 `plan_generation` 真实重生成草案，并通过 `plan_adjustment` 生成调整建议回流到对话预览
+- 设置页已支持对单个 Provider 执行真实健康检查，runtime 摘要会区分配置阻塞、健康 warning 和正常 ready 状态
+- Main 侧会把 Provider 的网络 / 认证 / endpoint 失败归一化为用户可理解提示，并在真实 capability 调用成功 / 失败后回写最近健康状态
 
 ## 技术栈
 - Electron
@@ -124,13 +126,14 @@ npm run build
 - `conversation.actionPreviews` 已补齐来源标签与时间线元数据（建议生成 / 审核 / 写入），并随应用快照一起持久化
 - Main 侧统一 AI service 已具备 route 解析、Provider 前置校验、runtime 摘要和 adapter 抽象，并已接到 `profile_extraction` / `plan_generation` / `plan_adjustment` 的真实业务入口
 - 对话建议提取和计划调整建议统一回流到 `conversation.suggestions`，继续复用现有 action preview 的审核与应用边界
-- 当前尚未提供版本回滚、目标排序、Provider 健康检查、请求日志、`reflection_summary` 业务接入等更高阶动作
+- Provider 健康状态现可由设置页手动检查，并会随着真实 capability 调用成功 / 失败自动回写到 `provider_configs.health_status`
+- 当前尚未提供版本回滚、目标排序、请求日志、`reflection_summary` 业务接入等更高阶动作
 
 ## 下一步建议
-1. 增加 Provider 健康检查与基础错误提示
-2. 为真实 Provider 调用补齐请求日志与最小可观测性
-3. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
-4. 为 `reflection_summary` 和后续复盘闭环补业务入口
+1. 为真实 Provider 调用补齐请求日志与最小可观测性
+2. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
+3. 为 `reflection_summary` 和后续复盘闭环补业务入口
+4. 打通任务执行记录与复盘输入的真实业务闭环
 
 ## 当前推荐下一任务
-- `Phase 3 / Task 3`：增加 Provider 健康检查与基础错误提示
+- `Phase 3 / Task 4`：补请求日志与最小可观测性

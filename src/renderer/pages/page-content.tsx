@@ -10,7 +10,6 @@ import type {
   ConversationActionReviewStatus,
   ConversationActionScope,
   ConversationActionStatus,
-  HealthStatus,
   LearningGoal,
   LearningPlanDraft,
   LearningPlanSnapshot,
@@ -22,7 +21,7 @@ import type {
   TaskStatus,
   UserProfile,
 } from '@shared/app-state';
-import type { AiRuntimeSummaryItem } from '@shared/ai-service';
+import type { AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
 import { resolveConversationState } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import type { ProviderConfigInput } from '@shared/provider-config';
@@ -1894,6 +1893,19 @@ function SettingsContent() {
 }
 
 function AiRuntimeStatusCard({ label, summary }: { label: string; summary: AiRuntimeSummaryItem | undefined }) {
+  const badgeLabel = !summary
+    ? 'loading'
+    : (!summary.ready
+      ? 'blocked'
+      : (summary.healthStatus === 'ready'
+        ? 'healthy'
+        : (summary.healthStatus === 'warning' ? 'warning' : 'configured')));
+  const badgeClassName = !summary
+    ? 'bg-slate-100 text-slate-700'
+    : (!summary.ready
+      ? 'bg-amber-100 text-amber-800'
+      : providerHealthBadgeClassName(summary.healthStatus));
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
       <div className="flex items-start justify-between gap-3">
@@ -1903,8 +1915,8 @@ function AiRuntimeStatusCard({ label, summary }: { label: string; summary: AiRun
             {summary ? `${summary.providerLabel} · ${summary.model}` : '正在加载运行时摘要…'}
           </div>
         </div>
-        <Badge className={summary?.ready ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}>
-          {summary?.ready ? 'ready' : 'blocked'}
+        <Badge className={badgeClassName}>
+          {badgeLabel}
         </Badge>
       </div>
       <div className="mt-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700">
@@ -1912,6 +1924,11 @@ function AiRuntimeStatusCard({ label, summary }: { label: string; summary: AiRun
           ? `route -> ${summary.providerId}${summary.blockedReason ? ` · ${summary.blockedReason}` : ' · 已具备统一 AI service 调用前置条件'}`
           : '等待 main process 返回当前 capability 的 route 与 readiness。'}
       </div>
+      {summary ? (
+        <div className="mt-3 text-xs text-slate-500">
+          健康状态：{providerHealthStatusLabel(summary.healthStatus)}{summary.healthHint ? ` · ${summary.healthHint}` : ''}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1919,6 +1936,7 @@ function AiRuntimeStatusCard({ label, summary }: { label: string; summary: AiRun
 function ProviderEditor({ provider }: { provider: ProviderConfig }) {
   const upsertProviderConfig = useAppStore((store) => store.upsertProviderConfig);
   const clearProviderSecret = useAppStore((store) => store.clearProviderSecret);
+  const runProviderHealthCheck = useAppStore((store) => store.runProviderHealthCheck);
   const [draft, setDraft] = useState<ProviderConfigInput>({
     id: provider.id,
     label: provider.label,
@@ -1931,7 +1949,9 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
   });
   const [secretDraft, setSecretDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [checkingHealth, setCheckingHealth] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeTone, setNoticeTone] = useState<'info' | 'success' | 'warning'>('info');
 
   useEffect(() => {
     setDraft({
@@ -1961,11 +1981,13 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
   const onSave = async () => {
     setSaving(true);
     setNotice(null);
+    setNoticeTone('info');
     try {
       await upsertProviderConfig({ config: draft, secret: secretDraft.trim() ? secretDraft : undefined });
-      setNotice(secretDraft.trim() ? '配置与 secret 已保存。' : '配置已保存。');
+      setNotice(secretDraft.trim() ? '配置与 secret 已保存，可继续执行一次健康检查确认连通性。' : '配置已保存。');
       setSecretDraft('');
     } catch (error) {
+      setNoticeTone('warning');
       setNotice(error instanceof Error ? error.message : 'Provider 保存失败');
     } finally {
       setSaving(false);
@@ -1975,14 +1997,31 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
   const onClearSecret = async () => {
     setSaving(true);
     setNotice(null);
+    setNoticeTone('info');
     try {
       await clearProviderSecret(provider.id);
       setSecretDraft('');
       setNotice('已清空本地保存的 secret。');
     } catch (error) {
+      setNoticeTone('warning');
       setNotice(error instanceof Error ? error.message : '清空 secret 失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onCheckHealth = async () => {
+    setCheckingHealth(true);
+    setNotice(null);
+    try {
+      const result = await runProviderHealthCheck(provider.id);
+      setNoticeTone(result.healthStatus === 'ready' ? 'success' : 'warning');
+      setNotice(renderHealthCheckNotice(result));
+    } catch (error) {
+      setNoticeTone('warning');
+      setNotice(error instanceof Error ? error.message : 'Provider 健康检查失败');
+    } finally {
+      setCheckingHealth(false);
     }
   };
 
@@ -2009,11 +2048,12 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
             </select>
           </Field>
           <Field label="健康状态">
-            <select className={inputClassName} value={draft.healthStatus} onChange={(event) => setDraft((current) => ({ ...current, healthStatus: event.target.value as HealthStatus }))}>
-              <option value="unknown">unknown</option>
-              <option value="ready">ready</option>
-              <option value="warning">warning</option>
-            </select>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Badge className={providerHealthBadgeClassName(provider.healthStatus)}>{providerHealthStatusLabel(provider.healthStatus)}</Badge>
+                <span className="text-xs text-slate-500">{providerHealthDescription(provider.healthStatus)}</span>
+              </div>
+            </div>
           </Field>
         </div>
         <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -2034,17 +2074,22 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
         </Field>
         <div className="text-xs text-slate-500">
           <div>安全状态：{provider.hasSecret ? '已安全保存' : '未配置'}</div>
+          <div>连通性状态：{providerHealthStatusLabel(provider.healthStatus)}</div>
           <div>最近更新时间：{provider.updatedAt ?? '暂无'}</div>
         </div>
-        {notice ? <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700">{notice}</div> : null}
+        {notice ? <div className={providerNoticeClassName(noticeTone)}>{notice}</div> : null}
         <div className="flex flex-wrap gap-3">
           <button className={primaryButtonClassName} type="button" onClick={() => void onSave()} disabled={saving}>{saving ? '保存中…' : '保存 Provider'}</button>
           <button className={secondaryButtonClassName} type="button" onClick={() => {
             setDraft({ id: provider.id, label: provider.label, enabled: provider.enabled, endpoint: provider.endpoint, model: provider.model, authMode: provider.authMode, capabilityTags: provider.capabilityTags, healthStatus: provider.healthStatus });
             setSecretDraft('');
+            setNoticeTone('info');
             setNotice('已恢复为最近一次持久化的值。');
           }} disabled={saving}>恢复</button>
-          <button className={secondaryButtonClassName} type="button" onClick={() => void onClearSecret()} disabled={saving}>清空 Secret</button>
+          <button className={secondaryButtonClassName} type="button" onClick={() => void onClearSecret()} disabled={saving || checkingHealth}>清空 Secret</button>
+          <button className={secondaryButtonClassName} type="button" onClick={() => void onCheckHealth()} disabled={saving || checkingHealth}>
+            {checkingHealth ? '检查中…' : '检查连通性'}
+          </button>
         </div>
       </div>
     </div>
@@ -2250,6 +2295,54 @@ function statusBadgeClassName(status: LearningGoal['status']) {
       return 'bg-emerald-100 text-emerald-700';
     default:
       return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function providerHealthStatusLabel(status: ProviderConfig['healthStatus']) {
+  switch (status) {
+    case 'ready':
+      return '已通过检查';
+    case 'warning':
+      return '存在风险';
+    default:
+      return '待检查';
+  }
+}
+
+function providerHealthDescription(status: ProviderConfig['healthStatus']) {
+  switch (status) {
+    case 'ready':
+      return '最近一次健康检查或真实调用成功。';
+    case 'warning':
+      return '最近一次健康检查或真实调用失败，建议先排查配置。';
+    default:
+      return '尚未执行健康检查。';
+  }
+}
+
+function providerHealthBadgeClassName(status: ProviderConfig['healthStatus']) {
+  switch (status) {
+    case 'ready':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'warning':
+      return 'bg-rose-100 text-rose-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function renderHealthCheckNotice(result: AiProviderHealthCheckResult) {
+  return `${result.providerLabel}：${result.message}`;
+}
+
+function providerNoticeClassName(tone: 'info' | 'success' | 'warning') {
+  switch (tone) {
+    case 'success':
+      return 'rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700';
+    case 'warning':
+      return 'rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800';
+    default:
+      return 'rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-700';
   }
 }
 

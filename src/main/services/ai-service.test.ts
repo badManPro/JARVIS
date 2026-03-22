@@ -29,6 +29,10 @@ test('AiService routes plan_generation to the configured provider and forwards r
   const adapter: AiProviderAdapter = {
     name: 'fake-openai-compatible',
     supports: () => true,
+    checkHealth: async () => ({
+      ok: true,
+      message: 'unused',
+    }),
     execute: async ({ provider, request }) => {
       adapterCalls.push({ providerId: provider.id, capability: request.capability });
       return {
@@ -88,6 +92,10 @@ test('AiService rejects profile_extraction when the routed provider secret is mi
     adapters: [{
       name: 'unused-adapter',
       supports: () => true,
+      checkHealth: async () => ({
+        ok: false,
+        message: 'unused',
+      }),
       execute: async () => {
         throw new Error('should not execute');
       },
@@ -113,6 +121,7 @@ test('AiService runtime summary reflects route changes and readiness blockers', 
         return {
           ...provider,
           enabled: true,
+          healthStatus: 'warning',
         };
       }
 
@@ -129,6 +138,10 @@ test('AiService runtime summary reflects route changes and readiness blockers', 
     adapters: [{
       name: 'summary-adapter',
       supports: () => true,
+      checkHealth: async () => ({
+        ok: true,
+        message: 'unused',
+      }),
       execute: async () => ({ capability: 'chat_general', providerId: 'openai', providerLabel: 'OpenAI / GPT', model: 'gpt-4.1-mini', text: 'unused' }) satisfies AiResult,
     }],
   });
@@ -141,9 +154,48 @@ test('AiService runtime summary reflects route changes and readiness blockers', 
   assert.equal(planGeneration.providerId, 'deepseek');
   assert.equal(planGeneration.ready, true);
   assert.equal(planGeneration.blockedReason, undefined);
+  assert.equal(planGeneration.healthStatus, 'warning');
 
   assert.ok(reflectionSummary);
   assert.equal(reflectionSummary.providerId, 'kimi');
   assert.equal(reflectionSummary.ready, false);
   assert.match(reflectionSummary.blockedReason ?? '', /未启用|Secret/);
+  assert.equal(reflectionSummary.healthStatus, 'unknown');
+});
+
+test('AiService checkProviderHealth delegates to adapter and returns a ready result', async () => {
+  const settings = cloneSettings({
+    providers: seedState.settings.providers.map((provider) => (
+      provider.id === 'deepseek'
+        ? { ...provider, enabled: true }
+        : provider
+    )),
+  });
+
+  const healthChecks: string[] = [];
+  const adapter: AiProviderAdapter = {
+    name: 'health-check-adapter',
+    supports: () => true,
+    checkHealth: async ({ provider }) => {
+      healthChecks.push(provider.id);
+      return {
+        ok: true,
+        message: '模型列表接口可访问。',
+      };
+    },
+    execute: async () => ({ capability: 'chat_general', providerId: 'deepseek', providerLabel: 'DeepSeek', model: 'deepseek-chat', text: 'unused' }) satisfies AiResult,
+  };
+
+  const service = new AiService({
+    getSecret: (providerId) => (providerId === 'deepseek' ? 'sk-deepseek' : null),
+    adapters: [adapter],
+  });
+
+  const result = await service.checkProviderHealth(settings, 'deepseek');
+
+  assert.deepEqual(healthChecks, ['deepseek']);
+  assert.equal(result.providerId, 'deepseek');
+  assert.equal(result.providerLabel, 'DeepSeek');
+  assert.equal(result.healthStatus, 'ready');
+  assert.equal(result.message, '模型列表接口可访问。');
 });

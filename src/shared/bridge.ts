@@ -1,5 +1,5 @@
 import type { AppState, ApplyConversationActionPreviewsResult, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput } from './app-state.js';
-import type { AiRuntimeSummaryItem } from './ai-service.js';
+import type { AiProviderHealthCheckResponse, AiRuntimeSummaryItem } from './ai-service.js';
 import type { LearningGoalInput } from './goal.js';
 import type { ProviderConfigInput } from './provider-config.js';
 
@@ -23,6 +23,7 @@ export type LearningCompanionBridge = {
     upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<ProviderConfig[]>;
     saveProviderSecret: (payload: ProviderSecretInput) => Promise<ProviderConfig[]>;
     clearProviderSecret: (providerId: ProviderId) => Promise<ProviderConfig[]>;
+    runProviderHealthCheck: (providerId: ProviderId) => Promise<AiProviderHealthCheckResponse>;
     getAiRuntimeSummary: () => Promise<AiRuntimeSummaryItem[]>;
   };
 };

@@ -54,6 +54,7 @@ function registerIpcHandlers() {
   ipcMain.handle('storage:upsert-provider-config', async (_event, payload) => getStorageService().upsertProviderConfig(payload));
   ipcMain.handle('storage:save-provider-secret', async (_event, payload) => getStorageService().saveProviderSecret(payload));
   ipcMain.handle('storage:clear-provider-secret', async (_event, providerId) => getStorageService().clearProviderSecret(providerId));
+  ipcMain.handle('storage:run-provider-health-check', async (_event, providerId) => getStorageService().runProviderHealthCheck(providerId));
   ipcMain.handle('storage:get-ai-runtime-summary', async () => getStorageService().getAiRuntimeSummary());
 }
 

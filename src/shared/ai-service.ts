@@ -6,7 +6,23 @@ export type AiRuntimeSummaryItem = {
   providerLabel: string;
   model: string;
   ready: boolean;
+  healthStatus: ProviderConfig['healthStatus'];
+  healthHint?: string;
   blockedReason?: string;
+};
+
+export type AiProviderHealthCheckResult = {
+  providerId: ProviderId;
+  providerLabel: string;
+  healthStatus: ProviderConfig['healthStatus'];
+  message: string;
+  checkedAt: string;
+};
+
+export type AiProviderHealthCheckResponse = {
+  providers: ProviderConfig[];
+  aiRuntimeSummary: AiRuntimeSummaryItem[];
+  result: AiProviderHealthCheckResult;
 };
 
 export type AiProviderRuntimeConfig = {
@@ -109,6 +125,13 @@ export type AiResult =
 export type AiProviderAdapter = {
   name: string;
   supports: (provider: AiProviderRuntimeConfig) => boolean;
+  checkHealth: (input: {
+    provider: AiProviderRuntimeConfig;
+    signal?: AbortSignal;
+  }) => Promise<{
+    ok: boolean;
+    message: string;
+  }>;
   execute: (input: {
     provider: AiProviderRuntimeConfig;
     request: AiRequest;
