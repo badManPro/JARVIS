@@ -35,6 +35,10 @@ function isReducedAppSnapshotPayload(value: unknown): value is ReducedAppSnapsho
 export class AppStateRepository {
   constructor(private readonly db: LearningCompanionDatabase) {}
 
+  transaction<T>(operation: () => T) {
+    return this.db.transaction(() => operation());
+  }
+
   private loadPayload() {
     const row = this.db.select().from(appSnapshots).where(eq(appSnapshots.id, SNAPSHOT_ID)).get();
     if (!row) return null;

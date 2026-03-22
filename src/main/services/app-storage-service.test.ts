@@ -113,6 +113,94 @@ function createHarness(options: {
   };
 }
 
+class FailingSettingsRepository extends SettingsRepository {
+  override saveSettings(settings: AppState['settings']) {
+    super.saveSettings(settings);
+    throw new Error('模拟 settings 持久化失败');
+  }
+}
+
+class ArmableFailingAppStateRepository extends AppStateRepository {
+  private savesBeforeFailure: number | null = null;
+
+  armFailureAfterSuccessfulSaves(count: number) {
+    this.savesBeforeFailure = count;
+  }
+
+  override save(state: AppState) {
+    const saved = super.save(state);
+
+    if (this.savesBeforeFailure === null) {
+      return saved;
+    }
+
+    if (this.savesBeforeFailure === 0) {
+      this.savesBeforeFailure = null;
+      throw new Error('模拟快照持久化失败');
+    }
+
+    this.savesBeforeFailure -= 1;
+    return saved;
+  }
+}
+
+function createPersistenceFailureHarness(options: {
+  snapshotState?: AppState;
+  aiExecute?: (settings: AppState['settings'], request: AiRequest) => Promise<AiResult>;
+  aiCheckHealth?: (settings: AppState['settings'], providerId: AppState['settings']['providers'][number]['id']) => Promise<AiProviderHealthCheckResult>;
+  failOn: 'settings' | 'snapshot';
+}): {
+  service: AppStorageService;
+  failingAppStateRepository: ArmableFailingAppStateRepository;
+} {
+  const { snapshotState, aiExecute, aiCheckHealth, failOn } = options;
+  const { db } = createDatabase(':memory:');
+  const seedAppStateRepository = new AppStateRepository(db);
+  const providerSecretRepository = new ProviderSecretRepository(db);
+  const aiService = {
+    getRuntimeSummary: (settings: AppState['settings']) => createRuntimeSummary(settings),
+    checkProviderHealth: aiCheckHealth ?? (async (_settings, providerId: AppState['settings']['providers'][number]['id']) => ({
+      providerId,
+      providerLabel: providerId,
+      healthStatus: 'unknown' as const,
+      message: 'not used in this test',
+      checkedAt: new Date().toISOString(),
+    })),
+    execute: aiExecute ?? (async () => {
+      throw new Error('execute is not used in this test');
+    }),
+  };
+
+  if (snapshotState) {
+    seedAppStateRepository.saveRaw(snapshotState);
+  }
+
+  const bootstrapService = new AppStorageService(
+    seedAppStateRepository,
+    new EntitiesRepository(db),
+    new SettingsRepository(db),
+    providerSecretRepository,
+    new AiRequestLogRepository(db),
+    aiService,
+  );
+  bootstrapService.initialize();
+
+  const failingAppStateRepository = new ArmableFailingAppStateRepository(db);
+  const service = new AppStorageService(
+    failingAppStateRepository,
+    new EntitiesRepository(db),
+    failOn === 'settings' ? new FailingSettingsRepository(db) : new SettingsRepository(db),
+    new ProviderSecretRepository(db),
+    new AiRequestLogRepository(db),
+    aiService,
+  );
+
+  return {
+    service,
+    failingAppStateRepository,
+  };
+}
+
 function getPersistedSnapshotPayload(db: ReturnType<typeof createDatabase>['db']) {
   const row = db.select().from(appSnapshots).get();
   assert.ok(row);
@@ -241,6 +329,65 @@ test('saveAppState stores only conversation state in app_snapshots payload', () 
   assert.equal('settings' in payload, false);
   assert.equal('reflection' in payload, false);
   assert.equal('dashboard' in payload, false);
+});
+
+test('removeLearningGoal rolls back goal and plan deletion when persistence fails mid-flight', () => {
+  const { service } = createPersistenceFailureHarness({ failOn: 'settings' });
+  const initialState = service.loadAppState();
+  const goalId = initialState.plan.activeGoalId;
+
+  assert.ok(goalId);
+  assert.equal(initialState.goals.length > 1, true);
+
+  assert.throws(
+    () => service.removeLearningGoal(goalId),
+    /模拟 settings 持久化失败/,
+  );
+
+  const persistedState = service.loadAppState();
+  assert.deepEqual(
+    persistedState.goals.map((goal) => goal.id),
+    initialState.goals.map((goal) => goal.id),
+  );
+  assert.deepEqual(
+    persistedState.plan.drafts.map((draft) => draft.goalId),
+    initialState.plan.drafts.map((draft) => draft.goalId),
+  );
+  assert.deepEqual(
+    persistedState.plan.snapshots.map((snapshot) => snapshot.goalId),
+    initialState.plan.snapshots.map((snapshot) => snapshot.goalId),
+  );
+  assert.equal(persistedState.plan.activeGoalId, initialState.plan.activeGoalId);
+});
+
+test('saveLearningPlanDraft rolls back reordered tasks when snapshot persistence fails', () => {
+  const { service, failingAppStateRepository } = createPersistenceFailureHarness({ failOn: 'snapshot' });
+  const initialState = service.loadAppState();
+  const draft = initialState.plan.drafts.find((item) => item.goalId === initialState.plan.activeGoalId);
+
+  assert.ok(draft);
+  assert.equal(draft.tasks.length > 1, true);
+
+  failingAppStateRepository.armFailureAfterSuccessfulSaves(1);
+
+  const reorderedDraft = {
+    ...draft,
+    tasks: [...draft.tasks].reverse(),
+  };
+
+  assert.throws(
+    () => service.saveLearningPlanDraft(reorderedDraft),
+    /模拟快照持久化失败/,
+  );
+
+  const persistedState = service.loadAppState();
+  const persistedDraft = persistedState.plan.drafts.find((item) => item.id === draft.id);
+
+  assert.ok(persistedDraft);
+  assert.deepEqual(
+    persistedDraft.tasks.map((task) => task.id),
+    draft.tasks.map((task) => task.id),
+  );
 });
 
 test('initialize repairs stale structured plan snapshot references before returning app state', () => {
@@ -392,6 +539,50 @@ test('regenerateLearningPlanDraft archives the current draft and replaces it wit
   assert.equal(nextDraft.title, 'AI 生成的冲刺草案');
   assert.equal(nextDraft.summary, '由真实 Provider 返回的计划草案。');
   assert.equal(nextState.plan.snapshots[0]?.title, previousDraft.title);
+});
+
+test('regenerateLearningPlanDraft rolls back archived snapshot and draft replacement when snapshot persistence fails', async () => {
+  const { service, failingAppStateRepository } = createPersistenceFailureHarness({
+    failOn: 'snapshot',
+    aiExecute: async () => ({
+      capability: 'plan_generation',
+      providerId: 'deepseek',
+      providerLabel: 'DeepSeek',
+      model: 'deepseek-chat',
+      draft: {
+        title: '失败后不应落库的新草案',
+        summary: '如果事务缺失，这版草案会留下半完成状态。',
+        basis: ['验证事务回滚'],
+        stages: [{ title: '阶段 1', outcome: '验证回滚', progress: '未开始' }],
+        tasks: [{ title: '检查回滚', duration: '20 分钟', note: '确认旧草案仍保留', status: 'todo' }],
+      },
+    }),
+  });
+  const initialState = service.loadAppState();
+  const goalId = initialState.plan.activeGoalId;
+  const previousDraft = initialState.plan.drafts.find((draft) => draft.goalId === goalId);
+
+  assert.ok(previousDraft);
+
+  failingAppStateRepository.armFailureAfterSuccessfulSaves(1);
+
+  await assert.rejects(
+    () => service.regenerateLearningPlanDraft(goalId, previousDraft),
+    /模拟快照持久化失败/,
+  );
+
+  const persistedState = service.loadAppState();
+  const persistedDraft = persistedState.plan.drafts.find((draft) => draft.goalId === goalId);
+  const initialProviderHealth = initialState.settings.providers.find((provider) => provider.id === 'deepseek')?.healthStatus;
+
+  assert.ok(persistedDraft);
+  assert.equal(persistedState.plan.snapshots.length, initialState.plan.snapshots.length);
+  assert.equal(persistedDraft.title, previousDraft.title);
+  assert.deepEqual(persistedDraft.tasks, previousDraft.tasks);
+  assert.equal(
+    persistedState.settings.providers.find((provider) => provider.id === 'deepseek')?.healthStatus,
+    initialProviderHealth,
+  );
 });
 
 test('generatePlanAdjustmentSuggestions merges AI suggestions back into the conversation preview flow', async () => {

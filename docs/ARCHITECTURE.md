@@ -121,6 +121,8 @@ Renderer 先按以下状态切分：
 
 SQLite schema 的演进现在也走显式版本管理：`createDatabase()` 启动时会读取 `PRAGMA user_version`，按顺序执行 migration runner，把旧 schema 升级到当前支持版本，而不再继续依赖散落在初始化代码中的临时条件分支。除此之外，主进程还会在状态 load/save 边界执行关键一致性归一化，修复 stale plan snapshot 引用和指向缺失 provider 的 route，避免结构化真源被局部脏数据拖偏。
 
+针对高风险写操作，`AppStorageService` 现在会通过 `AppStateRepository.transaction()` 把结构化表与 `app_snapshots` 的复合写入收口成单次 SQLite 事务。目标删除、计划草案保存/重排、计划重生成、批量应用 action preview、建议回流与执行/复盘写入都走同一原子提交 helper；任何一步失败都会整体回滚。AI runtime 调用失败与本地持久化失败也已拆开处理，`provider_configs.health_status` 的 `warning` 只再表示真实 Provider 调用异常，而不混入本地 DB commit 失败。
+
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：
 1. Provider Config
@@ -167,7 +169,7 @@ Preload 当前暴露：
 8. 计划页通过 `regenerateLearningPlanDraft` 走 `plan_generation`，并在重生成前归档快照
 9. 对话页通过 `runProfileExtraction` 走 `profile_extraction`，并同时携带当前对话与结构化复盘上下文，把模型返回 suggestions 回流到 action preview
 10. 计划页通过 `generatePlanAdjustmentSuggestions` 走 `plan_adjustment`，并把当前草案、画像约束与复盘反馈一并交给模型，再把调整建议回流到对话预览
-11. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态
+11. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态；整个批量应用过程现已纳入事务保护
 12. 设置页与配置页可通过 `saveAppState` / `upsertProviderConfig` / `getAiRuntimeSummary` 更新路由并直接查看每个 capability 当前命中的 Provider、模型、健康状态和阻塞原因
 13. 设置页可通过 `runProviderHealthCheck` 对单个 Provider 触发真实连通性探测，并把结果回写到 `provider_configs.health_status`
 14. 设置页可通过 `getAiObservability` 查看 capability 请求总览与最近请求日志，并在真实 capability 调用后立即刷新
