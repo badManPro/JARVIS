@@ -387,7 +387,13 @@ function ConversationActionPreviewCard({
         )}
       </div>
 
-      <div className="mt-3 text-xs text-slate-500">来源建议：{action.sourceSuggestion}</div>
+      <div className="mt-3 space-y-1 text-xs text-slate-500">
+        <div>动作来源：{action.sourceLabel}</div>
+        <div>建议生成：{formatDateTime(action.createdAt)}</div>
+        {action.reviewedAt ? <div>审核时间：{formatDateTime(action.reviewedAt)}</div> : null}
+        {action.appliedAt ? <div>写入时间：{formatDateTime(action.appliedAt)}</div> : null}
+        <div>来源建议：{action.sourceSuggestion}</div>
+      </div>
     </div>
   );
 }

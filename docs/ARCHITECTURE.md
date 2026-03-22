@@ -147,6 +147,6 @@ Preload 当前暴露：
 - `conversation.actionPreviews` 会基于当前目标、计划、画像与 route 配置回填结构化预览
 - `actionPreviews.reviewStatus` 会随用户确认/拒绝保留在快照里
 - 已接受且带执行 payload 的 preview 会通过主进程统一应用到结构化实体，再把 preview 标记为 `applied`
-- 暂时仍不为动作来源与操作时间单独建表，相关审计留给下一任务
+- 动作来源标签、建议生成时间、审核时间、写入时间附着在 `actionPreviews` 上，并随 `app_snapshots` 一起持久化；目前仍未单独建表
 
-当前仍未覆盖：动作来源与操作时间、目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。
+当前仍未覆盖：目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。

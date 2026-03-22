@@ -19,6 +19,7 @@
 - 学习计划已升级为“按目标保存独立计划草案”，切换当前目标会切换到对应 plan payload
 - 学习计划页已支持阶段/任务手动编辑、本地保存、重新生成确认、版本快照归档与版本对比视图
 - 对话页已支持把自然语言建议映射为结构化 action preview，并在逐条确认后批量写回画像、目标、计划实体
+- 对话动作已支持记录来源标签，以及建议生成 / 审核 / 写入时间
 
 ## 技术栈
 - Electron
@@ -114,14 +115,15 @@ npm run build
 - 点击“重新生成计划”前，会先把当前草案归档到 `learning_plan_snapshots`、`plan_snapshot_stages`、`plan_snapshot_tasks`，并可在计划页直接选择历史快照做版本对比
 - 删除目标时，会同步清理它的计划草案与版本快照；如果删的是当前主目标，会自动回退到剩余目标中的第一项，没有剩余目标时则回到空状态
 - 对话相关数据仍主要保留在 `app_snapshots`，但主进程会在加载时把 `conversation.suggestions` 回填为结构化 `actionPreviews`，并支持把已接受且可执行的预览写回结构化实体表
+- `conversation.actionPreviews` 已补齐来源标签与时间线元数据（建议生成 / 审核 / 写入），并随应用快照一起持久化
 - 当前计划草案仍由本地规则模板生成，尚未接入真实 AI Provider 生成 / 重排
-- 当前尚未提供动作来源与操作时间、版本回滚、目标排序等更高阶动作
+- 当前尚未提供版本回滚、目标排序、真正的在线模型调用等更高阶动作
 
 ## 下一步建议
-1. 记录动作来源与操作时间
-2. 增加统一 AI service，按 capability route 到不同 Provider
-3. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
-4. 增加计划版本回滚与目标排序等高阶管理动作
+1. 增加统一 AI service，按 capability route 到不同 Provider
+2. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
+3. 增加计划版本回滚与目标排序等高阶管理动作
+4. 为真实 Provider 调用补齐请求日志与最小可观测性
 
 ## 当前推荐下一任务
-- `Phase 2 / Task 4`：记录动作来源与操作时间
+- `Phase 3 / Task 1`：接入统一 AI Service 与 capability route 执行层

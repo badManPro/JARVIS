@@ -108,6 +108,7 @@ export type ConversationActionScope = 'profile' | 'goal' | 'plan';
 export type ConversationActionKind = 'profile_update' | 'goal_update' | 'plan_update' | 'plan_generation' | 'unknown';
 export type ConversationActionStatus = 'proposed' | 'pending' | 'applied';
 export type ConversationActionReviewStatus = 'unreviewed' | 'accepted' | 'rejected';
+export type ConversationActionSourceType = 'conversation_suggestion' | 'runtime_placeholder';
 
 export type ConversationActionChange = {
   field: string;
@@ -139,6 +140,10 @@ export type ConversationActionPreview = {
   target: ConversationActionScope;
   scopes: ConversationActionScope[];
   status: ConversationActionStatus;
+  sourceType: ConversationActionSourceType;
+  sourceLabel: string;
+  createdAt: string;
+  appliedAt?: string;
   reviewable: boolean;
   reviewStatus: ConversationActionReviewStatus;
   reviewedAt?: string;
@@ -387,13 +392,60 @@ function normalizeConversationActionReviewStatus(status?: string): ConversationA
   }
 }
 
+function normalizeConversationActionSourceType(sourceType?: string): ConversationActionSourceType {
+  switch (sourceType) {
+    case 'runtime_placeholder':
+    case 'conversation_suggestion':
+      return sourceType;
+    default:
+      return 'conversation_suggestion';
+  }
+}
+
+function getConversationActionSourceDefaults(
+  preview: Pick<ConversationActionPreview, 'kind' | 'status'>,
+): Pick<ConversationActionPreview, 'sourceType' | 'sourceLabel'> {
+  if (preview.status === 'pending' && preview.kind === 'plan_generation') {
+    return {
+      sourceType: 'runtime_placeholder',
+      sourceLabel: '运行时占位建议',
+    };
+  }
+
+  return {
+    sourceType: 'conversation_suggestion',
+    sourceLabel: '对话建议',
+  };
+}
+
+type ConversationActionPreviewInput = Omit<
+  ConversationActionPreview,
+  'reviewable' | 'reviewStatus' | 'reviewedAt' | 'sourceType' | 'sourceLabel' | 'createdAt' | 'appliedAt'
+> & Partial<Pick<ConversationActionPreview, 'sourceType' | 'sourceLabel' | 'createdAt' | 'appliedAt'>>;
+
 function buildConversationActionPreview(
-  preview: Omit<ConversationActionPreview, 'reviewable' | 'reviewStatus' | 'reviewedAt'>,
+  preview: ConversationActionPreviewInput,
 ): ConversationActionPreview {
+  const defaults = getConversationActionSourceDefaults(preview);
   return {
     ...preview,
+    sourceType: normalizeConversationActionSourceType(preview.sourceType) ?? defaults.sourceType,
+    sourceLabel: preview.sourceLabel?.trim() || defaults.sourceLabel,
+    createdAt: preview.createdAt ?? new Date().toISOString(),
+    appliedAt: preview.appliedAt,
     reviewable: isConversationActionReviewable(preview.status),
     reviewStatus: 'unreviewed',
+  };
+}
+
+function ensureConversationActionAudit(preview: ConversationActionPreview): ConversationActionPreview {
+  const defaults = getConversationActionSourceDefaults(preview);
+  return {
+    ...preview,
+    sourceType: normalizeConversationActionSourceType(preview.sourceType) ?? defaults.sourceType,
+    sourceLabel: preview.sourceLabel?.trim() || defaults.sourceLabel,
+    createdAt: preview.createdAt ?? new Date().toISOString(),
+    appliedAt: preview.appliedAt,
   };
 }
 
@@ -407,25 +459,33 @@ function mergeStoredConversationActionState(
   const reviewable = isConversationActionReviewable(status);
 
   if (status === 'pending') {
-    return {
+    return ensureConversationActionAudit({
       ...preview,
       status,
       reviewable,
       reviewStatus: 'unreviewed',
       reviewedAt: undefined,
-    };
+      appliedAt: storedPreview?.appliedAt,
+      createdAt: storedPreview?.createdAt ?? preview.createdAt,
+      sourceType: storedPreview?.sourceType ?? preview.sourceType,
+      sourceLabel: storedPreview?.sourceLabel ?? preview.sourceLabel,
+    });
   }
 
   const reviewStatus = status === 'applied'
     ? 'accepted'
     : normalizeConversationActionReviewStatus(storedPreview?.reviewStatus);
-  return {
+  return ensureConversationActionAudit({
     ...preview,
     status,
     reviewable,
     reviewStatus,
     reviewedAt: reviewStatus === 'unreviewed' ? undefined : storedPreview?.reviewedAt,
-  };
+    appliedAt: storedPreview?.appliedAt,
+    createdAt: storedPreview?.createdAt ?? preview.createdAt,
+    sourceType: storedPreview?.sourceType ?? preview.sourceType,
+    sourceLabel: storedPreview?.sourceLabel ?? preview.sourceLabel,
+  });
 }
 
 function buildGenericConversationActionPreview({
@@ -845,7 +905,7 @@ export function resolveConversationState(
         index,
       }), storedPreview);
     })
-    : (state.conversation.actionPreviews ?? []);
+    : (state.conversation.actionPreviews ?? []).map((preview) => ensureConversationActionAudit(preview));
 
   return {
     ...state.conversation,
@@ -872,11 +932,11 @@ export function updateConversationActionPreviewReview(
       }
 
       const reviewStatus = payload.reviewStatus;
-      return {
+      return ensureConversationActionAudit({
         ...preview,
         reviewStatus,
         reviewedAt: reviewStatus === 'unreviewed' ? undefined : (payload.reviewedAt ?? new Date().toISOString()),
-      };
+      });
     }),
   };
 }
@@ -897,6 +957,7 @@ export function applyAcceptedConversationActionPreviews(state: AppState): ApplyC
 
   const appliedActionIds: string[] = [];
   const skippedActionIds: string[] = [];
+  const appliedAt = new Date().toISOString();
 
   state.conversation.actionPreviews.forEach((preview) => {
     if (preview.reviewStatus !== 'accepted' || preview.status !== 'proposed') {
@@ -967,6 +1028,7 @@ export function applyAcceptedConversationActionPreviews(state: AppState): ApplyC
           status: 'applied',
           reviewable: false,
           reviewStatus: 'accepted',
+          appliedAt,
         };
       }),
     },
