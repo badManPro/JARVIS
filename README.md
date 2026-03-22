@@ -143,13 +143,14 @@ npm run build
 - `profile_extraction` / `plan_adjustment` 现都会显式消费结构化 `reflection` 上下文，画像建议可直接产出学习窗口、时间预算、节奏偏好、阻力因素与计划影响的结构化预览
 - 首页首屏现会把 `plan_tasks` 与 `reflection_entries` 派生成单条优先动作和结构化风险卡，明确展示“现在做什么 / 为什么做 / 当前主要风险 / 建议处理动作”
 - 删除目标、保存/重排计划草案、重生成计划、批量应用 action preview 等复合写路径现统一走 SQLite 事务；任一步持久化失败都会整体回滚，不再留下半完成状态
+- `docs/RELEASE-READINESS.md` 已补齐 Phase 6 的自动预检矩阵、手测路径、go/no-go 判断和当前打包缺口说明
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. `Phase 6 / Task 1`：完成端到端验收、打包和发布前检查
-2. `Phase 6 / Task 2`：为关键链路补更多集成级验收
-3. `Phase 6 / Task 3`：Electron 打包与安装体验检查
+1. `Phase 6 / Task 2`：为关键链路补更多集成级验收
+2. `Phase 6 / Task 3`：Electron 打包与安装体验检查
+3. `Phase 6 / Task 4`：首次启动引导和空状态检查
 4. 继续细化 AI runtime 的 tracing / metrics 与排障体验
 
 ## 当前推荐下一任务
-- `Phase 6 / Task 1`：完成端到端验收、打包和发布前检查
+- `Phase 6 / Task 2`：为关键链路补更多集成级验收
