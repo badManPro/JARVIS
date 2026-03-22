@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
-import type { LearningGoal, LearningPlanDraft, LearningPlanSnapshot, LearningPlanStage, LearningPlanState, PlanTask, UserProfile } from '../../shared/app-state.js';
+import type { LearningGoal, LearningPlanDraft, LearningPlanSnapshot, LearningPlanStage, LearningPlanState, PlanTask, ReflectionEntry, UserProfile } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
-import { learningGoals, learningPlanDrafts, learningPlans, learningPlanSnapshots, planSnapshotStages, planSnapshotTasks, planStages, planTasks, userProfiles } from '../db/schema.js';
+import { learningGoals, learningPlanDrafts, learningPlans, learningPlanSnapshots, reflectionEntries, planSnapshotStages, planSnapshotTasks, planStages, planTasks, userProfiles } from '../db/schema.js';
 import type { LearningCompanionDatabase } from '../db/client.js';
 
 const PROFILE_ID = 'default';
@@ -246,6 +246,54 @@ export class EntitiesRepository {
       drafts,
       snapshots,
     };
+  }
+
+  loadReflectionEntries(): ReflectionEntry[] {
+    return this.db
+      .select()
+      .from(reflectionEntries)
+      .orderBy(asc(reflectionEntries.period))
+      .all()
+      .map((row) => ({
+        period: row.period as ReflectionEntry['period'],
+        label: '',
+        completedTasks: 0,
+        actualDuration: '0 分钟',
+        deviation: '',
+        obstacle: row.obstacle,
+        difficultyFit: row.difficultyFit as ReflectionEntry['difficultyFit'],
+        timeFit: row.timeFit as ReflectionEntry['timeFit'],
+        moodScore: row.moodScore,
+        confidenceScore: row.confidenceScore,
+        accomplishmentScore: row.accomplishmentScore,
+        insight: row.insight,
+        nextActions: [],
+        followUpActions: parseJsonArray<string>(row.followUpActionsJson),
+        recentTaskExecutions: [],
+        updatedAt: row.updatedAt.toISOString(),
+      }));
+  }
+
+  saveReflectionEntries(entries: ReflectionEntry[]) {
+    const now = new Date();
+    this.db.delete(reflectionEntries).run();
+    if (!entries.length) return;
+
+    this.db
+      .insert(reflectionEntries)
+      .values(entries.map((entry) => ({
+        period: entry.period,
+        obstacle: entry.obstacle,
+        difficultyFit: entry.difficultyFit,
+        timeFit: entry.timeFit,
+        moodScore: entry.moodScore,
+        confidenceScore: entry.confidenceScore,
+        accomplishmentScore: entry.accomplishmentScore,
+        insight: entry.insight,
+        followUpActionsJson: JSON.stringify(entry.followUpActions),
+        updatedAt: entry.updatedAt ? new Date(entry.updatedAt) : now,
+      })))
+      .run();
   }
 
   saveLearningPlanState(planState: LearningPlanState) {

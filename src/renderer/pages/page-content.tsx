@@ -18,6 +18,11 @@ import type {
   PlanTask,
   ProviderConfig,
   ProviderId,
+  ReflectionDifficultyFit,
+  ReflectionEntry,
+  ReflectionPeriod,
+  ReflectionTimeFit,
+  SaveReflectionEntryInput,
   TaskStatus,
   UserProfile,
 } from '@shared/app-state';
@@ -52,6 +57,22 @@ const routingItems: Array<{ key: keyof AppState['settings']['routing']; label: s
 
 const startPageOptions = ['首页', '学习计划', '目标', '对话', '用户画像', '复盘', '设置'];
 const themeOptions = ['跟随系统', '浅色', '深色'];
+const reflectionPeriodOptions: Array<{ value: ReflectionPeriod; label: string; description: string }> = [
+  { value: 'daily', label: '日复盘', description: '关注最近一次或最近一天的真实执行与阻塞。' },
+  { value: 'weekly', label: '周复盘', description: '汇总本周节奏、时间分配和持续性问题。' },
+  { value: 'stage', label: '阶段复盘', description: '从当前阶段整体判断节奏、策略和下一步。' },
+];
+const reflectionDifficultyOptions: Array<{ value: ReflectionDifficultyFit; label: string }> = [
+  { value: 'too_easy', label: '偏简单' },
+  { value: 'matched', label: '基本匹配' },
+  { value: 'too_hard', label: '偏困难' },
+];
+const reflectionTimeOptions: Array<{ value: ReflectionTimeFit; label: string }> = [
+  { value: 'insufficient', label: '时间不足' },
+  { value: 'matched', label: '时间匹配' },
+  { value: 'overflow', label: '时间有余量' },
+];
+const reflectionScoreOptions = [1, 2, 3, 4, 5];
 
 function getActivePlanDraft(drafts: LearningPlanDraft[], activeGoalId: string) {
   return drafts.find((draft) => draft.goalId === activeGoalId) ?? drafts[0] ?? null;
@@ -105,33 +126,269 @@ export function PageContent({ page }: { page: PageDefinition }) {
     case 'profile':
       return <ProfileContent />;
     case 'reflection':
-      return (
-        <div className="grid gap-4 lg:grid-cols-2">
+      return <ReflectionContent />;
+    case 'settings':
+      return <SettingsContent />;
+    default:
+      return null;
+  }
+}
+
+function createReflectionDraft(entry: ReflectionEntry): SaveReflectionEntryInput {
+  return {
+    period: entry.period,
+    obstacle: entry.obstacle,
+    difficultyFit: entry.difficultyFit,
+    timeFit: entry.timeFit,
+    moodScore: entry.moodScore,
+    confidenceScore: entry.confidenceScore,
+    accomplishmentScore: entry.accomplishmentScore,
+    insight: entry.insight,
+    followUpActions: [...entry.followUpActions],
+  };
+}
+
+function getReflectionEntry(entries: ReflectionEntry[], period: ReflectionPeriod) {
+  return entries.find((entry) => entry.period === period) ?? entries[0] ?? null;
+}
+
+function ReflectionContent() {
+  const reflection = useAppStore((state) => state.reflection);
+  const saveReflectionEntry = useAppStore((state) => state.saveReflectionEntry);
+  const [selectedPeriod, setSelectedPeriod] = useState<ReflectionPeriod>('weekly');
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const selectedEntry = useMemo(
+    () => getReflectionEntry(reflection.entries, selectedPeriod),
+    [reflection.entries, selectedPeriod],
+  );
+  const [draft, setDraft] = useState<SaveReflectionEntryInput | null>(selectedEntry ? createReflectionDraft(selectedEntry) : null);
+
+  useEffect(() => {
+    if (!selectedEntry) {
+      setDraft(null);
+      return;
+    }
+
+    setDraft(createReflectionDraft(selectedEntry));
+  }, [selectedEntry?.period, selectedEntry?.updatedAt, selectedEntry]);
+
+  const hasChanges = useMemo(() => {
+    if (!selectedEntry || !draft) return false;
+    return JSON.stringify(createReflectionDraft(selectedEntry)) !== JSON.stringify(draft);
+  }, [draft, selectedEntry]);
+
+  const applyActionListInput = (value: string) => {
+    setDraft((current) => (
+      current
+        ? {
+          ...current,
+          followUpActions: value
+            .split('\n')
+            .map((item) => item.trim())
+            .filter(Boolean),
+        }
+        : current
+    ));
+  };
+
+  const onSave = async () => {
+    if (!draft || !selectedEntry) return;
+    setSaving(true);
+    setNotice(null);
+
+    try {
+      await saveReflectionEntry(draft);
+      setNotice(`${selectedEntry.label}已保存，本地复盘输入与建议区已刷新。`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '保存复盘输入失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!selectedEntry || !draft) {
+    return (
+      <Card>
+        <SectionTitle>复盘输入</SectionTitle>
+        <Muted className="mt-4">当前还没有可编辑的复盘周期。</Muted>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <SectionTitle>结构化复盘输入</SectionTitle>
+            <Muted className="mt-2">复盘输入会独立保存到本地结构化表，并直接作为后续计划调整和 AI 复盘总结的上下文。</Muted>
+          </div>
+          <Badge className="bg-emerald-50 text-emerald-700">已接入本地持久化</Badge>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {reflectionPeriodOptions.map((option) => {
+            const selected = option.value === selectedPeriod;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={[
+                  'rounded-2xl border px-4 py-4 text-left transition',
+                  selected
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+                ].join(' ')}
+                onClick={() => {
+                  setSelectedPeriod(option.value);
+                  setNotice(null);
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-medium">{option.label}</div>
+                  <Badge className={selected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700'}>
+                    {getReflectionEntry(reflection.entries, option.value)?.recentTaskExecutions.length ?? 0} 条记录
+                  </Badge>
+                </div>
+                <div className={selected ? 'mt-2 text-sm text-slate-200' : 'mt-2 text-sm text-slate-500'}>{option.description}</div>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
+        <Card>
+          <div className="flex items-center justify-between gap-3">
+            <SectionTitle>{selectedEntry.label}</SectionTitle>
+            <div className="text-xs text-slate-500">
+              {selectedEntry.updatedAt ? `最近保存：${formatDateTime(selectedEntry.updatedAt)}` : '尚未手动保存'}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <StatCard label="完成任务数" value={String(selectedEntry.completedTasks)} />
+            <StatCard label="实际投入" value={selectedEntry.actualDuration} />
+            <StatCard label="最近执行" value={`${selectedEntry.recentTaskExecutions.length} 条`} />
+          </div>
+
+          <div className="mt-6 grid gap-4">
+            <Field label="问题归因 / 偏差说明">
+              <textarea
+                className={textareaClassName}
+                rows={4}
+                placeholder="例如：工作日连续时间不足，切换成本高，导致原计划被打断。"
+                value={draft.obstacle}
+                onChange={(event) => setDraft((current) => (current ? { ...current, obstacle: event.target.value } : current))}
+              />
+            </Field>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="任务难度是否匹配">
+                <select
+                  className={inputClassName}
+                  value={draft.difficultyFit}
+                  onChange={(event) => setDraft((current) => (current ? { ...current, difficultyFit: event.target.value as ReflectionDifficultyFit } : current))}
+                >
+                  {reflectionDifficultyOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="时间分配是否合理">
+                <select
+                  className={inputClassName}
+                  value={draft.timeFit}
+                  onChange={(event) => setDraft((current) => (current ? { ...current, timeFit: event.target.value as ReflectionTimeFit } : current))}
+                >
+                  {reflectionTimeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <ReflectionScoreField
+                label="心情 / 压力"
+                value={draft.moodScore}
+                onChange={(value) => setDraft((current) => (current ? { ...current, moodScore: value } : current))}
+              />
+              <ReflectionScoreField
+                label="自信度"
+                value={draft.confidenceScore}
+                onChange={(value) => setDraft((current) => (current ? { ...current, confidenceScore: value } : current))}
+              />
+              <ReflectionScoreField
+                label="主观成就感"
+                value={draft.accomplishmentScore}
+                onChange={(value) => setDraft((current) => (current ? { ...current, accomplishmentScore: value } : current))}
+              />
+            </div>
+
+            <Field label="复盘结论">
+              <textarea
+                className={textareaClassName}
+                rows={4}
+                placeholder="这一周期最有效的方法是什么，下一步最该怎么调？"
+                value={draft.insight}
+                onChange={(event) => setDraft((current) => (current ? { ...current, insight: event.target.value } : current))}
+              />
+            </Field>
+
+            <Field label="后续动作（每行一条）">
+              <textarea
+                className={textareaClassName}
+                rows={4}
+                placeholder={'例如：\n把任务拆到 30 分钟内\n周末先补最卡的一项基础链路'}
+                value={draft.followUpActions.join('\n')}
+                onChange={(event) => applyActionListInput(event.target.value)}
+              />
+            </Field>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" className={primaryButtonClassName} disabled={saving || !hasChanges} onClick={onSave}>
+                {saving ? '保存中…' : '保存复盘输入'}
+              </button>
+              {notice ? <span className="text-sm text-slate-600">{notice}</span> : null}
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid gap-4">
           <Card>
-            <SectionTitle>{state.reflection.period}复盘</SectionTitle>
-            <div className="mt-4 space-y-3 text-sm text-slate-700">
-              <div><span className="font-medium">完成任务数：</span>{state.reflection.completedTasks}</div>
-              <div><span className="font-medium">实际投入：</span>{state.reflection.actualDuration}</div>
-              <div><span className="font-medium">偏差：</span>{state.reflection.deviation}</div>
+            <SectionTitle>当前偏差摘要</SectionTitle>
+            <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+              {selectedEntry.deviation}
             </div>
           </Card>
+
           <Card>
-            <SectionTitle>复盘结论</SectionTitle>
-            <p className="mt-4 text-sm text-slate-700">{state.reflection.insight}</p>
-            <ul className="mt-4 space-y-3 text-sm text-slate-700">
-              {state.reflection.nextActions.map((item) => (
-                <li key={item} className="rounded-lg bg-slate-50 px-3 py-2">{item}</li>
-              ))}
-            </ul>
+            <div className="flex items-center justify-between gap-3">
+              <SectionTitle>建议与后续动作</SectionTitle>
+              <Badge className="bg-slate-100 text-slate-700">{selectedEntry.nextActions.length} 条</Badge>
+            </div>
+            {selectedEntry.nextActions.length ? (
+              <div className="mt-4 space-y-3">
+                {selectedEntry.nextActions.map((item) => (
+                  <div key={item} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Muted className="mt-4">当前还没有建议动作。先补一次真实执行或填写复盘结论，这里会自动补全。</Muted>
+            )}
           </Card>
-          <Card className="lg:col-span-2">
+
+          <Card>
             <div className="flex items-center justify-between gap-3">
               <SectionTitle>最近执行记录</SectionTitle>
-              <Badge className="bg-slate-100 text-slate-700">{state.reflection.recentTaskExecutions.length} 条</Badge>
+              <Badge className="bg-slate-100 text-slate-700">{selectedEntry.recentTaskExecutions.length} 条</Badge>
             </div>
-            {state.reflection.recentTaskExecutions.length ? (
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {state.reflection.recentTaskExecutions.map((item) => (
+            {selectedEntry.recentTaskExecutions.length ? (
+              <div className="mt-4 space-y-3">
+                {selectedEntry.recentTaskExecutions.map((item) => (
                   <div key={`${item.taskId}-${item.updatedAt}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-medium text-slate-900">{item.taskTitle}</div>
@@ -143,16 +400,13 @@ export function PageContent({ page }: { page: PageDefinition }) {
                 ))}
               </div>
             ) : (
-              <Muted className="mt-4">当前还没有真实任务执行记录。去计划页标记一次完成、跳过或延后后，这里会自动回填。</Muted>
+              <Muted className="mt-4">当前周期还没有真实执行记录。去计划页标记一次开始、完成、跳过或延后后，这里会自动回填。</Muted>
             )}
           </Card>
         </div>
-      );
-    case 'settings':
-      return <SettingsContent />;
-    default:
-      return null;
-  }
+      </div>
+    </div>
+  );
 }
 
 function ConversationContent() {
@@ -2752,6 +3006,33 @@ function StatusRow({ icon, label, value }: { icon: ReactNode; label: string; val
         <span>{value}</span>
       </div>
     </div>
+  );
+}
+
+function ReflectionScoreField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <Field label={label}>
+      <div className="grid grid-cols-5 gap-2">
+        {reflectionScoreOptions.map((score) => {
+          const selected = value === score;
+          return (
+            <button
+              key={score}
+              type="button"
+              className={[
+                'rounded-lg border px-0 py-2 text-sm font-medium transition',
+                selected
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              ].join(' ')}
+              onClick={() => onChange(score)}
+            >
+              {score}
+            </button>
+          );
+        })}
+      </div>
+    </Field>
   );
 }
 

@@ -100,6 +100,19 @@ export const planSnapshotTasks = sqliteTable('plan_snapshot_tasks', {
   sortOrder: integer('sort_order').notNull(),
 });
 
+export const reflectionEntries = sqliteTable('reflection_entries', {
+  period: text('period').primaryKey(),
+  obstacle: text('obstacle').notNull(),
+  difficultyFit: text('difficulty_fit').notNull(),
+  timeFit: text('time_fit').notNull(),
+  moodScore: integer('mood_score').notNull(),
+  confidenceScore: integer('confidence_score').notNull(),
+  accomplishmentScore: integer('accomplishment_score').notNull(),
+  insight: text('insight').notNull(),
+  followUpActionsJson: text('follow_up_actions_json').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export const appSettings = sqliteTable('app_settings', {
   id: text('id').primaryKey(),
   theme: text('theme').notNull(),

@@ -5,6 +5,7 @@ import type {
   ProviderConfig,
   ProviderId,
   ProviderSecretInput,
+  SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
 } from './app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResponse, AiRuntimeSummaryItem } from './ai-service.js';
@@ -24,6 +25,7 @@ export type LearningCompanionBridge = {
     setActiveGoal: (goalId: string) => Promise<AppState>;
     saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<AppState>;
     updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<AppState>;
+    saveReflectionEntry: (payload: SaveReflectionEntryInput) => Promise<AppState>;
     regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<AppState>;
     runProfileExtraction: () => Promise<AppState>;
     generatePlanAdjustmentSuggestions: (payload: { goalId: string }) => Promise<AppState>;

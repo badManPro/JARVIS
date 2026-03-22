@@ -30,6 +30,7 @@
 - Main 侧已新增 `ai_request_logs` 请求日志，设置页可查看请求总数、成功 / 失败统计、每个 capability 最近状态与最近请求列表
 - 学习计划页已支持对单个任务执行“开始 / 完成 / 跳过 / 延后”，并把状态原因与最近流转时间写入本地
 - 首页与复盘页已改为消费真实任务执行派生摘要，可立即看到今日聚焦、风险提醒、完成统计与最近执行记录
+- 复盘页已支持日 / 周 / 阶段周期切换、结构化输入表单、本地保存与建议区；手动输入会落到 `reflection_entries`
 
 ## 技术栈
 - Electron
@@ -121,6 +122,7 @@ npm run build
 - Provider secret 单独存于 `provider_secrets`，renderer 仅获取 `keyPreview`、`hasSecret`、`updatedAt` 等安全字段
 - 应用偏好、Provider 基础配置和 capability route 已拆到 `app_settings`、`provider_configs`、`model_routing` 并可在重启后回填
 - `ai_request_logs` 会结构化保存 capability 调用的 Provider、模型、状态、耗时和错误摘要，不保存 prompt / 对话正文
+- `reflection_entries` 会结构化保存日 / 周 / 阶段复盘的偏差说明、难度判断、时间分配、自评、复盘结论与后续动作
 - 用户画像、目标、设置页的关键字段已经可以通过 renderer → preload → main → SQLite 真实保存并在重启后回填
 - 计划相关数据已拆为：`learning_plans.active_goal_id` 保存当前主目标，`learning_plan_drafts` 保存各目标草案，`plan_stages` / `plan_tasks` 保存对应阶段与任务
 - `plan_tasks` 现会额外保存 `status_note` / `status_updated_at`，用于承接任务完成 / 跳过 / 延后等真实执行信号
@@ -133,14 +135,14 @@ npm run build
 - 对话建议提取和计划调整建议统一回流到 `conversation.suggestions`，继续复用现有 action preview 的审核与应用边界
 - Provider 健康状态现可由设置页手动检查，并会随着真实 capability 调用成功 / 失败自动回写到 `provider_configs.health_status`
 - 设置页现可查看最小可观测性摘要，包括总请求数、成功 / 失败统计、每个 capability 最近请求状态和最近请求列表
-- 首页与复盘页的摘要现由计划任务执行数据派生，但日 / 周 / 阶段复盘表单仍未提供手动输入
+- 复盘页现提供独立 `saveReflectionEntry` 链路，用户可按日 / 周 / 阶段分别编辑复盘输入，并立即刷新建议区与计划调整上下文
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. 为日 / 周 / 阶段复盘补结构化输入与手动编辑
-2. 让复盘结果影响画像与计划调整建议生成
-3. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
-4. 继续细化 AI runtime 的 tracing / metrics 与排障体验
+1. 让复盘结果影响画像与计划调整建议生成
+2. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
+3. 继续细化 AI runtime 的 tracing / metrics 与排障体验
+4. 为关键链路补更多集成级验收
 
 ## 当前推荐下一任务
-- `Phase 4 / Task 2`：日 / 周 / 阶段复盘输入
+- `Phase 4 / Task 3`：复盘结果影响画像与计划调整建议生成

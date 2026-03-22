@@ -11,6 +11,7 @@ import {
   learningPlans,
   learningPlanSnapshots,
   modelRouting,
+  reflectionEntries,
   planSnapshotStages,
   planSnapshotTasks,
   planStages,
@@ -31,6 +32,7 @@ export type LearningCompanionDatabase = BetterSQLite3Database<{
   planTasks: typeof planTasks;
   planSnapshotStages: typeof planSnapshotStages;
   planSnapshotTasks: typeof planSnapshotTasks;
+  reflectionEntries: typeof reflectionEntries;
   appSettings: typeof appSettings;
   providerConfigs: typeof providerConfigs;
   modelRouting: typeof modelRouting;
@@ -155,6 +157,19 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
       FOREIGN KEY(snapshot_id) REFERENCES learning_plan_snapshots(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS reflection_entries (
+      period TEXT PRIMARY KEY NOT NULL,
+      obstacle TEXT NOT NULL,
+      difficulty_fit TEXT NOT NULL,
+      time_fit TEXT NOT NULL,
+      mood_score INTEGER NOT NULL,
+      confidence_score INTEGER NOT NULL,
+      accomplishment_score INTEGER NOT NULL,
+      insight TEXT NOT NULL,
+      follow_up_actions_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS app_settings (
       id TEXT PRIMARY KEY NOT NULL,
       theme TEXT NOT NULL,
@@ -273,6 +288,7 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
         planTasks,
         planSnapshotStages,
         planSnapshotTasks,
+        reflectionEntries,
         appSettings,
         providerConfigs,
         modelRouting,

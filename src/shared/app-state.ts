@@ -171,6 +171,41 @@ export type ReflectionTaskExecution = {
   updatedAt: string;
 };
 
+export type ReflectionPeriod = 'daily' | 'weekly' | 'stage';
+export type ReflectionDifficultyFit = 'too_easy' | 'matched' | 'too_hard';
+export type ReflectionTimeFit = 'insufficient' | 'matched' | 'overflow';
+
+export type ReflectionEntry = {
+  period: ReflectionPeriod;
+  label: string;
+  completedTasks: number;
+  actualDuration: string;
+  deviation: string;
+  obstacle: string;
+  difficultyFit: ReflectionDifficultyFit;
+  timeFit: ReflectionTimeFit;
+  moodScore: number;
+  confidenceScore: number;
+  accomplishmentScore: number;
+  insight: string;
+  nextActions: string[];
+  followUpActions: string[];
+  recentTaskExecutions: ReflectionTaskExecution[];
+  updatedAt?: string;
+};
+
+export type SaveReflectionEntryInput = {
+  period: ReflectionPeriod;
+  obstacle: string;
+  difficultyFit: ReflectionDifficultyFit;
+  timeFit: ReflectionTimeFit;
+  moodScore: number;
+  confidenceScore: number;
+  accomplishmentScore: number;
+  insight: string;
+  followUpActions: string[];
+};
+
 export type UpdatePlanTaskStatusInput = {
   draftId: string;
   taskId: string;
@@ -209,6 +244,7 @@ export type AppState = {
     insight: string;
     nextActions: string[];
     recentTaskExecutions: ReflectionTaskExecution[];
+    entries: ReflectionEntry[];
   };
   settings: {
     theme: string;
@@ -226,6 +262,13 @@ export type AppState = {
 
 const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
 const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
+const DEFAULT_REFLECTION_PERIOD: ReflectionPeriod = 'stage';
+const reflectionPeriods: ReflectionPeriod[] = ['daily', 'weekly', 'stage'];
+const reflectionPeriodLabels = {
+  daily: '日复盘',
+  weekly: '周复盘',
+  stage: '阶段复盘',
+} satisfies Record<ReflectionPeriod, string>;
 
 function getActiveConversationGoal(goals: LearningGoal[], activeGoalId: string) {
   return goals.find((goal) => goal.id === activeGoalId) ?? goals[0] ?? null;
@@ -255,6 +298,101 @@ function normalizePlanTask(task: PlanTask): PlanTask {
     statusNote: task.statusNote?.trim() ?? '',
     statusUpdatedAt: task.statusUpdatedAt,
   };
+}
+
+function normalizeReflectionDifficultyFit(value?: string): ReflectionDifficultyFit {
+  switch (value) {
+    case 'too_easy':
+    case 'matched':
+    case 'too_hard':
+      return value;
+    default:
+      return 'matched';
+  }
+}
+
+function normalizeReflectionTimeFit(value?: string): ReflectionTimeFit {
+  switch (value) {
+    case 'insufficient':
+    case 'matched':
+    case 'overflow':
+      return value;
+    default:
+      return 'matched';
+  }
+}
+
+function clampReflectionScore(value?: number) {
+  if (!Number.isFinite(value)) {
+    return 3;
+  }
+
+  return Math.max(1, Math.min(5, Math.round(value ?? 3)));
+}
+
+function createEmptyReflectionEntry(period: ReflectionPeriod): ReflectionEntry {
+  return {
+    period,
+    label: reflectionPeriodLabels[period],
+    completedTasks: 0,
+    actualDuration: '0 分钟',
+    deviation: '当前周期还没有真实执行记录。',
+    obstacle: '',
+    difficultyFit: 'matched',
+    timeFit: 'matched',
+    moodScore: 3,
+    confidenceScore: 3,
+    accomplishmentScore: 3,
+    insight: '',
+    nextActions: [],
+    followUpActions: [],
+    recentTaskExecutions: [],
+  };
+}
+
+function normalizeReflectionEntry(entry: Partial<ReflectionEntry> & Pick<ReflectionEntry, 'period'>): ReflectionEntry {
+  const fallback = createEmptyReflectionEntry(entry.period);
+  return {
+    ...fallback,
+    ...entry,
+    label: reflectionPeriodLabels[entry.period],
+    obstacle: entry.obstacle?.trim() ?? '',
+    difficultyFit: normalizeReflectionDifficultyFit(entry.difficultyFit),
+    timeFit: normalizeReflectionTimeFit(entry.timeFit),
+    moodScore: clampReflectionScore(entry.moodScore),
+    confidenceScore: clampReflectionScore(entry.confidenceScore),
+    accomplishmentScore: clampReflectionScore(entry.accomplishmentScore),
+    insight: entry.insight?.trim() ?? '',
+    nextActions: Array.from(new Set((entry.nextActions ?? []).map((item) => item.trim()).filter(Boolean))),
+    followUpActions: Array.from(new Set((entry.followUpActions ?? []).map((item) => item.trim()).filter(Boolean))),
+    recentTaskExecutions: entry.recentTaskExecutions ?? [],
+    updatedAt: entry.updatedAt,
+  };
+}
+
+function resolveReflectionEntries(reflection: Partial<AppState['reflection']>): ReflectionEntry[] {
+  const providedEntries = Array.isArray(reflection.entries) ? reflection.entries : [];
+  const legacyObstacle = reflection.deviation?.trim() ?? '';
+  const legacyInsight = reflection.insight?.trim() ?? '';
+  const legacyActions = Array.isArray(reflection.nextActions) ? reflection.nextActions : [];
+
+  return reflectionPeriods.map((period) => {
+    const provided = providedEntries.find((entry) => entry.period === period);
+    if (provided) {
+      return normalizeReflectionEntry(provided);
+    }
+
+    if (period === 'weekly' || period === 'stage') {
+      return normalizeReflectionEntry({
+        period,
+        obstacle: legacyObstacle,
+        insight: legacyInsight,
+        followUpActions: legacyActions,
+      });
+    }
+
+    return createEmptyReflectionEntry(period);
+  });
 }
 
 function parseTaskDurationMinutes(duration: string) {
@@ -347,6 +485,10 @@ function buildTaskSummaryLine(tasks: PlanTask[]) {
 }
 
 function buildExecutionInsight(summary: ReturnType<typeof buildTaskStatusSummary>) {
+  if (!summary.total) {
+    return '当前周期还没有足够的执行记录，先完成一次真实任务后再做复盘。';
+  }
+
   if (summary.delayedTasks.length || summary.skippedTasks.length) {
     return '当前执行节奏出现偏差，下一步应优先处理延后与跳过原因，再决定是否重排计划。';
   }
@@ -371,6 +513,97 @@ function buildRecentTaskExecutions(tasks: PlanTask[]): ReflectionTaskExecution[]
     }));
 }
 
+function isWithinRecentDays(timestamp: string, days: number, now: Date) {
+  const current = new Date(timestamp);
+  if (Number.isNaN(current.getTime())) {
+    return false;
+  }
+
+  const diffMs = now.getTime() - current.getTime();
+  return diffMs >= 0 && diffMs <= days * 24 * 60 * 60 * 1000;
+}
+
+function filterTasksForReflectionPeriod(tasks: PlanTask[], period: ReflectionPeriod, now: Date) {
+  const normalizedTasks = tasks.map((task) => normalizePlanTask(task));
+
+  switch (period) {
+    case 'daily':
+      return normalizedTasks.filter((task) => task.status !== 'todo' && Boolean(task.statusUpdatedAt) && isWithinRecentDays(task.statusUpdatedAt ?? '', 1, now));
+    case 'weekly':
+      return normalizedTasks.filter((task) => task.status !== 'todo' && Boolean(task.statusUpdatedAt) && isWithinRecentDays(task.statusUpdatedAt ?? '', 7, now));
+    case 'stage':
+    default:
+      return normalizedTasks.filter((task) => task.status !== 'todo');
+  }
+}
+
+function buildReflectionDeviation(
+  summary: ReturnType<typeof buildTaskStatusSummary>,
+  manualObstacle: string,
+) {
+  const executionDeviation = summary.delayedTasks.length || summary.skippedTasks.length
+    ? [
+      summary.delayedTasks.length ? `延后 ${summary.delayedTasks.length} 项：${buildTaskSummaryLine(summary.delayedTasks)}` : null,
+      summary.skippedTasks.length ? `跳过 ${summary.skippedTasks.length} 项：${buildTaskSummaryLine(summary.skippedTasks)}` : null,
+    ].filter(Boolean).join('；')
+    : '';
+
+  if (manualObstacle) {
+    return [executionDeviation, manualObstacle].filter(Boolean).join('；');
+  }
+
+  if (executionDeviation) {
+    return executionDeviation;
+  }
+
+  if (!summary.total) {
+    return '当前周期还没有真实执行记录。';
+  }
+
+  return '当前没有跳过或延后任务，执行节奏基本稳定。';
+}
+
+function buildReflectionSuggestions(
+  period: ReflectionPeriod,
+  summary: ReturnType<typeof buildTaskStatusSummary>,
+  manualEntry: ReflectionEntry,
+) {
+  const suggestions = [
+    summary.delayedTasks[0] ? `优先处理延后任务：${summary.delayedTasks[0].title}` : null,
+    summary.skippedTasks[0] ? `回看被跳过任务：${summary.skippedTasks[0].title}` : null,
+    manualEntry.timeFit === 'insufficient' ? '下个周期减少并行事项，先为主线预留连续时间块' : null,
+    manualEntry.timeFit === 'overflow' ? '下个周期可以适度加一点挑战，但保持任务可完成' : null,
+    manualEntry.difficultyFit === 'too_hard' ? '把高难任务拆成更小的前置练习，再继续推进主线' : null,
+    manualEntry.difficultyFit === 'too_easy' ? '可以补一项更有反馈的挑战任务，避免节奏过松' : null,
+    manualEntry.moodScore <= 2 ? '先安排一项低阻力任务恢复节奏，再进入高负荷工作' : null,
+    !summary.total
+      ? (period === 'stage' ? '先完成一次真实任务流转，再补阶段复盘。' : `先记录一次${reflectionPeriodLabels[period]}内的真实执行，再完善复盘。`)
+      : null,
+  ];
+
+  return Array.from(new Set(suggestions.map((item) => item?.trim() ?? '').filter(Boolean)));
+}
+
+function buildReflectionEntry(period: ReflectionPeriod, tasks: PlanTask[], manualEntry: ReflectionEntry, now: Date): ReflectionEntry {
+  const scopedTasks = filterTasksForReflectionPeriod(tasks, period, now);
+  const summary = buildTaskStatusSummary(scopedTasks);
+  const totalMinutes = summary.doneTasks.reduce((minutes, task) => minutes + parseTaskDurationMinutes(task.duration), 0);
+  const recentTaskExecutions = buildRecentTaskExecutions(scopedTasks);
+  const systemSuggestions = buildReflectionSuggestions(period, summary, manualEntry);
+  const nextActions = Array.from(new Set([...manualEntry.followUpActions, ...systemSuggestions].map((item) => item.trim()).filter(Boolean)));
+
+  return {
+    ...manualEntry,
+    label: reflectionPeriodLabels[period],
+    completedTasks: summary.doneTasks.length,
+    actualDuration: formatMinutes(totalMinutes),
+    deviation: buildReflectionDeviation(summary, manualEntry.obstacle),
+    insight: manualEntry.insight || buildExecutionInsight(summary),
+    nextActions,
+    recentTaskExecutions,
+  };
+}
+
 function buildExecutionDerivedState(state: AppState) {
   const activeGoal = getActiveConversationGoal(state.goals, state.plan.activeGoalId);
   const activeDraft = getActiveConversationDraft(state.plan);
@@ -389,6 +622,14 @@ function buildExecutionDerivedState(state: AppState) {
     focusTask ? `${focusTask.status === 'in_progress' ? '继续推进' : '开始执行'}：${focusTask.title}` : '查看复盘并准备下一阶段任务',
     summary.skippedTasks.length ? '在复盘中补充跳过原因，避免同类阻塞重复出现' : null,
   ].filter(Boolean) as string[]));
+  const manualReflectionEntries = resolveReflectionEntries(state.reflection);
+  const now = new Date();
+  const reflectionEntries = reflectionPeriods.map((period) => {
+    const manualEntry = manualReflectionEntries.find((entry) => entry.period === period) ?? createEmptyReflectionEntry(period);
+    return buildReflectionEntry(period, tasks, manualEntry, now);
+  });
+  const defaultReflectionEntry = reflectionEntries.find((entry) => entry.period === DEFAULT_REFLECTION_PERIOD) ?? reflectionEntries[0] ?? createEmptyReflectionEntry(DEFAULT_REFLECTION_PERIOD);
+  const executionSummaryLine = `${activeGoal?.title ?? '当前目标'}已完成 ${summary.doneTasks.length}/${summary.total} 项；延后 ${summary.delayedTasks.length} 项，跳过 ${summary.skippedTasks.length} 项。`;
 
   return {
     dashboard: {
@@ -399,21 +640,20 @@ function buildExecutionDerivedState(state: AppState) {
       weeklyCompletion: completionRate,
       alerts,
       quickActions: nextActions,
-      reflectionSummary: `${activeGoal?.title ?? '当前目标'}已完成 ${summary.doneTasks.length}/${summary.total} 项；延后 ${summary.delayedTasks.length} 项，跳过 ${summary.skippedTasks.length} 项。`,
+      reflectionSummary: defaultReflectionEntry.insight
+        ? `${executionSummaryLine} ${defaultReflectionEntry.label}：${defaultReflectionEntry.insight}`
+        : executionSummaryLine,
     },
     reflection: {
       ...state.reflection,
-      completedTasks: summary.doneTasks.length,
-      actualDuration: formatMinutes(totalMinutes),
-      deviation: summary.delayedTasks.length || summary.skippedTasks.length
-        ? [
-          summary.delayedTasks.length ? `延后 ${summary.delayedTasks.length} 项：${buildTaskSummaryLine(summary.delayedTasks)}` : null,
-          summary.skippedTasks.length ? `跳过 ${summary.skippedTasks.length} 项：${buildTaskSummaryLine(summary.skippedTasks)}` : null,
-        ].filter(Boolean).join('；')
-        : '当前没有跳过或延后任务，执行节奏基本稳定。',
-      insight: buildExecutionInsight(summary),
-      nextActions,
-      recentTaskExecutions,
+      period: defaultReflectionEntry.label,
+      completedTasks: defaultReflectionEntry.completedTasks,
+      actualDuration: defaultReflectionEntry.actualDuration,
+      deviation: defaultReflectionEntry.deviation,
+      insight: defaultReflectionEntry.insight,
+      nextActions: defaultReflectionEntry.nextActions,
+      recentTaskExecutions: defaultReflectionEntry.recentTaskExecutions,
+      entries: reflectionEntries,
     },
   };
 }
@@ -1307,6 +1547,34 @@ export function updatePlanTaskStatus(state: AppState, input: UpdatePlanTaskStatu
   });
 }
 
+export function saveReflectionEntry(state: AppState, input: SaveReflectionEntryInput): AppState {
+  const changedAt = new Date().toISOString();
+  const nextEntries = resolveReflectionEntries(state.reflection).map((entry) => (
+    entry.period === input.period
+      ? normalizeReflectionEntry({
+        ...entry,
+        obstacle: input.obstacle,
+        difficultyFit: input.difficultyFit,
+        timeFit: input.timeFit,
+        moodScore: input.moodScore,
+        confidenceScore: input.confidenceScore,
+        accomplishmentScore: input.accomplishmentScore,
+        insight: input.insight,
+        followUpActions: input.followUpActions,
+        updatedAt: changedAt,
+      })
+      : entry
+  ));
+
+  return syncExecutionDerivedState({
+    ...state,
+    reflection: {
+      ...state.reflection,
+      entries: nextEntries,
+    },
+  });
+}
+
 const baseSeedState: AppState = {
   profile: {
     name: 'Baymax',
@@ -1433,13 +1701,28 @@ const baseSeedState: AppState = {
     actionPreviews: [],
   },
   reflection: {
-    period: '本周',
-    completedTasks: 6,
-    actualDuration: '4.5 小时',
-    deviation: '比计划少 1 小时，主要因临时事务打断。',
-    insight: '用真实交付物驱动开发时，连续性更稳定。',
-    nextActions: ['保持单次任务 45 分钟以内', '优先做能直接增强产品骨架的事项', '下阶段接持久层，不扩展过多页面功能'],
+    period: '阶段复盘',
+    completedTasks: 0,
+    actualDuration: '0 分钟',
+    deviation: '当前周期还没有真实执行记录。',
+    insight: '',
+    nextActions: [],
     recentTaskExecutions: [],
+    entries: [
+      createEmptyReflectionEntry('daily'),
+      normalizeReflectionEntry({
+        period: 'weekly',
+        obstacle: '比计划少 1 小时，主要因临时事务打断。',
+        insight: '用真实交付物驱动开发时，连续性更稳定。',
+        followUpActions: ['保持单次任务 45 分钟以内', '优先做能直接增强产品骨架的事项', '下阶段接持久层，不扩展过多页面功能'],
+      }),
+      normalizeReflectionEntry({
+        period: 'stage',
+        obstacle: '当前阶段的主要偏差来自临时事务打断，说明任务仍需进一步降摩擦。',
+        insight: '项目驱动的学习方式更稳定，但每次投入仍需要更明确的可交付物。',
+        followUpActions: ['把每次任务压缩到 30-45 分钟', '优先选择能直接增强产品骨架的事项', '为下一阶段预留一次完整复盘时段'],
+      }),
+    ],
   },
   settings: {
     theme: '跟随系统',

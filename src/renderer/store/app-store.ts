@@ -7,6 +7,7 @@ import type {
   ProviderConfig,
   ProviderId,
   ProviderSecretInput,
+  SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
   UserProfile,
 } from '@shared/app-state';
@@ -14,6 +15,7 @@ import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSum
 import {
   applyAcceptedConversationActionPreviews,
   resolveConversationState,
+  saveReflectionEntry as applyReflectionEntrySave,
   seedState,
   updateConversationActionPreviewReview,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
@@ -35,6 +37,7 @@ type AppStore = AppState & {
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<void>;
+  saveReflectionEntry: (payload: SaveReflectionEntryInput) => Promise<void>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
   runProfileExtraction: () => Promise<AppState>;
   generatePlanAdjustmentSuggestions: (payload: { goalId: string }) => Promise<AppState>;
@@ -288,6 +291,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     const persistedState = await bridge.updatePlanTaskStatus(payload);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  saveReflectionEntry: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      set((state) => ({
+        ...state,
+        ...applyReflectionEntrySave(extractAppState(state), payload),
+        hydrated: true,
+        hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+      }));
+      return;
+    }
+
+    const persistedState = await bridge.saveReflectionEntry(payload);
     set({ ...persistedState, hydrated: true, hydrationError: null });
   },
   regenerateLearningPlanDraft: async (payload) => {

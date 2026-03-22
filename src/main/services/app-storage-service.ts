@@ -5,6 +5,7 @@ import type {
   ProviderConfig,
   ProviderId,
   ProviderSecretInput,
+  SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
   UserProfile,
 } from '../../shared/app-state.js';
@@ -12,6 +13,7 @@ import type { AiObservabilitySnapshot, AiProviderHealthCheckResponse, AiRequest,
 import {
   applyAcceptedConversationActionPreviews,
   resolveConversationState,
+  saveReflectionEntry as applyReflectionEntrySave,
   seedState,
   syncExecutionDerivedState,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
@@ -208,6 +210,15 @@ export class AppStorageService {
   updatePlanTaskStatus(input: UpdatePlanTaskStatusInput) {
     const snapshot = this.loadAppState();
     const nextState = this.sanitizeState(this.hydratePlanState(applyPlanTaskStatusUpdate(snapshot, input)));
+
+    this.persistStructuredState(nextState);
+    this.appStateRepository.save(nextState);
+    return this.loadAppState();
+  }
+
+  saveReflectionEntry(input: SaveReflectionEntryInput) {
+    const snapshot = this.loadAppState();
+    const nextState = this.sanitizeState(this.hydratePlanState(applyReflectionEntrySave(snapshot, input)));
 
     this.persistStructuredState(nextState);
     this.appStateRepository.save(nextState);
@@ -460,6 +471,10 @@ export class AppStorageService {
       profile,
       goals,
       plan,
+      reflection: {
+        ...snapshot.reflection,
+        entries: this.entitiesRepository.loadReflectionEntries(),
+      },
       settings: this.settingsRepository.loadSettings() ?? snapshot.settings,
     });
   }
@@ -468,6 +483,7 @@ export class AppStorageService {
     this.entitiesRepository.saveUserProfile(state.profile);
     this.entitiesRepository.replaceLearningGoals(state.goals);
     this.entitiesRepository.saveLearningPlanState(state.plan);
+    this.entitiesRepository.saveReflectionEntries(state.reflection.entries);
     this.settingsRepository.saveSettings(state.settings);
   }
 
@@ -642,11 +658,17 @@ export class AppStorageService {
     const taskFeedback = draft.tasks
       .filter((task) => task.status === 'delayed' || task.status === 'in_progress' || task.status === 'skipped')
       .map((task) => `任务反馈：${task.title} 当前状态为 ${task.status}${task.statusNote ? `，备注：${task.statusNote}` : ''}`);
+    const reflectionFeedback = state.reflection.entries.flatMap((entry) => [
+      entry.deviation ? `${entry.label}偏差：${entry.deviation}` : null,
+      entry.insight ? `${entry.label}洞察：${entry.insight}` : null,
+      ...entry.followUpActions.map((item) => `${entry.label}后续动作：${item}`),
+    ].filter(Boolean) as string[]);
 
     const feedback = this.dedupeSuggestions([
       state.reflection.deviation,
       state.reflection.insight,
       ...state.reflection.nextActions.map((item) => `复盘建议：${item}`),
+      ...reflectionFeedback,
       ...taskFeedback,
     ]);
 

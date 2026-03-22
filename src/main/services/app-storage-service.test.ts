@@ -397,6 +397,40 @@ test('updatePlanTaskStatus persists execution metadata and refreshes dashboard/r
   assert.equal(persistedTask.statusNote, '本周先完成任务日志与最小可观测性收尾。');
 });
 
+test('saveReflectionEntry persists structured reflection input and reloads it from storage', () => {
+  const { service } = createHarness();
+  service.initialize();
+
+  const nextState = service.saveReflectionEntry({
+    period: 'weekly',
+    obstacle: '本周的连续时间块不足，切换成本偏高。',
+    difficultyFit: 'matched',
+    timeFit: 'insufficient',
+    moodScore: 3,
+    confidenceScore: 4,
+    accomplishmentScore: 3,
+    insight: '需要继续保持项目驱动，但先把每次目标压缩到更小的交付物。',
+    followUpActions: ['把周内任务压缩到 30 分钟内', '周末先补最卡的基础链路'],
+  });
+
+  const weeklyEntry = nextState.reflection.entries.find((entry) => entry.period === 'weekly');
+  assert.ok(weeklyEntry);
+  assert.equal(weeklyEntry.obstacle, '本周的连续时间块不足，切换成本偏高。');
+  assert.equal(weeklyEntry.difficultyFit, 'matched');
+  assert.equal(weeklyEntry.timeFit, 'insufficient');
+  assert.equal(weeklyEntry.moodScore, 3);
+  assert.equal(weeklyEntry.confidenceScore, 4);
+  assert.equal(weeklyEntry.accomplishmentScore, 3);
+  assert.deepEqual(weeklyEntry.followUpActions, ['把周内任务压缩到 30 分钟内', '周末先补最卡的基础链路']);
+
+  const reloaded = service.loadAppState();
+  const persistedWeeklyEntry = reloaded.reflection.entries.find((entry) => entry.period === 'weekly');
+  assert.ok(persistedWeeklyEntry);
+  assert.equal(persistedWeeklyEntry.insight, '需要继续保持项目驱动，但先把每次目标压缩到更小的交付物。');
+  assert.equal(persistedWeeklyEntry.timeFit, 'insufficient');
+  assert.deepEqual(persistedWeeklyEntry.followUpActions, ['把周内任务压缩到 30 分钟内', '周末先补最卡的基础链路']);
+});
+
 test('regenerateLearningPlanDraft marks the routed provider as warning when AI execution fails', async () => {
   const snapshot = cloneState({
     settings: {

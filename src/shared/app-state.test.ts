@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   applyAcceptedConversationActionPreviews,
   resolveConversationState,
+  saveReflectionEntry,
   seedState,
   updatePlanTaskStatus,
   updateConversationActionPreviewReview,
@@ -111,4 +112,35 @@ test('updatePlanTaskStatus records execution metadata and refreshes dashboard/re
   assert.equal(completedState.reflection.completedTasks, 2);
   assert.match(completedState.reflection.actualDuration, /小时|分钟/);
   assert.match(completedState.dashboard.todayFocus, /规划本地优先 MVP 的最小功能清单|查看复盘/);
+});
+
+test('saveReflectionEntry writes structured feedback into the selected reflection period', () => {
+  const nextState = saveReflectionEntry(seedState, {
+    period: 'weekly',
+    obstacle: '工作日被临时会议切碎，进入任务前很难连续投入。',
+    difficultyFit: 'too_hard',
+    timeFit: 'insufficient',
+    moodScore: 2,
+    confidenceScore: 3,
+    accomplishmentScore: 2,
+    insight: '当前任务粒度仍偏大，应该先把每次投入压到 30 分钟内。',
+    followUpActions: ['把任务拆成 30 分钟内可完成的小步', '把最难的一项前置到周末完整时段'],
+  });
+
+  const weeklyEntry = nextState.reflection.entries.find((entry) => entry.period === 'weekly');
+
+  assert.ok(weeklyEntry);
+  assert.equal(weeklyEntry.obstacle, '工作日被临时会议切碎，进入任务前很难连续投入。');
+  assert.equal(weeklyEntry.difficultyFit, 'too_hard');
+  assert.equal(weeklyEntry.timeFit, 'insufficient');
+  assert.equal(weeklyEntry.moodScore, 2);
+  assert.equal(weeklyEntry.confidenceScore, 3);
+  assert.equal(weeklyEntry.accomplishmentScore, 2);
+  assert.equal(weeklyEntry.insight, '当前任务粒度仍偏大，应该先把每次投入压到 30 分钟内。');
+  assert.deepEqual(weeklyEntry.followUpActions, ['把任务拆成 30 分钟内可完成的小步', '把最难的一项前置到周末完整时段']);
+  assert.match(weeklyEntry.updatedAt ?? '', /\d{4}-\d{2}-\d{2}T/);
+  assert.equal(
+    weeklyEntry.nextActions.some((item) => item.includes('把任务拆成 30 分钟内可完成的小步')),
+    true,
+  );
 });
