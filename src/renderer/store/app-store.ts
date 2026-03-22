@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import type { AppState, ApplyConversationActionPreviewsResult, ConversationActionReviewStatus, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
+import type { AiRuntimeSummaryItem } from '@shared/ai-service';
 import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState, updateConversationActionPreviewReview } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
 
 type AppStore = AppState & {
+  aiRuntimeSummary: AiRuntimeSummaryItem[];
   hydrated: boolean;
   hydrationError: string | null;
   hydrateFromStorage: () => Promise<void>;
@@ -22,6 +24,7 @@ type AppStore = AppState & {
   upsertProviderConfig: (payload: { config: ProviderConfigInput; secret?: string | null }) => Promise<void>;
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
   clearProviderSecret: (providerId: ProviderId) => Promise<void>;
+  refreshAiRuntimeSummary: () => Promise<void>;
 };
 
 function getBridge() {
@@ -59,6 +62,7 @@ function extractAppState(state: AppStore): AppState {
 
 export const useAppStore = create<AppStore>((set, get) => ({
   ...seedState,
+  aiRuntimeSummary: [],
   hydrated: false,
   hydrationError: null,
   hydrateFromStorage: async () => {
@@ -69,8 +73,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     try {
-      const persistedState = await bridge.loadAppState();
-      set({ ...persistedState, hydrated: true, hydrationError: null });
+      const [persistedState, aiRuntimeSummary] = await Promise.all([
+        bridge.loadAppState(),
+        bridge.getAiRuntimeSummary(),
+      ]);
+      set({ ...persistedState, aiRuntimeSummary, hydrated: true, hydrationError: null });
     } catch (error) {
       set({ hydrated: true, hydrationError: error instanceof Error ? error.message : '加载本地状态失败' });
     }
@@ -82,8 +89,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return;
     }
 
-    const persistedState = await bridge.saveAppState(nextState);
-    set({ ...persistedState, hydrated: true, hydrationError: null });
+    const [persistedState, aiRuntimeSummary] = await Promise.all([
+      bridge.saveAppState(nextState),
+      bridge.getAiRuntimeSummary(),
+    ]);
+    set({ ...persistedState, aiRuntimeSummary, hydrated: true, hydrationError: null });
   },
   saveUserProfile: async (profile) => {
     const bridge = getBridge();
@@ -297,28 +307,47 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const bridge = getBridge();
     if (!bridge) return;
 
-    const providers = await bridge.listProviderConfigs();
-    set((state) => ({ ...mergeProviders(state, providers), hydrated: true }));
+    const [providers, aiRuntimeSummary] = await Promise.all([
+      bridge.listProviderConfigs(),
+      bridge.getAiRuntimeSummary(),
+    ]);
+    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
   },
   upsertProviderConfig: async (payload) => {
     const bridge = getBridge();
     if (!bridge) return;
 
-    const providers = await bridge.upsertProviderConfig(payload);
-    set((state) => ({ ...mergeProviders(state, providers), hydrated: true, hydrationError: null }));
+    const [providers, aiRuntimeSummary] = await Promise.all([
+      bridge.upsertProviderConfig(payload),
+      bridge.getAiRuntimeSummary(),
+    ]);
+    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
   },
   saveProviderSecret: async (payload) => {
     const bridge = getBridge();
     if (!bridge) return;
 
-    const providers = await bridge.saveProviderSecret(payload);
-    set((state) => ({ ...mergeProviders(state, providers), hydrated: true, hydrationError: null }));
+    const [providers, aiRuntimeSummary] = await Promise.all([
+      bridge.saveProviderSecret(payload),
+      bridge.getAiRuntimeSummary(),
+    ]);
+    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
   },
   clearProviderSecret: async (providerId) => {
     const bridge = getBridge();
     if (!bridge) return;
 
-    const providers = await bridge.clearProviderSecret(providerId);
-    set((state) => ({ ...mergeProviders(state, providers), hydrated: true, hydrationError: null }));
+    const [providers, aiRuntimeSummary] = await Promise.all([
+      bridge.clearProviderSecret(providerId),
+      bridge.getAiRuntimeSummary(),
+    ]);
+    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
+  },
+  refreshAiRuntimeSummary: async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+
+    const aiRuntimeSummary = await bridge.getAiRuntimeSummary();
+    set((state) => ({ ...state, aiRuntimeSummary, hydrated: true, hydrationError: null }));
   },
 }));

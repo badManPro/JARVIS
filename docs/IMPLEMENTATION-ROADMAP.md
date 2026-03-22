@@ -11,8 +11,8 @@
 ## 2. 当前判断
 
 ### 当前总进度
-- **整体进度估算：45%**
-- **当前阶段：Phase 1 / Phase 2 已完成，准备进入 Phase 3（AI Service 与 Provider 运行时接入）**
+- **整体进度估算：55%**
+- **当前阶段：Phase 3 已进入 `in_progress`，Task 1（统一 AI Service 接口）已完成，准备进入 Task 2（能力接入）**
 
 > 说明：这个百分比是基于“产品可用闭环”而不是“代码文件数量”估算的。文档、骨架和本地持久化已经完成一部分，但关键用户价值仍集中在后续阶段。
 
@@ -23,11 +23,13 @@
 - 学习目标已支持创建、编辑、设为当前目标。
 - 学习计划已按目标保存独立草案。
 - Provider 配置与 secret 已支持安全存储。
+- 统一 AI service、Provider adapter、capability route 解析和 runtime 摘要已落到 Main / preload / renderer 设置页。
+- 应用偏好、Provider 配置和 route 已拆到结构化表，不再只依赖 snapshot 承接。
 
 ### 当前最该做的事情
-- **Phase 3 / Task 1：接入统一 AI Service 与 capability route 执行层。**
+- **Phase 3 / Task 2：接入 `profile_extraction` / `plan_generation` / `plan_adjustment`。**
 
-这一步会把已经完成的本地结构化动作层真正接到模型运行时，是后续真实画像提取、计划生成和复盘建议的共同前置条件。
+这一步会把已经具备 route 解析和 Provider 前置校验的统一 runtime，真正接到画像提取、计划生成与计划调整的业务入口，是 Phase 3 产生真实用户价值的核心步骤。
 
 ## 3. 执行总策略
 1. 先把本地闭环做实，再接 AI。
@@ -71,7 +73,7 @@
 | Phase 0 | 文档与本地基础层 | complete | 100% | 跑通桌面端基础壳、文档、状态层和本地持久化 |
 | Phase 1 | 计划编辑与计划生命周期 | complete | 100% | 让计划真正可编辑、可重生、可比较 |
 | Phase 2 | 对话驱动结构化动作 | complete | 100% | 让对话能把建议落成可确认动作 |
-| Phase 3 | AI Service 与 Provider 运行时接入 | pending | 0% | 把 capability route 真的接到模型调用层 |
+| Phase 3 | AI Service 与 Provider 运行时接入 | in_progress | 25% | 把 capability route 真的接到模型调用层 |
 | Phase 4 | 执行与复盘闭环 | pending | 0% | 让任务执行、复盘、计划调整形成闭环 |
 | Phase 5 | 数据层硬化与迁移 | pending | 10% | 降低快照兜底，补齐迁移和一致性保障 |
 | Phase 6 | 发布准备与质量收口 | pending | 0% | 完成验收、打包、发布前检查 |
@@ -150,19 +152,20 @@
   - **Next Task: Phase 3 / Task 1 / 接入统一 AI Service 与 capability route 执行层**
 
 ### Phase 3 · AI Service 与 Provider 运行时接入
-- **状态：** pending
-- **完成度：** 0%
+- **状态：** in_progress
+- **完成度：** 25%
 - **目标：**
   - 让 Provider 配置、用途路由和真实模型调用真正连起来。
 - **范围：**
-  - Task 1: 设计并落地统一 AI service 接口
+  - Task 1: 设计并落地统一 AI service 接口（已完成）
   - Task 2: 接入 `profile_extraction` / `plan_generation` / `plan_adjustment`
   - Task 3: Provider 健康检查与基本错误提示
   - Task 4: 请求日志和最小可观测性
 - **交付物：**
   - Main 侧 AI service
   - Provider adapter 层
-  - 基础错误态和超时反馈
+  - `app_settings` / `provider_configs` / `model_routing` 结构化持久化
+  - 设置页 AI runtime 摘要
 - **验收标准：**
   - 设置页选择的 route 能影响真实调用目标
   - 至少一条画像提取链路和一条计划生成链路跑通
@@ -172,6 +175,9 @@
   - Phase 5 的部分数据稳定性工作可并行为子任务
 - **风险：**
   - 若先接 AI 再补本地结构，很容易把状态更新变成不可追踪副作用
+- **当前进展：**
+  - Task 1 已完成：统一 AI service、OpenAI-compatible adapter、route 前置校验、runtime 摘要和结构化 settings/provider/route 持久化已落地
+  - 当前唯一下一任务：**Phase 3 / Task 2 / 接入 `profile_extraction` / `plan_generation` / `plan_adjustment`**
 - **本阶段完成后指定的下一个任务：**
   - **Next Task: Phase 4 / Task 1 / 打通任务执行记录与复盘输入**
 
@@ -257,9 +263,9 @@
 5. 最后用 Phase 5 和 Phase 6 做稳定性与交付收口。
 
 ## 8. 当前建议的最近三项任务
-1. **Phase 3 / Task 1**：设计并落地统一 AI service 接口
-2. **Phase 3 / Task 2**：接入 `profile_extraction` / `plan_generation` / `plan_adjustment`
-3. **Phase 3 / Task 3**：补 Provider 健康检查与基础错误提示
+1. **Phase 3 / Task 2**：接入 `profile_extraction` / `plan_generation` / `plan_adjustment`
+2. **Phase 3 / Task 3**：补 Provider 健康检查与基础错误提示
+3. **Phase 3 / Task 4**：补请求日志与最小可观测性
 
 ## 9. 阶段完成更新模板
 每次阶段收尾时，必须按以下格式更新进度文档或路线图状态：

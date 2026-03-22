@@ -1,4 +1,5 @@
 import type { AppState, ApplyConversationActionPreviewsResult, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
+import type { AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
@@ -7,12 +8,16 @@ import { normalizeSecretInput, toSafeProviderConfig } from '../../shared/provide
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
+import { SettingsRepository } from '../repositories/settings-repository.js';
+import type { AiRuntimeService } from './ai-service.js';
 
 export class AppStorageService {
   constructor(
     private readonly appStateRepository: AppStateRepository,
     private readonly entitiesRepository: EntitiesRepository,
+    private readonly settingsRepository: SettingsRepository,
     private readonly providerSecretRepository: ProviderSecretRepository,
+    private readonly aiService: AiRuntimeService,
   ) {}
 
   initialize() {
@@ -291,6 +296,10 @@ export class AppStorageService {
     return this.listProviderConfigs();
   }
 
+  getAiRuntimeSummary(): AiRuntimeSummaryItem[] {
+    return this.aiService.getRuntimeSummary(this.loadAppState().settings);
+  }
+
   private loadStructuredState(): AppState | null {
     const profile = this.entitiesRepository.loadUserProfile();
     const goals = this.entitiesRepository.loadLearningGoals();
@@ -306,6 +315,7 @@ export class AppStorageService {
       profile,
       goals,
       plan,
+      settings: this.settingsRepository.loadSettings() ?? snapshot.settings,
     });
   }
 
@@ -313,6 +323,7 @@ export class AppStorageService {
     this.entitiesRepository.saveUserProfile(state.profile);
     this.entitiesRepository.replaceLearningGoals(state.goals);
     this.entitiesRepository.saveLearningPlanState(state.plan);
+    this.settingsRepository.saveSettings(state.settings);
   }
 
   private hydratePlanState(state: AppState): AppState {

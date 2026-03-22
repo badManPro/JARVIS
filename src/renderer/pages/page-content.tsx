@@ -22,6 +22,7 @@ import type {
   TaskStatus,
   UserProfile,
 } from '@shared/app-state';
+import type { AiRuntimeSummaryItem } from '@shared/ai-service';
 import { resolveConversationState } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import type { ProviderConfigInput } from '@shared/provider-config';
@@ -1728,6 +1729,8 @@ function GoalsContent() {
 function SettingsContent() {
   const state = useAppStore();
   const saveAppState = useAppStore((store) => store.saveAppState);
+  const aiRuntimeSummary = useAppStore((store) => store.aiRuntimeSummary);
+  const refreshAiRuntimeSummary = useAppStore((store) => store.refreshAiRuntimeSummary);
   const providerConfiguredCount = state.settings.providers.filter((provider) => provider.hasSecret).length;
   const [settingsDraft, setSettingsDraft] = useState(state.settings);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -1737,12 +1740,29 @@ function SettingsContent() {
     setSettingsDraft(state.settings);
   }, [state.settings]);
 
+  useEffect(() => {
+    void refreshAiRuntimeSummary();
+  }, [refreshAiRuntimeSummary]);
+
+  const aiRuntimeSummaryByCapability = useMemo(
+    () => new Map(aiRuntimeSummary.map((item) => [item.capability, item])),
+    [aiRuntimeSummary],
+  );
+
   const onSaveSettings = async () => {
     setSavingSettings(true);
     setSettingsNotice(null);
     try {
-      await saveAppState({ ...state, settings: settingsDraft });
-      setSettingsNotice('应用偏好与用途路由已写入本地 SQLite。');
+      await saveAppState({
+        profile: state.profile,
+        dashboard: state.dashboard,
+        goals: state.goals,
+        plan: state.plan,
+        conversation: state.conversation,
+        reflection: state.reflection,
+        settings: settingsDraft,
+      });
+      setSettingsNotice('应用偏好与用途路由已写入本地 SQLite，并同步刷新了主进程 runtime 摘要。');
     } catch (error) {
       setSettingsNotice(error instanceof Error ? error.message : '设置保存失败');
     } finally {
@@ -1795,6 +1815,18 @@ function SettingsContent() {
         </div>
       </Card>
       <Card className="xl:col-span-2">
+        <SectionTitle>AI Runtime 摘要</SectionTitle>
+        <Muted className="mt-2">主进程现在会直接从结构化 `settings / provider / route` 表解析 capability 落点，不再只依赖快照。</Muted>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {capabilityOptions.map((option) => {
+            const summary = aiRuntimeSummaryByCapability.get(option.value);
+            return (
+              <AiRuntimeStatusCard key={option.value} label={option.label} summary={summary} />
+            );
+          })}
+        </div>
+      </Card>
+      <Card className="xl:col-span-2">
         <SectionTitle>Provider 列表</SectionTitle>
         <Muted className="mt-2">已接上 main/preload bridge，可编辑基础配置并单独保存 / 清空 secret。</Muted>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1803,6 +1835,29 @@ function SettingsContent() {
           ))}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function AiRuntimeStatusCard({ label, summary }: { label: string; summary: AiRuntimeSummaryItem | undefined }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-medium text-slate-900">{label}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            {summary ? `${summary.providerLabel} · ${summary.model}` : '正在加载运行时摘要…'}
+          </div>
+        </div>
+        <Badge className={summary?.ready ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}>
+          {summary?.ready ? 'ready' : 'blocked'}
+        </Badge>
+      </div>
+      <div className="mt-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700">
+        {summary
+          ? `route -> ${summary.providerId}${summary.blockedReason ? ` · ${summary.blockedReason}` : ' · 已具备统一 AI service 调用前置条件'}`
+          : '等待 main process 返回当前 capability 的 route 与 readiness。'}
+      </div>
     </div>
   );
 }

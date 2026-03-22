@@ -20,6 +20,9 @@
 - 学习计划页已支持阶段/任务手动编辑、本地保存、重新生成确认、版本快照归档与版本对比视图
 - 对话页已支持把自然语言建议映射为结构化 action preview，并在逐条确认后批量写回画像、目标、计划实体
 - 对话动作已支持记录来源标签，以及建议生成 / 审核 / 写入时间
+- Main 侧已接入统一 AI service、OpenAI-compatible provider adapter 与 capability route 解析
+- 设置相关数据已拆到 `app_settings` / `provider_configs` / `model_routing`，不再只靠 snapshot 承接
+- 设置页已支持展示 AI runtime 摘要，直接看到每个 capability 当前会命中哪个 Provider、是否具备执行前置条件
 
 ## 技术栈
 - Electron
@@ -98,7 +101,7 @@ npm run build
 - preload 安全暴露最小 API，并提供本地数据 / Provider 配置 bridge
 - renderer 应用壳层与左侧导航
 - Zustand 业务状态层：profile / goals / plan drafts / conversation / settings
-- SQLite + Drizzle 基础存储：`app_snapshots` 保存当前应用快照，`provider_secrets` 单独保存 Provider secret
+- SQLite + Drizzle 基础存储：`app_snapshots` 保存当前应用快照，`app_settings` / `provider_configs` / `model_routing` 保存设置运行时，`provider_secrets` 单独保存 Provider secret
 - `learning_plan_drafts` + `plan_stages` + `plan_tasks` 已承接按目标归属的计划草案结构
 - 七个页面的真实内容骨架与跨页面上下文展示
 - 设置页中的多模型 Provider 列表与路由策略展示（仅显示 masked key preview / hasSecret）
@@ -109,6 +112,7 @@ npm run build
 - 数据库位置：Electron `app.getPath('userData')/learning-companion.sqlite`
 - 当前落库策略：保留 `app_snapshots` 作为应用快照，同时把画像 / 目标 / 计划草案继续拆到结构化表中
 - Provider secret 单独存于 `provider_secrets`，renderer 仅获取 `keyPreview`、`hasSecret`、`updatedAt` 等安全字段
+- 应用偏好、Provider 基础配置和 capability route 已拆到 `app_settings`、`provider_configs`、`model_routing` 并可在重启后回填
 - 用户画像、目标、设置页的关键字段已经可以通过 renderer → preload → main → SQLite 真实保存并在重启后回填
 - 计划相关数据已拆为：`learning_plans.active_goal_id` 保存当前主目标，`learning_plan_drafts` 保存各目标草案，`plan_stages` / `plan_tasks` 保存对应阶段与任务
 - 目标页已支持“设为当前目标”，计划页会直接切换到该目标对应的独立草案内容，而不是仅做展示映射
@@ -116,14 +120,15 @@ npm run build
 - 删除目标时，会同步清理它的计划草案与版本快照；如果删的是当前主目标，会自动回退到剩余目标中的第一项，没有剩余目标时则回到空状态
 - 对话相关数据仍主要保留在 `app_snapshots`，但主进程会在加载时把 `conversation.suggestions` 回填为结构化 `actionPreviews`，并支持把已接受且可执行的预览写回结构化实体表
 - `conversation.actionPreviews` 已补齐来源标签与时间线元数据（建议生成 / 审核 / 写入），并随应用快照一起持久化
-- 当前计划草案仍由本地规则模板生成，尚未接入真实 AI Provider 生成 / 重排
-- 当前尚未提供版本回滚、目标排序、真正的在线模型调用等更高阶动作
+- Main 侧统一 AI service 已具备 route 解析、Provider 前置校验、runtime 摘要和 adapter 抽象，但具体业务能力尚未接到画像提取 / 计划生成链路
+- 当前计划草案仍由本地规则模板生成，尚未把 `plan_generation` / `profile_extraction` 接到真实业务入口
+- 当前尚未提供版本回滚、目标排序、请求日志、真正的在线模型调用链路等更高阶动作
 
 ## 下一步建议
-1. 增加统一 AI service，按 capability route 到不同 Provider
-2. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
-3. 增加计划版本回滚与目标排序等高阶管理动作
-4. 为真实 Provider 调用补齐请求日志与最小可观测性
+1. 把 `profile_extraction` / `plan_generation` / `plan_adjustment` 接到真实业务链路
+2. 增加 Provider 健康检查与基础错误提示
+3. 为真实 Provider 调用补齐请求日志与最小可观测性
+4. 继续减少 `app_snapshots` 对业务实体的兜底职责，补充更稳妥的迁移机制
 
 ## 当前推荐下一任务
-- `Phase 3 / Task 1`：接入统一 AI Service 与 capability route 执行层
+- `Phase 3 / Task 2`：接入 `profile_extraction` / `plan_generation` / `plan_adjustment`

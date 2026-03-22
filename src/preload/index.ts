@@ -19,6 +19,7 @@ const learningCompanion: LearningCompanionBridge = {
     upsertProviderConfig: (payload) => ipcRenderer.invoke('storage:upsert-provider-config', payload),
     saveProviderSecret: (payload) => ipcRenderer.invoke('storage:save-provider-secret', payload),
     clearProviderSecret: (providerId) => ipcRenderer.invoke('storage:clear-provider-secret', providerId),
+    getAiRuntimeSummary: () => ipcRenderer.invoke('storage:get-ai-runtime-summary'),
   },
 };
 

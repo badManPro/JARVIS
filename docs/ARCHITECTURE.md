@@ -103,8 +103,14 @@ Renderer 先按以下状态切分：
 8. `provider_secrets`
    - 单独保存 Provider secret
    - 不让 renderer 直接读取明文 secret
+9. `app_settings`
+   - 规范化保存主题、启动页等设置项
+10. `provider_configs`
+   - 规范化保存 Provider 的 label / endpoint / model / enabled / auth / capability / health
+11. `model_routing`
+   - 保存 capability 到 Provider 的真实路由关系
 
-当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection / settings` 仍主要由快照承接，`conversation` 目前也仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。
+当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 仍主要由快照承接，`conversation` 目前也仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。
 
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：
@@ -115,6 +121,7 @@ Renderer 先按以下状态切分：
    - 记录不同用途由哪个 Provider 承担
 3. AI Service
    - 统一接收业务请求，例如 `plan_generation` / `profile_extraction`
+   - 当前已具备 capability route 解析、Provider 前置校验与 adapter 抽象
 
 ### 6.3 Bridge 边界
 Preload 当前暴露：
@@ -132,15 +139,17 @@ Preload 当前暴露：
 - `upsertProviderConfig`
 - `saveProviderSecret`
 - `clearProviderSecret`
+- `getAiRuntimeSummary`
 
-这意味着当前已经具备七类真实交互：
+这意味着当前已经具备八类真实交互：
 1. 用户画像关键字段通过 `saveUserProfile` 写入本地 SQLite
 2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并落到 `learning_goals`
 3. 目标切换通过 `setActiveGoal` 持久化 `active_goal_id`，并让计划页直接读取该目标对应的独立草案
 4. 目标删除通过 `removeLearningGoal` 同步清理 `learning_goals`、目标关联计划草案与版本快照，并处理 active goal 回退
 5. 计划页通过 `saveLearningPlanDraft` / `regenerateLearningPlanDraft` 支持草案保存、重生成与快照归档
 6. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态
-7. 应用偏好 / 路由策略与 Provider 基础配置通过 `saveAppState` / `upsertProviderConfig` 更新，secret 继续走独立安全存储
+7. 应用偏好 / 路由策略与 Provider 基础配置通过 `saveAppState` / `upsertProviderConfig` 更新，并同时写入 `app_settings` / `provider_configs` / `model_routing`
+8. 设置页可通过 `getAiRuntimeSummary` 直接查看每个 capability 当前命中的 Provider、模型和阻塞原因
 
 当前对话页额外具备一层“先审核、再应用”的结构化映射：
 - `conversation.suggestions` 仍保留原始自然语言建议
@@ -149,4 +158,4 @@ Preload 当前暴露：
 - 已接受且带执行 payload 的 preview 会通过主进程统一应用到结构化实体，再把 preview 标记为 `applied`
 - 动作来源标签、建议生成时间、审核时间、写入时间附着在 `actionPreviews` 上，并随 `app_snapshots` 一起持久化；目前仍未单独建表
 
-当前仍未覆盖：目标排序、计划版本回滚、AI 驱动的计划实时重算、真正的在线模型调用。
+当前仍未覆盖：目标排序、计划版本回滚、`profile_extraction` / `plan_generation` / `plan_adjustment` 的业务接入、真正的在线模型调用链路。

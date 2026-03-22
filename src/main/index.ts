@@ -5,6 +5,8 @@ import { createDatabase } from './db/client.js';
 import { AppStateRepository } from './repositories/app-state-repository.js';
 import { EntitiesRepository } from './repositories/entities-repository.js';
 import { ProviderSecretRepository } from './repositories/provider-secret-repository.js';
+import { SettingsRepository } from './repositories/settings-repository.js';
+import { AiService } from './services/ai-service.js';
 import { AppStorageService } from './services/app-storage-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,6 +52,7 @@ function registerIpcHandlers() {
   ipcMain.handle('storage:upsert-provider-config', async (_event, payload) => getStorageService().upsertProviderConfig(payload));
   ipcMain.handle('storage:save-provider-secret', async (_event, payload) => getStorageService().saveProviderSecret(payload));
   ipcMain.handle('storage:clear-provider-secret', async (_event, providerId) => getStorageService().clearProviderSecret(providerId));
+  ipcMain.handle('storage:get-ai-runtime-summary', async () => getStorageService().getAiRuntimeSummary());
 }
 
 function getStorageService() {
@@ -57,7 +60,16 @@ function getStorageService() {
 
   const dbFilePath = path.join(app.getPath('userData'), 'learning-companion.sqlite');
   const { db } = createDatabase(dbFilePath);
-  storageService = new AppStorageService(new AppStateRepository(db), new EntitiesRepository(db), new ProviderSecretRepository(db));
+  const providerSecretRepository = new ProviderSecretRepository(db);
+  storageService = new AppStorageService(
+    new AppStateRepository(db),
+    new EntitiesRepository(db),
+    new SettingsRepository(db),
+    providerSecretRepository,
+    new AiService({
+      getSecret: (providerId) => providerSecretRepository.get(providerId)?.secret ?? null,
+    }),
+  );
   storageService.initialize();
   return storageService;
 }
