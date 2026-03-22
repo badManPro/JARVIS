@@ -109,6 +109,9 @@ Renderer 先按以下状态切分：
    - 规范化保存 Provider 的 label / endpoint / model / enabled / auth / capability / health
 11. `model_routing`
    - 保存 capability 到 Provider 的真实路由关系
+12. `ai_request_logs`
+   - 结构化保存 capability 调用的 Provider、模型、状态、耗时、时间戳和错误摘要
+   - 不保存 prompt、对话正文或 suggestion 明细，避免扩大敏感内容落库范围
 
 当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 仍主要由快照承接，`conversation` 目前也仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。
 
@@ -121,7 +124,7 @@ Renderer 先按以下状态切分：
    - 记录不同用途由哪个 Provider 承担
 3. AI Service
    - 统一接收业务请求，例如 `plan_generation` / `profile_extraction` / `plan_adjustment`
-   - 当前已具备 capability route 解析、Provider 前置校验、手动健康检查、错误归一化、adapter 抽象和真实业务入口接入
+   - 当前已具备 capability route 解析、Provider 前置校验、手动健康检查、错误归一化、adapter 抽象、真实业务入口接入，以及最小请求日志记录
 
 ### 6.3 Bridge 边界
 Preload 当前暴露：
@@ -143,8 +146,9 @@ Preload 当前暴露：
 - `clearProviderSecret`
 - `runProviderHealthCheck`
 - `getAiRuntimeSummary`
+- `getAiObservability`
 
-这意味着当前已经具备十一类真实交互：
+这意味着当前已经具备十二类真实交互：
 1. 用户画像关键字段通过 `saveUserProfile` 写入本地 SQLite
 2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并落到 `learning_goals`
 3. 目标切换通过 `setActiveGoal` 持久化 `active_goal_id`，并让计划页直接读取该目标对应的独立草案
@@ -156,6 +160,7 @@ Preload 当前暴露：
 9. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态
 10. 设置页与配置页可通过 `saveAppState` / `upsertProviderConfig` / `getAiRuntimeSummary` 更新路由并直接查看每个 capability 当前命中的 Provider、模型、健康状态和阻塞原因
 11. 设置页可通过 `runProviderHealthCheck` 对单个 Provider 触发真实连通性探测，并把结果回写到 `provider_configs.health_status`
+12. 设置页可通过 `getAiObservability` 查看 capability 请求总览与最近请求日志，并在真实 capability 调用后立即刷新
 
 当前对话页额外具备一层“先审核、再应用”的结构化映射：
 - `conversation.suggestions` 仍保留原始自然语言建议，但现在既可以来自本地 seed，也可以来自 `profile_extraction` / `plan_adjustment`
@@ -163,5 +168,6 @@ Preload 当前暴露：
 - `actionPreviews.reviewStatus` 会随用户确认/拒绝保留在快照里
 - 已接受且带执行 payload 的 preview 会通过主进程统一应用到结构化实体，再把 preview 标记为 `applied`
 - 动作来源标签、建议生成时间、审核时间、写入时间附着在 `actionPreviews` 上，并随 `app_snapshots` 一起持久化；目前仍未单独建表
+- capability 调用级日志则已拆到 `ai_request_logs`，与快照解耦，并由设置页展示最小可观测性摘要
 
-当前仍未覆盖：目标排序、计划版本回滚、请求日志、`reflection_summary` 的业务接入，以及更完整的调用可观测性。
+当前仍未覆盖：目标排序、计划版本回滚、`reflection_summary` 的业务接入，以及更细粒度的调用 tracing / metrics。

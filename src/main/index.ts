@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDatabase } from './db/client.js';
 import { AppStateRepository } from './repositories/app-state-repository.js';
+import { AiRequestLogRepository } from './repositories/ai-request-log-repository.js';
 import { EntitiesRepository } from './repositories/entities-repository.js';
 import { ProviderSecretRepository } from './repositories/provider-secret-repository.js';
 import { SettingsRepository } from './repositories/settings-repository.js';
@@ -56,6 +57,7 @@ function registerIpcHandlers() {
   ipcMain.handle('storage:clear-provider-secret', async (_event, providerId) => getStorageService().clearProviderSecret(providerId));
   ipcMain.handle('storage:run-provider-health-check', async (_event, providerId) => getStorageService().runProviderHealthCheck(providerId));
   ipcMain.handle('storage:get-ai-runtime-summary', async () => getStorageService().getAiRuntimeSummary());
+  ipcMain.handle('storage:get-ai-observability', async () => getStorageService().getAiObservability());
 }
 
 function getStorageService() {
@@ -69,6 +71,7 @@ function getStorageService() {
     new EntitiesRepository(db),
     new SettingsRepository(db),
     providerSecretRepository,
+    new AiRequestLogRepository(db),
     new AiService({
       getSecret: (providerId) => providerSecretRepository.get(providerId)?.secret ?? null,
     }),

@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AppState } from '../../shared/app-state.js';
 import { seedState } from '../../shared/app-state.js';
-import type { AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { createDatabase } from '../db/client.js';
+import { AiRequestLogRepository } from '../repositories/ai-request-log-repository.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
@@ -86,6 +87,7 @@ function createHarness(options: {
     entitiesRepository,
     settingsRepository,
     providerSecretRepository,
+    new AiRequestLogRepository(db),
     {
       getRuntimeSummary: (settings) => createRuntimeSummary(settings),
       checkProviderHealth: aiCheckHealth ?? (async (_settings, providerId) => ({
@@ -423,4 +425,89 @@ test('regenerateLearningPlanDraft marks the routed provider as ready after a suc
   const nextState = await service.regenerateLearningPlanDraft(initialState.plan.activeGoalId);
 
   assert.equal(nextState.settings.providers.find((provider) => provider.id === 'deepseek')?.healthStatus, 'ready');
+});
+
+test('regenerateLearningPlanDraft records a success request log in observability snapshot', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => ({
+      capability: 'plan_generation',
+      providerId: 'deepseek',
+      providerLabel: 'DeepSeek',
+      model: 'deepseek-chat',
+      draft: {
+        title: '带请求日志的计划草案',
+        summary: '验证成功日志会写入 observability。',
+        basis: ['记录 capability 调用元数据'],
+        stages: [{ title: '阶段 1', outcome: '写入 success 日志', progress: '未开始' }],
+        tasks: [{ title: '查看 observability', duration: '15 分钟', note: '检查最近请求列表', status: 'todo' }],
+      },
+    }),
+  });
+
+  const initialState = service.initialize();
+  await service.regenerateLearningPlanDraft(initialState.plan.activeGoalId);
+
+  const snapshot: AiObservabilitySnapshot = service.getAiObservability();
+  const planGeneration = snapshot.capabilitySummaries.find((item) => item.capability === 'plan_generation');
+
+  assert.equal(snapshot.totalRequests, 1);
+  assert.equal(snapshot.successCount, 1);
+  assert.equal(snapshot.failureCount, 0);
+  assert.equal(snapshot.recentRequests.length, 1);
+  assert.equal(snapshot.recentRequests[0]?.capability, 'plan_generation');
+  assert.equal(snapshot.recentRequests[0]?.status, 'success');
+  assert.equal(snapshot.recentRequests[0]?.providerId, 'deepseek');
+  assert.equal(snapshot.recentRequests[0]?.errorMessage, undefined);
+  assert.ok((snapshot.recentRequests[0]?.durationMs ?? -1) >= 0);
+  assert.ok(planGeneration);
+  assert.equal(planGeneration.totalRequests, 1);
+  assert.equal(planGeneration.successCount, 1);
+  assert.equal(planGeneration.failureCount, 0);
+  assert.equal(planGeneration.lastStatus, 'success');
+});
+
+test('regenerateLearningPlanDraft records a failure request log in observability snapshot', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => {
+      throw new Error('Provider 请求失败（429 Too Many Requests）。');
+    },
+  });
+
+  const initialState = service.initialize();
+
+  await assert.rejects(
+    () => service.regenerateLearningPlanDraft(initialState.plan.activeGoalId),
+    /429/,
+  );
+
+  const snapshot: AiObservabilitySnapshot = service.getAiObservability();
+  const planGeneration = snapshot.capabilitySummaries.find((item) => item.capability === 'plan_generation');
+
+  assert.equal(snapshot.totalRequests, 1);
+  assert.equal(snapshot.successCount, 0);
+  assert.equal(snapshot.failureCount, 1);
+  assert.equal(snapshot.recentRequests.length, 1);
+  assert.equal(snapshot.recentRequests[0]?.capability, 'plan_generation');
+  assert.equal(snapshot.recentRequests[0]?.status, 'error');
+  assert.match(snapshot.recentRequests[0]?.errorMessage ?? '', /429 Too Many Requests/);
+  assert.ok(planGeneration);
+  assert.equal(planGeneration.totalRequests, 1);
+  assert.equal(planGeneration.successCount, 0);
+  assert.equal(planGeneration.failureCount, 1);
+  assert.equal(planGeneration.lastStatus, 'error');
+  assert.match(planGeneration.lastErrorMessage ?? '', /429 Too Many Requests/);
+});
+
+test('getAiObservability returns zeroed summary before any capability request runs', () => {
+  const { service } = createHarness();
+  service.initialize();
+
+  const snapshot: AiObservabilitySnapshot = service.getAiObservability();
+
+  assert.equal(snapshot.totalRequests, 0);
+  assert.equal(snapshot.successCount, 0);
+  assert.equal(snapshot.failureCount, 0);
+  assert.equal(snapshot.recentRequests.length, 0);
+  assert.equal(snapshot.capabilitySummaries.length, 5);
+  assert.equal(snapshot.capabilitySummaries.every((item) => item.totalRequests === 0), true);
 });

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { AppState, ApplyConversationActionPreviewsResult, ConversationActionReviewStatus, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '@shared/app-state';
-import type { AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
+import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
 import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState, updateConversationActionPreviewReview } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
@@ -8,6 +8,7 @@ import type { ProviderConfigInput } from '@shared/provider-config';
 
 type AppStore = AppState & {
   aiRuntimeSummary: AiRuntimeSummaryItem[];
+  aiObservability: AiObservabilitySnapshot;
   hydrated: boolean;
   hydrationError: string | null;
   hydrateFromStorage: () => Promise<void>;
@@ -28,6 +29,7 @@ type AppStore = AppState & {
   clearProviderSecret: (providerId: ProviderId) => Promise<void>;
   runProviderHealthCheck: (providerId: ProviderId) => Promise<AiProviderHealthCheckResult>;
   refreshAiRuntimeSummary: () => Promise<void>;
+  refreshAiObservability: () => Promise<void>;
 };
 
 function getBridge() {
@@ -50,6 +52,40 @@ function findDraftByGoalId(drafts: LearningPlanDraft[], goalId: string) {
 
 const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
 const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
+const observableCapabilities: AiObservabilitySnapshot['capabilitySummaries'][number]['capability'][] = [
+  'profile_extraction',
+  'plan_generation',
+  'plan_adjustment',
+  'reflection_summary',
+  'chat_general',
+];
+
+function createEmptyAiObservability(): AiObservabilitySnapshot {
+  return {
+    totalRequests: 0,
+    successCount: 0,
+    failureCount: 0,
+    capabilitySummaries: observableCapabilities.map((capability) => ({
+      capability,
+      totalRequests: 0,
+      successCount: 0,
+      failureCount: 0,
+    })),
+    recentRequests: [],
+  };
+}
+
+async function loadRuntimeDiagnostics(bridge: NonNullable<ReturnType<typeof getBridge>>) {
+  const [aiRuntimeSummary, aiObservability] = await Promise.all([
+    bridge.getAiRuntimeSummary(),
+    bridge.getAiObservability(),
+  ]);
+
+  return {
+    aiRuntimeSummary,
+    aiObservability,
+  };
+}
 
 function extractAppState(state: AppStore): AppState {
   return {
@@ -66,21 +102,22 @@ function extractAppState(state: AppStore): AppState {
 export const useAppStore = create<AppStore>((set, get) => ({
   ...seedState,
   aiRuntimeSummary: [],
+  aiObservability: createEmptyAiObservability(),
   hydrated: false,
   hydrationError: null,
   hydrateFromStorage: async () => {
     const bridge = getBridge();
     if (!bridge) {
-      set({ hydrated: true, hydrationError: 'learningCompanion bridge 不可用，已退回 seed state。' });
+      set({ hydrated: true, hydrationError: 'learningCompanion bridge 不可用，已退回 seed state。', aiObservability: createEmptyAiObservability() });
       return;
     }
 
     try {
-      const [persistedState, aiRuntimeSummary] = await Promise.all([
+      const [persistedState, diagnostics] = await Promise.all([
         bridge.loadAppState(),
-        bridge.getAiRuntimeSummary(),
+        loadRuntimeDiagnostics(bridge),
       ]);
-      set({ ...persistedState, aiRuntimeSummary, hydrated: true, hydrationError: null });
+      set({ ...persistedState, ...diagnostics, hydrated: true, hydrationError: null });
     } catch (error) {
       set({ hydrated: true, hydrationError: error instanceof Error ? error.message : '加载本地状态失败' });
     }
@@ -92,11 +129,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       return;
     }
 
-    const [persistedState, aiRuntimeSummary] = await Promise.all([
-      bridge.saveAppState(nextState),
-      bridge.getAiRuntimeSummary(),
-    ]);
-    set({ ...persistedState, aiRuntimeSummary, hydrated: true, hydrationError: null });
+    const persistedState = await bridge.saveAppState(nextState);
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set({ ...persistedState, ...diagnostics, hydrated: true, hydrationError: null });
   },
   saveUserProfile: async (profile) => {
     const bridge = getBridge();
@@ -262,7 +297,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     const persistedState = await bridge.regenerateLearningPlanDraft(payload);
-    set({ ...persistedState, hydrated: true, hydrationError: null });
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set({ ...persistedState, ...diagnostics, hydrated: true, hydrationError: null });
   },
   runProfileExtraction: async () => {
     const bridge = getBridge();
@@ -271,7 +307,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     const persistedState = await bridge.runProfileExtraction();
-    set({ ...persistedState, hydrated: true, hydrationError: null });
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set({ ...persistedState, ...diagnostics, hydrated: true, hydrationError: null });
     return persistedState;
   },
   generatePlanAdjustmentSuggestions: async (payload) => {
@@ -281,7 +318,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     const persistedState = await bridge.generatePlanAdjustmentSuggestions(payload);
-    set({ ...persistedState, hydrated: true, hydrationError: null });
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set({ ...persistedState, ...diagnostics, hydrated: true, hydrationError: null });
     return persistedState;
   },
   reviewConversationActionPreview: async (payload) => {
@@ -330,41 +368,35 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const bridge = getBridge();
     if (!bridge) return;
 
-    const [providers, aiRuntimeSummary] = await Promise.all([
+    const [providers, diagnostics] = await Promise.all([
       bridge.listProviderConfigs(),
-      bridge.getAiRuntimeSummary(),
+      loadRuntimeDiagnostics(bridge),
     ]);
-    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
+    set((state) => ({ ...mergeProviders(state, providers), ...diagnostics, hydrated: true, hydrationError: null }));
   },
   upsertProviderConfig: async (payload) => {
     const bridge = getBridge();
     if (!bridge) return;
 
-    const [providers, aiRuntimeSummary] = await Promise.all([
-      bridge.upsertProviderConfig(payload),
-      bridge.getAiRuntimeSummary(),
-    ]);
-    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
+    const providers = await bridge.upsertProviderConfig(payload);
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set((state) => ({ ...mergeProviders(state, providers), ...diagnostics, hydrated: true, hydrationError: null }));
   },
   saveProviderSecret: async (payload) => {
     const bridge = getBridge();
     if (!bridge) return;
 
-    const [providers, aiRuntimeSummary] = await Promise.all([
-      bridge.saveProviderSecret(payload),
-      bridge.getAiRuntimeSummary(),
-    ]);
-    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
+    const providers = await bridge.saveProviderSecret(payload);
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set((state) => ({ ...mergeProviders(state, providers), ...diagnostics, hydrated: true, hydrationError: null }));
   },
   clearProviderSecret: async (providerId) => {
     const bridge = getBridge();
     if (!bridge) return;
 
-    const [providers, aiRuntimeSummary] = await Promise.all([
-      bridge.clearProviderSecret(providerId),
-      bridge.getAiRuntimeSummary(),
-    ]);
-    set((state) => ({ ...mergeProviders(state, providers), aiRuntimeSummary, hydrated: true, hydrationError: null }));
+    const providers = await bridge.clearProviderSecret(providerId);
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set((state) => ({ ...mergeProviders(state, providers), ...diagnostics, hydrated: true, hydrationError: null }));
   },
   runProviderHealthCheck: async (providerId) => {
     const bridge = getBridge();
@@ -372,8 +404,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
       throw new Error('learningCompanion bridge 不可用，无法执行 Provider 健康检查。');
     }
 
-    const response = await bridge.runProviderHealthCheck(providerId);
-    set((state) => ({ ...mergeProviders(state, response.providers), aiRuntimeSummary: response.aiRuntimeSummary, hydrated: true, hydrationError: null }));
+    const [response, aiObservability] = await Promise.all([
+      bridge.runProviderHealthCheck(providerId),
+      bridge.getAiObservability(),
+    ]);
+    set((state) => ({ ...mergeProviders(state, response.providers), aiRuntimeSummary: response.aiRuntimeSummary, aiObservability, hydrated: true, hydrationError: null }));
     return response.result;
   },
   refreshAiRuntimeSummary: async () => {
@@ -382,5 +417,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const aiRuntimeSummary = await bridge.getAiRuntimeSummary();
     set((state) => ({ ...state, aiRuntimeSummary, hydrated: true, hydrationError: null }));
+  },
+  refreshAiObservability: async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+
+    const aiObservability = await bridge.getAiObservability();
+    set((state) => ({ ...state, aiObservability, hydrated: true, hydrationError: null }));
   },
 }));

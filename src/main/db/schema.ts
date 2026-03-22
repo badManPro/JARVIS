@@ -128,3 +128,16 @@ export const providerSecrets = sqliteTable('provider_secrets', {
   secret: text('secret'),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
+
+export const aiRequestLogs = sqliteTable('ai_request_logs', {
+  id: text('id').primaryKey(),
+  capability: text('capability').notNull(),
+  providerId: text('provider_id').notNull(),
+  providerLabel: text('provider_label').notNull(),
+  model: text('model').notNull(),
+  status: text('status').notNull(),
+  durationMs: integer('duration_ms').notNull(),
+  startedAt: integer('started_at', { mode: 'timestamp_ms' }).notNull(),
+  finishedAt: integer('finished_at', { mode: 'timestamp_ms' }).notNull(),
+  errorMessage: text('error_message'),
+});

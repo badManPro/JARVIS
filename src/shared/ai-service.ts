@@ -122,6 +122,41 @@ export type AiResult =
   | AiProfileExtractionResult
   | AiTextResult;
 
+export type AiRequestLogStatus = 'success' | 'error';
+
+export type AiRequestLogEntry = {
+  id: string;
+  capability: ModelCapability;
+  providerId: ProviderId;
+  providerLabel: string;
+  model: string;
+  status: AiRequestLogStatus;
+  durationMs: number;
+  startedAt: string;
+  finishedAt: string;
+  errorMessage?: string;
+};
+
+export type AiCapabilityObservabilitySummary = {
+  capability: ModelCapability;
+  totalRequests: number;
+  successCount: number;
+  failureCount: number;
+  lastStatus?: AiRequestLogStatus;
+  lastRequestedAt?: string;
+  lastDurationMs?: number;
+  lastErrorMessage?: string;
+};
+
+export type AiObservabilitySnapshot = {
+  totalRequests: number;
+  successCount: number;
+  failureCount: number;
+  lastRequestedAt?: string;
+  capabilitySummaries: AiCapabilityObservabilitySummary[];
+  recentRequests: AiRequestLogEntry[];
+};
+
 export type AiProviderAdapter = {
   name: string;
   supports: (provider: AiProviderRuntimeConfig) => boolean;

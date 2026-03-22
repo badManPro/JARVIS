@@ -1,15 +1,24 @@
 import type { AppState, ApplyConversationActionPreviewsResult, LearningPlanDraft, ProviderConfig, ProviderId, ProviderSecretInput, UserProfile } from '../../shared/app-state.js';
-import type { AiProviderHealthCheckResponse, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import type { AiObservabilitySnapshot, AiProviderHealthCheckResponse, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { applyAcceptedConversationActionPreviews, resolveConversationState, seedState } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import { createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
 import { normalizeSecretInput, toSafeProviderConfig } from '../../shared/provider-config.js';
+import { AiRequestLogRepository } from '../repositories/ai-request-log-repository.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
 import { SettingsRepository } from '../repositories/settings-repository.js';
 import type { AiRuntimeService } from './ai-service.js';
+
+const capabilityRouteKeyMap = {
+  profile_extraction: 'profileExtraction',
+  plan_generation: 'planGeneration',
+  plan_adjustment: 'planAdjustment',
+  reflection_summary: 'reflectionSummary',
+  chat_general: 'generalChat',
+} satisfies Record<AiRequest['capability'], keyof AppState['settings']['routing']>;
 
 export class AppStorageService {
   constructor(
@@ -17,6 +26,7 @@ export class AppStorageService {
     private readonly entitiesRepository: EntitiesRepository,
     private readonly settingsRepository: SettingsRepository,
     private readonly providerSecretRepository: ProviderSecretRepository,
+    private readonly aiRequestLogRepository: AiRequestLogRepository,
     private readonly aiService: AiRuntimeService,
   ) {}
 
@@ -183,19 +193,21 @@ export class AppStorageService {
   async runProfileExtraction() {
     const snapshot = this.loadAppState();
     const providerId = snapshot.settings.routing.profileExtraction;
+    const request = {
+      capability: 'profile_extraction',
+      conversation: snapshot.conversation,
+      profile: snapshot.profile,
+      goals: snapshot.goals,
+      plan: snapshot.plan,
+    } satisfies Extract<AiRequest, { capability: 'profile_extraction' }>;
 
     try {
-      const result = await this.aiService.execute(snapshot.settings, {
-        capability: 'profile_extraction',
-        conversation: snapshot.conversation,
-        profile: snapshot.profile,
-        goals: snapshot.goals,
-        plan: snapshot.plan,
+      const result = await this.executeLoggedCapabilityRequest(snapshot, request, (value) => {
+        if (value.capability !== 'profile_extraction') {
+          throw new Error('画像提取返回了意外结果。');
+        }
+        return value;
       });
-
-      if (result.capability !== 'profile_extraction') {
-        throw new Error('画像提取返回了意外结果。');
-      }
 
       return this.persistConversationSuggestions(this.withProviderHealthStatus(snapshot, providerId, 'ready'), result.suggestions, 'replace');
     } catch (error) {
@@ -222,18 +234,20 @@ export class AppStorageService {
     const nextSnapshotVersion = getNextSnapshotVersion(snapshot.plan.snapshots, goalId);
     const archivedSnapshot = createPlanSnapshot(archivedDraft, nextSnapshotVersion);
     const providerId = snapshot.settings.routing.planGeneration;
+    const request = {
+      capability: 'plan_generation',
+      goal: targetGoal,
+      profile: snapshot.profile,
+      currentDraft: previousDraft,
+    } satisfies Extract<AiRequest, { capability: 'plan_generation' }>;
 
     try {
-      const result = await this.aiService.execute(snapshot.settings, {
-        capability: 'plan_generation',
-        goal: targetGoal,
-        profile: snapshot.profile,
-        currentDraft: previousDraft,
+      const result = await this.executeLoggedCapabilityRequest(snapshot, request, (value) => {
+        if (value.capability !== 'plan_generation') {
+          throw new Error('计划生成返回了意外结果。');
+        }
+        return value;
       });
-
-      if (result.capability !== 'plan_generation') {
-        throw new Error('计划生成返回了意外结果。');
-      }
 
       const regeneratedDraft = this.normalizeLearningPlanDraft({
         ...previousDraft,
@@ -287,19 +301,21 @@ export class AppStorageService {
     }
 
     const providerId = snapshot.settings.routing.planAdjustment;
+    const request = {
+      capability: 'plan_adjustment',
+      goal: targetGoal,
+      profile: snapshot.profile,
+      currentDraft,
+      feedback: this.collectPlanAdjustmentFeedback(snapshot, currentDraft),
+    } satisfies Extract<AiRequest, { capability: 'plan_adjustment' }>;
 
     try {
-      const result = await this.aiService.execute(snapshot.settings, {
-        capability: 'plan_adjustment',
-        goal: targetGoal,
-        profile: snapshot.profile,
-        currentDraft,
-        feedback: this.collectPlanAdjustmentFeedback(snapshot, currentDraft),
+      const result = await this.executeLoggedCapabilityRequest(snapshot, request, (value) => {
+        if (value.capability !== 'plan_adjustment') {
+          throw new Error('计划调整返回了意外结果。');
+        }
+        return value;
       });
-
-      if (result.capability !== 'plan_adjustment') {
-        throw new Error('计划调整返回了意外结果。');
-      }
 
       const suggestions = this.parseSuggestionText(result.text);
       return this.persistConversationSuggestions(this.withProviderHealthStatus(snapshot, providerId, 'ready'), suggestions, 'append');
@@ -387,6 +403,10 @@ export class AppStorageService {
 
   getAiRuntimeSummary(): AiRuntimeSummaryItem[] {
     return this.aiService.getRuntimeSummary(this.loadAppState().settings);
+  }
+
+  getAiObservability(): AiObservabilitySnapshot {
+    return this.aiRequestLogRepository.getSnapshot();
   }
 
   async runProviderHealthCheck(providerId: ProviderId): Promise<AiProviderHealthCheckResponse> {
@@ -555,6 +575,45 @@ export class AppStorageService {
     return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
   }
 
+  private async executeLoggedCapabilityRequest<T extends AiResult>(
+    snapshot: AppState,
+    request: AiRequest,
+    validate: (result: AiResult) => T,
+  ): Promise<T> {
+    const startedAt = new Date();
+
+    try {
+      const result = validate(await this.aiService.execute(snapshot.settings, request));
+      const finishedAt = new Date();
+      this.aiRequestLogRepository.record({
+        capability: request.capability,
+        providerId: result.providerId,
+        providerLabel: result.providerLabel,
+        model: result.model,
+        status: 'success',
+        durationMs: finishedAt.getTime() - startedAt.getTime(),
+        startedAt: startedAt.toISOString(),
+        finishedAt: finishedAt.toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const finishedAt = new Date();
+      const routedProvider = this.describeRoutedProvider(snapshot.settings, request.capability);
+      this.aiRequestLogRepository.record({
+        capability: request.capability,
+        providerId: routedProvider.providerId,
+        providerLabel: routedProvider.providerLabel,
+        model: routedProvider.model,
+        status: 'error',
+        durationMs: finishedAt.getTime() - startedAt.getTime(),
+        startedAt: startedAt.toISOString(),
+        finishedAt: finishedAt.toISOString(),
+        errorMessage: error instanceof Error ? error.message : '未知 AI runtime 错误。',
+      });
+      throw error;
+    }
+  }
+
   private collectPlanAdjustmentFeedback(state: AppState, draft: LearningPlanDraft) {
     const taskFeedback = draft.tasks
       .filter((task) => task.status === 'delayed' || task.status === 'in_progress')
@@ -572,6 +631,18 @@ export class AppStorageService {
     }
 
     return feedback;
+  }
+
+  private describeRoutedProvider(settings: AppState['settings'], capability: AiRequest['capability']) {
+    const routeKey = capabilityRouteKeyMap[capability];
+    const providerId = settings.routing[routeKey];
+    const provider = settings.providers.find((item) => item.id === providerId);
+
+    return {
+      providerId,
+      providerLabel: provider?.label ?? providerId,
+      model: provider?.model ?? 'unknown',
+    };
   }
 
   private normalizeLearningPlanDraft(draft: LearningPlanDraft, fallback: LearningPlanDraft): LearningPlanDraft {

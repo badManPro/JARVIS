@@ -3,6 +3,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
+  aiRequestLogs,
   appSettings,
   appSnapshots,
   learningGoals,
@@ -34,6 +35,7 @@ export type LearningCompanionDatabase = BetterSQLite3Database<{
   providerConfigs: typeof providerConfigs;
   modelRouting: typeof modelRouting;
   providerSecrets: typeof providerSecrets;
+  aiRequestLogs: typeof aiRequestLogs;
 }>;
 
 export type DatabaseContext = {
@@ -181,6 +183,19 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
       secret TEXT,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS ai_request_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      capability TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      provider_label TEXT NOT NULL,
+      model TEXT NOT NULL,
+      status TEXT NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      started_at INTEGER NOT NULL,
+      finished_at INTEGER NOT NULL,
+      error_message TEXT
+    );
   `);
 
   const learningPlansColumns = sqlite.prepare('PRAGMA table_info(learning_plans)').all() as Array<{ name: string }>;
@@ -249,6 +264,7 @@ export function createDatabase(dbFilePath: string): DatabaseContext {
         providerConfigs,
         modelRouting,
         providerSecrets,
+        aiRequestLogs,
       },
     }),
   };

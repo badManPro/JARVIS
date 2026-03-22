@@ -23,6 +23,7 @@ const learningCompanion: LearningCompanionBridge = {
     clearProviderSecret: (providerId) => ipcRenderer.invoke('storage:clear-provider-secret', providerId),
     runProviderHealthCheck: (providerId) => ipcRenderer.invoke('storage:run-provider-health-check', providerId),
     getAiRuntimeSummary: () => ipcRenderer.invoke('storage:get-ai-runtime-summary'),
+    getAiObservability: () => ipcRenderer.invoke('storage:get-ai-observability'),
   },
 };
 

@@ -21,7 +21,7 @@ import type {
   TaskStatus,
   UserProfile,
 } from '@shared/app-state';
-import type { AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
+import type { AiCapabilityObservabilitySummary, AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequestLogEntry, AiRuntimeSummaryItem } from '@shared/ai-service';
 import { resolveConversationState } from '@shared/app-state';
 import type { LearningGoalInput } from '@shared/goal';
 import type { ProviderConfigInput } from '@shared/provider-config';
@@ -1783,7 +1783,9 @@ function SettingsContent() {
   const state = useAppStore();
   const saveAppState = useAppStore((store) => store.saveAppState);
   const aiRuntimeSummary = useAppStore((store) => store.aiRuntimeSummary);
+  const aiObservability = useAppStore((store) => store.aiObservability);
   const refreshAiRuntimeSummary = useAppStore((store) => store.refreshAiRuntimeSummary);
+  const refreshAiObservability = useAppStore((store) => store.refreshAiObservability);
   const providerConfiguredCount = state.settings.providers.filter((provider) => provider.hasSecret).length;
   const [settingsDraft, setSettingsDraft] = useState(state.settings);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -1795,11 +1797,16 @@ function SettingsContent() {
 
   useEffect(() => {
     void refreshAiRuntimeSummary();
-  }, [refreshAiRuntimeSummary]);
+    void refreshAiObservability();
+  }, [refreshAiObservability, refreshAiRuntimeSummary]);
 
   const aiRuntimeSummaryByCapability = useMemo(
     () => new Map(aiRuntimeSummary.map((item) => [item.capability, item])),
     [aiRuntimeSummary],
+  );
+  const aiObservabilityByCapability = useMemo(
+    () => new Map(aiObservability.capabilitySummaries.map((item) => [item.capability, item])),
+    [aiObservability.capabilitySummaries],
   );
 
   const onSaveSettings = async () => {
@@ -1873,10 +1880,30 @@ function SettingsContent() {
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {capabilityOptions.map((option) => {
             const summary = aiRuntimeSummaryByCapability.get(option.value);
+            const observabilitySummary = aiObservabilityByCapability.get(option.value);
             return (
-              <AiRuntimeStatusCard key={option.value} label={option.label} summary={summary} />
+              <AiRuntimeStatusCard key={option.value} label={option.label} summary={summary} observability={observabilitySummary} />
             );
           })}
+        </div>
+      </Card>
+      <Card className="xl:col-span-2">
+        <SectionTitle>请求日志与最小可观测性</SectionTitle>
+        <Muted className="mt-2">只记录 capability、Provider、状态、耗时和错误摘要，不保存 prompt 或对话正文。</Muted>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <AiObservabilityMetricCard label="总请求数" value={String(aiObservability.totalRequests)} tone="default" />
+          <AiObservabilityMetricCard label="成功" value={String(aiObservability.successCount)} tone="success" />
+          <AiObservabilityMetricCard label="失败" value={String(aiObservability.failureCount)} tone="warning" />
+          <AiObservabilityMetricCard label="最近请求" value={aiObservability.lastRequestedAt ? formatTimestamp(aiObservability.lastRequestedAt) : '暂无'} tone="default" />
+        </div>
+        <div className="mt-4 space-y-3">
+          {aiObservability.recentRequests.length
+            ? aiObservability.recentRequests.map((entry) => <AiRequestLogRow key={entry.id} entry={entry} />)
+            : (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                尚未产生真实 capability 调用日志。执行一次建议提取、计划生成或计划调整后，这里会显示最新请求。
+              </div>
+            )}
         </div>
       </Card>
       <Card className="xl:col-span-2">
@@ -1892,7 +1919,15 @@ function SettingsContent() {
   );
 }
 
-function AiRuntimeStatusCard({ label, summary }: { label: string; summary: AiRuntimeSummaryItem | undefined }) {
+function AiRuntimeStatusCard({
+  label,
+  summary,
+  observability,
+}: {
+  label: string;
+  summary: AiRuntimeSummaryItem | undefined;
+  observability: AiCapabilityObservabilitySummary | undefined;
+}) {
   const badgeLabel = !summary
     ? 'loading'
     : (!summary.ready
@@ -1925,8 +1960,61 @@ function AiRuntimeStatusCard({ label, summary }: { label: string; summary: AiRun
           : '等待 main process 返回当前 capability 的 route 与 readiness。'}
       </div>
       {summary ? (
-        <div className="mt-3 text-xs text-slate-500">
-          健康状态：{providerHealthStatusLabel(summary.healthStatus)}{summary.healthHint ? ` · ${summary.healthHint}` : ''}
+        <div className="mt-3 space-y-1 text-xs text-slate-500">
+          <div>健康状态：{providerHealthStatusLabel(summary.healthStatus)}{summary.healthHint ? ` · ${summary.healthHint}` : ''}</div>
+          <div>
+            最近请求：{observability?.totalRequests
+              ? `${requestLogStatusLabel(observability.lastStatus)} · ${formatDuration(observability.lastDurationMs)} · ${formatTimestamp(observability.lastRequestedAt)}`
+              : '尚无请求日志'}
+          </div>
+          <div>调用统计：成功 {observability?.successCount ?? 0} / 失败 {observability?.failureCount ?? 0}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AiObservabilityMetricCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'default' | 'success' | 'warning';
+}) {
+  const className = tone === 'success'
+    ? 'border-emerald-200 bg-emerald-50'
+    : (tone === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white');
+
+  return (
+    <div className={`rounded-xl border px-4 py-4 ${className}`}>
+      <div className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-slate-900">{value}</div>
+    </div>
+  );
+}
+
+function AiRequestLogRow({ entry }: { entry: AiRequestLogEntry }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-medium text-slate-900">{capabilityLabel(entry.capability)}</div>
+          <div className="mt-1 text-xs text-slate-500">{entry.providerLabel} · {entry.model}</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className={requestLogBadgeClassName(entry.status)}>{requestLogStatusLabel(entry.status)}</Badge>
+          <span className="text-xs text-slate-500">{formatDuration(entry.durationMs)}</span>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+        <span>时间：{formatTimestamp(entry.finishedAt)}</span>
+        <span>Provider：{entry.providerId}</span>
+      </div>
+      {entry.errorMessage ? (
+        <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {entry.errorMessage}
         </div>
       ) : null}
     </div>
@@ -2296,6 +2384,59 @@ function statusBadgeClassName(status: LearningGoal['status']) {
     default:
       return 'bg-slate-100 text-slate-700';
   }
+}
+
+function capabilityLabel(capability: AiObservabilitySnapshot['capabilitySummaries'][number]['capability']) {
+  return capabilityOptions.find((option) => option.value === capability)?.label ?? capability;
+}
+
+function requestLogStatusLabel(status: AiCapabilityObservabilitySummary['lastStatus']) {
+  switch (status) {
+    case 'success':
+      return '成功';
+    case 'error':
+      return '失败';
+    default:
+      return '暂无';
+  }
+}
+
+function requestLogBadgeClassName(status: AiRequestLogEntry['status']) {
+  switch (status) {
+    case 'success':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'error':
+      return 'bg-rose-100 text-rose-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function formatDuration(durationMs?: number) {
+  if (durationMs === undefined) {
+    return '暂无耗时';
+  }
+
+  if (durationMs < 1000) {
+    return `${durationMs} ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(durationMs >= 10_000 ? 0 : 1)} s`;
+}
+
+function formatTimestamp(value?: string) {
+  if (!value) {
+    return '暂无';
+  }
+
+  return new Date(value).toLocaleString('zh-CN', {
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 function providerHealthStatusLabel(status: ProviderConfig['healthStatus']) {

@@ -6,13 +6,13 @@
 它基于以下事实：
 - 产品定位、MVP 范围和实现边界已经明确。
 - 本地存储、页面骨架、用户画像编辑、目标管理、Provider 配置已经有真实落地。
-- 核心 AI capability 已接入主要业务入口，Provider 健康检查与基础错误提示已完成，但请求日志、复盘闭环和发布准备仍未完成。
+- 核心 AI capability 已接入主要业务入口，请求日志与最小可观测性也已补齐，但复盘闭环和发布准备仍未完成。
 
 ## 2. 当前判断
 
 ### 当前总进度
-- **整体进度估算：70%**
-- **当前阶段：Phase 3 已进入 `in_progress`，Task 1（统一 AI Service 接口）、Task 2（能力接入）与 Task 3（Provider 健康检查与错误提示）已完成，准备进入 Task 4（请求日志与最小可观测性）**
+- **整体进度估算：75%**
+- **当前阶段：Phase 3 已完成，下一任务为 `Phase 4 / Task 1`（打通任务执行记录与复盘输入）**
 
 > 说明：这个百分比是基于“产品可用闭环”而不是“代码文件数量”估算的。文档、骨架和本地持久化已经完成一部分，但关键用户价值仍集中在后续阶段。
 
@@ -29,11 +29,12 @@
 - `plan_generation` 已接到计划页重生成入口，真实 Provider 返回的草案会替换当前草案并保留快照归档。
 - `plan_adjustment` 已接到计划页调整建议入口，并把建议回流到对话预览。
 - 设置页已支持对单个 Provider 执行健康检查，runtime 摘要会暴露 health warning / ready，真实 capability 调用也会回写最近健康状态。
+- Main 侧已结构化记录 capability 请求日志，设置页可查看总请求数、成功 / 失败统计、每个 capability 最近状态和最近请求列表。
 
 ### 当前最该做的事情
-- **Phase 3 / Task 4：补请求日志与最小可观测性。**
+- **Phase 4 / Task 1：打通任务执行记录与复盘输入。**
 
-这一步会在已有健康检查与错误提示基础上，补齐最小调用审计和问题排查线索，避免 Provider 出现问题时只能依赖瞬时 notice 排查。
+这一步会把“计划 -> 执行 -> 复盘”真正串起来，让前面已接好的 AI runtime 不再停留在生成和建议阶段。
 
 ## 3. 执行总策略
 1. 先把本地闭环做实，再接 AI。
@@ -77,7 +78,7 @@
 | Phase 0 | 文档与本地基础层 | complete | 100% | 跑通桌面端基础壳、文档、状态层和本地持久化 |
 | Phase 1 | 计划编辑与计划生命周期 | complete | 100% | 让计划真正可编辑、可重生、可比较 |
 | Phase 2 | 对话驱动结构化动作 | complete | 100% | 让对话能把建议落成可确认动作 |
-| Phase 3 | AI Service 与 Provider 运行时接入 | in_progress | 75% | 把 capability route 真的接到模型调用层 |
+| Phase 3 | AI Service 与 Provider 运行时接入 | complete | 100% | 把 capability route 真的接到模型调用层 |
 | Phase 4 | 执行与复盘闭环 | pending | 0% | 让任务执行、复盘、计划调整形成闭环 |
 | Phase 5 | 数据层硬化与迁移 | pending | 10% | 降低快照兜底，补齐迁移和一致性保障 |
 | Phase 6 | 发布准备与质量收口 | pending | 0% | 完成验收、打包、发布前检查 |
@@ -156,8 +157,8 @@
   - **Next Task: Phase 3 / Task 1 / 接入统一 AI Service 与 capability route 执行层**
 
 ### Phase 3 · AI Service 与 Provider 运行时接入
-- **状态：** in_progress
-- **完成度：** 75%
+- **状态：** complete
+- **完成度：** 100%
 - **目标：**
   - 让 Provider 配置、用途路由和真实模型调用真正连起来。
 - **范围：**
@@ -183,7 +184,8 @@
   - Task 1 已完成：统一 AI service、OpenAI-compatible adapter、route 前置校验、runtime 摘要和结构化 settings/provider/route 持久化已落地
   - Task 2 已完成：`profile_extraction` / `plan_generation` / `plan_adjustment` 已分别接到对话页建议提取、计划页重生成与计划调整建议入口
   - Task 3 已完成：设置页可手动执行 Provider 健康检查，runtime 摘要会带出 healthStatus，真实 capability 调用成功 / 失败会回写健康状态，错误提示已统一归一化
-  - 当前唯一下一任务：**Phase 3 / Task 4 / 补请求日志与最小可观测性**
+  - Task 4 已完成：真实 capability 调用会写入 `ai_request_logs`，设置页可查看总请求数、成功 / 失败统计、每个 capability 最近状态与最近请求列表
+  - 本阶段已完成，项目唯一下一任务：**Phase 4 / Task 1 / 打通任务执行记录与复盘输入**
 - **本阶段完成后指定的下一个任务：**
   - **Next Task: Phase 4 / Task 1 / 打通任务执行记录与复盘输入**
 
