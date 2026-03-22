@@ -17,8 +17,8 @@
 - 首次启动与空状态自动验证：PASS（空数据库首启返回真实空状态，dashboard 派生 onboarding checklist）
 - `npm run package`：PASS（生成 `release/mac-arm64/Learning Companion.app`）
 - `npm run dist`：PASS（生成 `release/Learning Companion-0.1.0-arm64.dmg` 与 `release/Learning Companion-0.1.0-arm64-mac.zip`，并在结束后自动恢复 `better-sqlite3` 的 Node ABI）
-- `npm run dist -- --mac --arm64`：PASS（重新生成 macOS arm64 `dmg/zip`）
-- `npm run dist -- --win --x64`：PASS（在 macOS 环境下完成 Windows x64 交叉打包，生成 `release/Learning Companion Setup 0.1.0.exe` 与 `release/Learning Companion-0.1.0-win.zip`）
+- `npm run dist:mac`：PASS（重新生成 macOS arm64 `dmg/zip`）
+- `npm run dist:win`：PASS（在 macOS 环境下完成 Windows x64 交叉打包，生成 `release/Learning Companion Setup 0.1.0.exe` 与 `release/Learning Companion-0.1.0-win.zip`）
 - `.github/workflows/release.yml`：PASS（支持 `v*` tag 和手动触发，构建 macOS/Windows 产物并上传到 GitHub Releases）
 - DMG 挂载内容检查：PASS（包含 `Learning Companion.app` 与 `/Applications` 快捷方式）
 - `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Learning Companion.app"`：PASS

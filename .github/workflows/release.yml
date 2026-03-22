@@ -40,7 +40,7 @@ jobs:
         run: node --test "dist-electron/src/**/*.test.js"
 
       - name: Build macOS artifacts
-        run: npm run dist -- --publish never --mac --arm64
+        run: npm run dist:mac:ci
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -78,7 +78,7 @@ jobs:
         run: node --test "dist-electron/src/**/*.test.js"
 
       - name: Build Windows artifacts
-        run: npm run dist -- --publish never --win --x64
+        run: npm run dist:win:ci
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

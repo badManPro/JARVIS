@@ -17,6 +17,10 @@
     "rebuild:native:node": "node scripts/run-node-native-rebuild.mjs",
     "package": "node scripts/run-electron-builder.mjs --dir",
     "dist": "node scripts/run-electron-builder.mjs",
+    "dist:mac": "node scripts/run-electron-builder.mjs --mac --arm64",
+    "dist:win": "node scripts/run-electron-builder.mjs --win --x64",
+    "dist:mac:ci": "node scripts/run-electron-builder.mjs --publish never --mac --arm64",
+    "dist:win:ci": "node scripts/run-electron-builder.mjs --publish never --win --x64",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },

@@ -64,6 +64,22 @@ test('package.json defines packaging scripts and electron-builder dependency', (
     packageJson.scripts?.dist,
     'node scripts/run-electron-builder.mjs',
   );
+  assert.equal(
+    packageJson.scripts?.['dist:mac'],
+    'node scripts/run-electron-builder.mjs --mac --arm64',
+  );
+  assert.equal(
+    packageJson.scripts?.['dist:win'],
+    'node scripts/run-electron-builder.mjs --win --x64',
+  );
+  assert.equal(
+    packageJson.scripts?.['dist:mac:ci'],
+    'node scripts/run-electron-builder.mjs --publish never --mac --arm64',
+  );
+  assert.equal(
+    packageJson.scripts?.['dist:win:ci'],
+    'node scripts/run-electron-builder.mjs --publish never --win --x64',
+  );
   assert.ok(packageJson.devDependencies?.['electron-builder']);
 });
 
@@ -107,8 +123,8 @@ test('release workflow builds macOS and Windows artifacts and publishes them to 
   assert.match(workflow, /build-macos:/);
   assert.match(workflow, /build-windows:/);
   assert.match(workflow, /release:/);
-  assert.match(workflow, /npm run dist -- --publish never --mac --arm64/);
-  assert.match(workflow, /npm run dist -- --publish never --win --x64/);
+  assert.match(workflow, /npm run dist:mac:ci/);
+  assert.match(workflow, /npm run dist:win:ci/);
   assert.match(workflow, /gh release (create|upload)/);
 });
 

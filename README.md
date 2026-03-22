@@ -122,7 +122,7 @@ npm run dist
 当前仓库已补 `electron-builder` 的 Windows 目标，但推荐在 GitHub Actions 的 Windows runner 上产出：
 
 ```bash
-npm run dist -- --win --x64
+npm run dist:win
 ```
 
 ### 7. 发布到 GitHub Releases
