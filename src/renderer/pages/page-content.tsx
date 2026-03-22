@@ -10,6 +10,8 @@ import type {
   ConversationActionReviewStatus,
   ConversationActionScope,
   ConversationActionStatus,
+  DashboardPriorityAction,
+  DashboardRiskLevel,
   LearningGoal,
   LearningPlanDraft,
   LearningPlanSnapshot,
@@ -83,39 +85,7 @@ export function PageContent({ page }: { page: PageDefinition }) {
 
   switch (page.id) {
     case 'home':
-      return (
-        <div className="grid gap-4 lg:grid-cols-[1.4fr,1fr]">
-          <Card>
-            <SectionTitle>今日聚焦</SectionTitle>
-            <div className="mt-4 space-y-3">
-              <div className="text-2xl font-semibold">{state.dashboard.todayFocus}</div>
-              <div className="flex flex-wrap gap-2 text-sm text-slate-600">
-                <Badge>{state.dashboard.stage}</Badge>
-                <Badge>{state.dashboard.duration}</Badge>
-                <Badge>本周完成率 {state.dashboard.weeklyCompletion}%</Badge>
-              </div>
-              <Muted>连续学习 {state.dashboard.streakDays} 天，保持低摩擦推进。</Muted>
-            </div>
-          </Card>
-          <Card>
-            <SectionTitle>近期复盘摘要</SectionTitle>
-            <p className="mt-4 text-sm text-slate-700">{state.dashboard.reflectionSummary}</p>
-            <ul className="mt-4 space-y-2 text-sm text-slate-700">
-              {state.dashboard.quickActions.map((action) => (
-                <li key={action} className="rounded-lg bg-slate-50 px-3 py-2">{action}</li>
-              ))}
-            </ul>
-          </Card>
-          <Card className="lg:col-span-2">
-            <SectionTitle>待处理提醒</SectionTitle>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {state.dashboard.alerts.map((alert) => (
-                <div key={alert} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{alert}</div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      );
+      return <HomeContent dashboard={state.dashboard} />;
     case 'plans': {
       return <PlansContent />;
     }
@@ -132,6 +102,113 @@ export function PageContent({ page }: { page: PageDefinition }) {
     default:
       return null;
   }
+}
+
+function HomeContent({ dashboard }: { dashboard: AppState['dashboard'] }) {
+  const primaryRisk = dashboard.riskSignals[0] ?? null;
+  const secondaryRisks = dashboard.riskSignals.slice(1);
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[1.45fr,0.95fr]">
+      <Card className="overflow-hidden border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.38),_transparent_46%),linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="bg-slate-900 text-white">{priorityActionLabel(dashboard.priorityAction)}</Badge>
+          <Badge className="bg-white text-slate-700">{dashboard.stage}</Badge>
+          <Badge className="bg-white text-slate-700">{dashboard.priorityAction.duration}</Badge>
+          <Badge className="bg-emerald-50 text-emerald-700">本周完成率 {dashboard.weeklyCompletion}%</Badge>
+        </div>
+        <div className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-start">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+            <Target className="h-6 w-6" />
+          </div>
+          <div className="flex-1">
+            <SectionTitle className="text-2xl leading-tight text-slate-950">{dashboard.priorityAction.title}</SectionTitle>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700">{dashboard.priorityAction.detail}</p>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white/85 p-4">
+              <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">为什么现在做</div>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{dashboard.priorityAction.reason}</p>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600">
+              <Badge className="bg-slate-100 text-slate-700">连续学习 {dashboard.streakDays} 天</Badge>
+              <Badge className="bg-slate-100 text-slate-700">已识别风险 {dashboard.riskSignals.length} 条</Badge>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className={primaryRisk ? riskPanelClassName(primaryRisk.level) : 'border-slate-200 bg-white'}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <SectionTitle className="flex items-center gap-2">
+              <CircleAlert className="h-5 w-5" />
+              当前风险提醒
+            </SectionTitle>
+            <Muted className="mt-2">先处理最可能拖慢今日节奏的问题。</Muted>
+          </div>
+          <Badge className={primaryRisk ? riskBadgeClassName(primaryRisk.level) : 'bg-slate-100 text-slate-700'}>
+            {primaryRisk ? riskLevelLabel(primaryRisk.level) : '稳定'}
+          </Badge>
+        </div>
+        {primaryRisk ? (
+          <div className="mt-5 space-y-4">
+            <div>
+              <div className="text-lg font-semibold text-slate-950">{primaryRisk.title}</div>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{primaryRisk.detail}</p>
+            </div>
+            <div className="rounded-2xl border border-white/70 bg-white/85 p-4">
+              <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">建议处理动作</div>
+              <p className="mt-2 text-sm leading-6 text-slate-800">{primaryRisk.action}</p>
+            </div>
+            {secondaryRisks.length ? (
+              <div className="space-y-2">
+                {secondaryRisks.map((risk) => (
+                  <div key={risk.id} className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-slate-900">{risk.title}</div>
+                      <Badge className={riskBadgeClassName(risk.level)}>{riskLevelLabel(risk.level)}</Badge>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">{risk.action}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+            当前没有明显风险，继续保持单任务推进即可。
+          </div>
+        )}
+      </Card>
+
+      <Card className="xl:col-span-2">
+        <div className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
+          <div>
+            <SectionTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-slate-700" />
+              近期复盘摘要
+            </SectionTitle>
+            <p className="mt-4 text-sm leading-7 text-slate-700">{dashboard.reflectionSummary}</p>
+          </div>
+          <div>
+            <SectionTitle className="flex items-center gap-2">
+              <Flag className="h-5 w-5 text-slate-700" />
+              补充动作
+            </SectionTitle>
+            <div className="mt-4 grid gap-3">
+              {dashboard.quickActions.map((action) => (
+                <div key={action} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm">
+                    <Check className="h-4 w-4" />
+                  </div>
+                  <div className="text-sm leading-6 text-slate-700">{action}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
 }
 
 function createReflectionDraft(entry: ReflectionEntry): SaveReflectionEntryInput {
@@ -747,6 +824,58 @@ function formatDateTime(value: string) {
   }
 
   return date.toLocaleString('zh-CN');
+}
+
+function priorityActionLabel(action: DashboardPriorityAction) {
+  switch (action.kind) {
+    case 'continue':
+      return '今日优先动作';
+    case 'start':
+      return '下一步动作';
+    case 'review':
+      return '复盘优先';
+    default:
+      return '今日安排';
+  }
+}
+
+function riskLevelLabel(level: DashboardRiskLevel) {
+  switch (level) {
+    case 'high':
+      return '高风险';
+    case 'medium':
+      return '中风险';
+    case 'low':
+      return '低风险';
+    default:
+      return '风险';
+  }
+}
+
+function riskBadgeClassName(level: DashboardRiskLevel) {
+  switch (level) {
+    case 'high':
+      return 'bg-rose-100 text-rose-800';
+    case 'medium':
+      return 'bg-amber-100 text-amber-800';
+    case 'low':
+      return 'bg-emerald-100 text-emerald-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function riskPanelClassName(level: DashboardRiskLevel) {
+  switch (level) {
+    case 'high':
+      return 'border-rose-200 bg-[linear-gradient(180deg,_#fff7f7_0%,_#fff1f2_100%)]';
+    case 'medium':
+      return 'border-amber-200 bg-[linear-gradient(180deg,_#fffbeb_0%,_#fff7ed_100%)]';
+    case 'low':
+      return 'border-emerald-200 bg-[linear-gradient(180deg,_#f0fdf4_0%,_#ecfdf5_100%)]';
+    default:
+      return 'border-slate-200 bg-white';
+  }
 }
 
 function createEmptyStage(): LearningPlanStage {

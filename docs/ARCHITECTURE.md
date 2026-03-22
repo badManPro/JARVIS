@@ -117,7 +117,7 @@ Renderer 先按以下状态切分：
    - 结构化保存 `daily / weekly / stage` 三个复盘周期的手动输入
    - 当前保存偏差说明、难度匹配、时间分配、自评、复盘结论和后续动作
 
-当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / reflection / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 现在会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；`conversation` 目前仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路。
+当前主进程会在 `load/save` 时同步 `profile / goals / plan drafts / reflection / settings` 到规范化表，并继续写回 `app_snapshots` 作为兼容快照；`dashboard / reflection` 现在会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；其中首页首屏会进一步把这些信号整理成 `priorityAction` 与 `riskSignals`，直接回答“现在先做什么”和“当前主要风险是什么”；`conversation` 目前仍以快照为主，但会在加载时把 `suggestions` 回填成结构化 `actionPreviews`，留待后续继续拆表。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路。
 
 ### 6.2 Provider 接入边界
 当前把模型层分成三层：
@@ -179,5 +179,6 @@ Preload 当前暴露：
 - 动作来源标签、建议生成时间、审核时间、写入时间附着在 `actionPreviews` 上，并随 `app_snapshots` 一起持久化；目前仍未单独建表
 - capability 调用级日志则已拆到 `ai_request_logs`，与快照解耦，并由设置页展示最小可观测性摘要
 - 首页与复盘页的关键摘要现由任务执行状态派生，并叠加 `reflection_entries` 的手动输入，不再只依赖 seed 文案或手写快照
+- 首页会把这些派生结果进一步整理为单条优先动作和结构化风险提醒，UI 不再只展示平铺字符串数组
 
 当前仍未覆盖：目标排序、计划版本回滚、`reflection_summary` 的业务接入，以及更细粒度的调用 tracing / metrics。

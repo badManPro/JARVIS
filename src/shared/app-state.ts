@@ -213,6 +213,26 @@ export type UpdatePlanTaskStatusInput = {
   statusNote?: string;
 };
 
+export type DashboardPriorityActionKind = 'continue' | 'start' | 'review';
+export type DashboardRiskLevel = 'high' | 'medium' | 'low';
+
+export type DashboardPriorityAction = {
+  kind: DashboardPriorityActionKind;
+  title: string;
+  detail: string;
+  reason: string;
+  duration: string;
+  taskId?: string;
+};
+
+export type DashboardRiskSignal = {
+  id: string;
+  level: DashboardRiskLevel;
+  title: string;
+  detail: string;
+  action: string;
+};
+
 export type AppState = {
   profile: UserProfile;
   dashboard: {
@@ -224,6 +244,8 @@ export type AppState = {
     alerts: string[];
     quickActions: string[];
     reflectionSummary: string;
+    priorityAction: DashboardPriorityAction;
+    riskSignals: DashboardRiskSignal[];
   };
   goals: LearningGoal[];
   plan: LearningPlanState;
@@ -604,6 +626,145 @@ function buildReflectionEntry(period: ReflectionPeriod, tasks: PlanTask[], manua
   };
 }
 
+function buildPriorityAction(
+  focusTask: PlanTask | null,
+  stageTitle: string,
+  summary: ReturnType<typeof buildTaskStatusSummary>,
+  defaultReflectionEntry: ReflectionEntry,
+): DashboardPriorityAction {
+  if (focusTask) {
+    const isInProgress = focusTask.status === 'in_progress';
+    return {
+      kind: isInProgress ? 'continue' : 'start',
+      title: `${isInProgress ? '继续推进' : '开始执行'}：${focusTask.title}`,
+      detail: focusTask.statusNote?.trim() || focusTask.note.trim() || `当前阶段：${stageTitle}`,
+      reason: isInProgress
+        ? '该任务已在进行中，先完成当前上下文能降低切换成本。'
+        : `这是 ${stageTitle} 当前最直接的下一步。`,
+      duration: focusTask.duration || '15 分钟',
+      taskId: focusTask.id,
+    };
+  }
+
+  return {
+    kind: 'review',
+    title: '查看复盘并准备下一阶段任务',
+    detail: defaultReflectionEntry.insight || '当前没有待执行任务，先回看复盘与计划调整建议。',
+    reason: summary.total
+      ? '当前计划内任务已处理完成，下一步应该通过复盘决定新的推进重点。'
+      : '当前还没有可执行任务，先通过复盘明确下一步。',
+    duration: '15 分钟',
+  };
+}
+
+function buildTaskRiskSignals(summary: ReturnType<typeof buildTaskStatusSummary>): DashboardRiskSignal[] {
+  const signals: DashboardRiskSignal[] = [];
+
+  const delayedTask = summary.delayedTasks[0];
+  if (delayedTask) {
+    signals.push({
+      id: `task-delayed-${delayedTask.id}`,
+      level: 'high',
+      title: `已延后：${delayedTask.title}`,
+      detail: delayedTask.statusNote?.trim() || delayedTask.note.trim() || '该任务未按计划推进，可能继续侵蚀当前阶段节奏。',
+      action: `优先重排或拆小：${delayedTask.title}`,
+    });
+  }
+
+  const skippedTask = summary.skippedTasks[0];
+  if (skippedTask) {
+    signals.push({
+      id: `task-skipped-${skippedTask.id}`,
+      level: 'high',
+      title: `已跳过：${skippedTask.title}`,
+      detail: skippedTask.statusNote?.trim() || skippedTask.note.trim() || '该任务被跳过，需补齐原因避免重复阻塞。',
+      action: `在复盘中补充原因，并决定是否重新排入：${skippedTask.title}`,
+    });
+  }
+
+  return signals;
+}
+
+function buildReflectionRiskSignals(entries: ReflectionEntry[]): DashboardRiskSignal[] {
+  const signals: DashboardRiskSignal[] = [];
+
+  for (const entry of entries) {
+    if (entry.timeFit === 'insufficient') {
+      signals.push({
+        id: `reflection-time-${entry.period}`,
+        level: 'medium',
+        title: `${entry.label}时间预算不足`,
+        detail: entry.obstacle || `${entry.label}可投入时间低于原计划，容易打断连续推进。`,
+        action: '下个周期减少并行事项，先为主线预留连续时间块',
+      });
+    }
+
+    if (entry.difficultyFit === 'too_hard') {
+      signals.push({
+        id: `reflection-difficulty-${entry.period}`,
+        level: 'medium',
+        title: `${entry.label}任务难度偏高`,
+        detail: entry.insight || entry.obstacle || '当前任务粒度或前置条件偏大，推进成本持续偏高。',
+        action: '把高难任务拆成更小的前置练习，再继续推进主线',
+      });
+    }
+
+    if (entry.moodScore <= 2 || entry.confidenceScore <= 2) {
+      signals.push({
+        id: `reflection-state-${entry.period}`,
+        level: 'medium',
+        title: `${entry.label}当前状态偏低`,
+        detail: entry.insight || entry.obstacle || '当前压力或自信度偏低，直接加码容易失速。',
+        action: '先安排一项低阻力任务恢复节奏，再进入高负荷工作',
+      });
+    }
+
+    if (!signals.length && entry.obstacle) {
+      signals.push({
+        id: `reflection-obstacle-${entry.period}`,
+        level: 'medium',
+        title: `${entry.label}存在稳定阻力`,
+        detail: entry.obstacle,
+        action: entry.nextActions[0] || '先按复盘建议收窄任务范围，再继续推进',
+      });
+    }
+  }
+
+  return signals;
+}
+
+function buildDashboardRiskSignals(
+  summary: ReturnType<typeof buildTaskStatusSummary>,
+  reflectionEntries: ReflectionEntry[],
+  priorityAction: DashboardPriorityAction,
+): DashboardRiskSignal[] {
+  const combined = [
+    ...buildTaskRiskSignals(summary),
+    ...buildReflectionRiskSignals(reflectionEntries),
+  ];
+
+  if (!combined.length) {
+    return [
+      {
+        id: 'focus-discipline',
+        level: 'low',
+        title: '当前无明显风险',
+        detail: '执行节奏整体稳定，主要风险是任务切换过多打断连续性。',
+        action: priorityAction.title,
+      },
+    ];
+  }
+
+  const seen = new Set<string>();
+  return combined.filter((signal) => {
+    if (seen.has(signal.id)) {
+      return false;
+    }
+    seen.add(signal.id);
+    return true;
+  }).slice(0, 3);
+}
+
 function buildExecutionDerivedState(state: AppState) {
   const activeGoal = getActiveConversationGoal(state.goals, state.plan.activeGoalId);
   const activeDraft = getActiveConversationDraft(state.plan);
@@ -613,10 +774,7 @@ function buildExecutionDerivedState(state: AppState) {
   const recentTaskExecutions = buildRecentTaskExecutions(tasks);
   const focusTask = summary.inProgressTask ?? summary.nextTodoTask;
   const completionRate = summary.total ? Math.round((summary.doneTasks.length / summary.total) * 100) : 0;
-  const alerts = [
-    ...summary.delayedTasks.map((task) => `已延后：${task.title}${task.statusNote ? ` · ${task.statusNote}` : ''}`),
-    ...summary.skippedTasks.map((task) => `已跳过：${task.title}${task.statusNote ? ` · ${task.statusNote}` : ''}`),
-  ].slice(0, 3);
+  const stageTitle = pickCurrentStage(activeDraft);
   const nextActions = Array.from(new Set([
     summary.delayedTasks[0] ? `优先重排：${summary.delayedTasks[0].title}` : null,
     focusTask ? `${focusTask.status === 'in_progress' ? '继续推进' : '开始执行'}：${focusTask.title}` : '查看复盘并准备下一阶段任务',
@@ -629,20 +787,25 @@ function buildExecutionDerivedState(state: AppState) {
     return buildReflectionEntry(period, tasks, manualEntry, now);
   });
   const defaultReflectionEntry = reflectionEntries.find((entry) => entry.period === DEFAULT_REFLECTION_PERIOD) ?? reflectionEntries[0] ?? createEmptyReflectionEntry(DEFAULT_REFLECTION_PERIOD);
+  const priorityAction = buildPriorityAction(focusTask, stageTitle, summary, defaultReflectionEntry);
+  const riskSignals = buildDashboardRiskSignals(summary, reflectionEntries, priorityAction);
+  const alerts = riskSignals.map((signal) => `${signal.title}：${signal.detail}`);
   const executionSummaryLine = `${activeGoal?.title ?? '当前目标'}已完成 ${summary.doneTasks.length}/${summary.total} 项；延后 ${summary.delayedTasks.length} 项，跳过 ${summary.skippedTasks.length} 项。`;
 
   return {
     dashboard: {
       ...state.dashboard,
-      todayFocus: focusTask?.title ?? '查看复盘并准备下一阶段任务',
-      stage: pickCurrentStage(activeDraft),
-      duration: focusTask?.duration ?? '15 分钟',
+      todayFocus: priorityAction.title,
+      stage: stageTitle,
+      duration: priorityAction.duration,
       weeklyCompletion: completionRate,
       alerts,
       quickActions: nextActions,
       reflectionSummary: defaultReflectionEntry.insight
         ? `${executionSummaryLine} ${defaultReflectionEntry.label}：${defaultReflectionEntry.insight}`
         : executionSummaryLine,
+      priorityAction,
+      riskSignals,
     },
     reflection: {
       ...state.reflection,
@@ -1658,6 +1821,14 @@ const baseSeedState: AppState = {
     alerts: ['当前计划草案仍由本地模板生成，尚未接入真实 AI Provider 自动生成。', '如果目标刚创建且尚无草案，会先用本地规则生成首版草案。'],
     quickActions: ['开始今日学习', '切换当前目标', '查看当前计划依据'],
     reflectionSummary: '最近更适合以真实交付物推进，先把每个目标的计划草案独立起来。',
+    priorityAction: {
+      kind: 'continue',
+      title: '继续推进当前任务',
+      detail: '优先保持单任务推进。',
+      reason: '避免在主线上频繁切换。',
+      duration: '45 分钟',
+    },
+    riskSignals: [],
   },
   goals: [
     {

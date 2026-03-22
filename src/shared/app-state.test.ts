@@ -97,6 +97,11 @@ test('updatePlanTaskStatus records execution metadata and refreshes dashboard/re
   assert.ok(skippedUpdatedAt >= before && skippedUpdatedAt <= after);
   assert.match(skippedState.dashboard.reflectionSummary, /跳过 1 项/);
   assert.match(skippedState.reflection.deviation, /跳过/);
+  assert.match(skippedState.dashboard.priorityAction.title, /继续推进：用 requests 或 fetch 封装一次模型调用/);
+  assert.equal(
+    skippedState.dashboard.riskSignals.some((risk) => risk.title.includes('跳过') && risk.detail.includes('runtime 诊断')),
+    true,
+  );
   assert.equal(
     skippedState.reflection.recentTaskExecutions.some((item) => item.taskId === 'task-python-ai-3' && item.status === 'skipped'),
     true,
@@ -112,6 +117,7 @@ test('updatePlanTaskStatus records execution metadata and refreshes dashboard/re
   assert.equal(completedState.reflection.completedTasks, 2);
   assert.match(completedState.reflection.actualDuration, /小时|分钟/);
   assert.match(completedState.dashboard.todayFocus, /规划本地优先 MVP 的最小功能清单|查看复盘/);
+  assert.ok(completedState.dashboard.riskSignals.length >= 1);
 });
 
 test('saveReflectionEntry writes structured feedback into the selected reflection period', () => {
@@ -143,6 +149,23 @@ test('saveReflectionEntry writes structured feedback into the selected reflectio
     weeklyEntry.nextActions.some((item) => item.includes('把任务拆成 30 分钟内可完成的小步')),
     true,
   );
+  assert.equal(
+    nextState.dashboard.riskSignals.some((risk) => risk.title.includes('时间') && risk.action.includes('减少并行事项')),
+    true,
+  );
+  assert.equal(
+    nextState.dashboard.riskSignals.some((risk) => risk.title.includes('难度') && risk.action.includes('拆成更小')),
+    true,
+  );
+});
+
+test('seedState derives a structured home priority action and top risk summary', () => {
+  assert.equal(seedState.dashboard.priorityAction.title, '继续推进：用 requests 或 fetch 封装一次模型调用');
+  assert.equal(seedState.dashboard.priorityAction.duration, '45 分钟');
+  assert.match(seedState.dashboard.priorityAction.reason, /进行中|当前阶段/);
+  assert.ok(seedState.dashboard.riskSignals.length >= 1);
+  assert.equal(seedState.dashboard.riskSignals[0]?.level, 'medium');
+  assert.match(seedState.dashboard.riskSignals[0]?.detail ?? '', /临时事务打断|可交付物/);
 });
 
 test('resolveConversationState parses reflection-driven profile suggestions into executable previews', () => {
