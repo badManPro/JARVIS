@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const workspaceRoot = process.cwd();
 const backupCandidates = [
-  path.resolve(workspaceRoot, 'node_modules/.ignored/better-sqlite3/build/Release/better_sqlite3.node'),
   path.resolve(workspaceRoot, 'node_modules/.ignored_better-sqlite3/build/Release/better_sqlite3.node'),
+  path.resolve(workspaceRoot, 'node_modules/.ignored/better-sqlite3/build/Release/better_sqlite3.node'),
 ];
 const cacheRoot = path.join(os.tmpdir(), 'learning-companion-native-rebuild');
 const npmCacheDir = path.join(cacheRoot, 'npm-cache');

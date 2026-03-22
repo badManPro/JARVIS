@@ -9,7 +9,7 @@
 ## 最新预检结果
 - `npm run lint`：PASS
 - `npm run build`：PASS
-- `node --test dist-electron/src/**/*.test.js`：PASS（44/44）
+- `node --test dist-electron/src/**/*.test.js`：PASS（47/47）
 - `npm run rebuild:native:electron`：PASS（成功将 `better-sqlite3` 切到 Electron ABI）
 - `npm run rebuild:native:node`：PASS（当前受限网络下 `npm rebuild` 下载 Node headers 失败时，wrapper 会回退到隐藏备份并恢复 Node ABI）
 - 关键链路集成验证：PASS（建议审核落库闭环、执行/复盘反馈回流闭环）
@@ -19,7 +19,7 @@
 - DMG 挂载内容检查：PASS（包含 `Learning Companion.app` 与 `/Applications` 快捷方式）
 - `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Learning Companion.app"`：PASS
 - `spctl -a -vv -t open "release/mac-arm64/Learning Companion.app"`：返回 `internal error in Code Signing subsystem`，当前只可视为 ad-hoc 签名环境下的观察结果，不能替代正式 Gatekeeper 验收
-- 人工手测：清单已补齐，本次会话未实际逐项执行 `M1` 到 `M8`；首启 GUI 走查仍建议在 `Release Candidate` 阶段完成
+- 人工手测：`M1`、`M2`、`M3` 已实际执行并记录；`M4` 到 `M8` 仍待继续走查
 
 ## 首次启动与空状态检查
 
@@ -99,6 +99,13 @@
 - 本地 SQLite 会继续承接既有状态
 - 重启后不会丢失结构化数据
 
+记录：
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：两次 `npm run dev` 启动都成功拉起 renderer / main / Electron；用户确认窗口正常显示，完整退出后重新打开仍可看到既有 profile / goals / plan / settings / reflection 数据回填
+- 证据：`VITE v6.4.1 ready`、`Found 0 errors. Watching for file changes.`、`✔ Rebuild Complete`，以及用户在 2026-03-22 的 GUI 确认
+- 备注：当前仅见 DevTools `Autofill.enable/setAddresses` 警告，未见 preload/IPC 级错误
+
 ### M2. 设置页与启动页
 前置条件：
 - 应用已启动
@@ -114,6 +121,13 @@
 - 应用按保存后的启动页落到对应页面
 - runtime 摘要和路由配置仍能正常展示
 
+记录：
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：修复 preload bridge 后，用户在 GUI 中将主题改为“浅色”、启动页改为“学习计划”并保存；完整退出再重启后，用户确认该项“已通过”，设置页显示“本地存储状态：已从 SQLite 加载”；直接查询本地 `app_settings` 表后，真实值为 `theme=浅色`、`start_page=学习计划`
+- 证据：用户 2026-03-22 的 GUI 确认；`sqlite3 "$HOME/Library/Application Support/learning-companion/learning-companion.sqlite" "select id, theme, start_page, updated_at from app_settings;"`
+- 备注：本项通过覆盖“设置持久化 + 启动页回填 + 设置页反馈”；`settings.theme` 当前仍未接入 renderer 样式系统，不能把本条记录等同于完整主题视觉验收
+
 ### M3. 用户画像编辑
 步骤：
 1. 进入“用户画像”页
@@ -125,6 +139,13 @@
 - 修改立即生效
 - 页面切换和重启后都能回填
 - 画像内容仍能影响计划和建议上下文
+
+记录：
+- 状态：pass
+- 执行日期：2026-03-22
+- 实际结果：用户完成了画像字段编辑、页面切换回看与完整重启回看，并确认 `M3` “验证通过”
+- 证据：用户在 2026-03-22 的 GUI 手测确认
+- 备注：本次会话未单独记录具体修改字段，当前结论基于用户对“切页后仍在 + 重启后仍在”的口头确认
 
 ### M4. 目标生命周期
 步骤：
@@ -139,6 +160,13 @@
 - 当前主目标切换立即反映到计划页
 - 删除目标时会同步清理关联草案与快照
 - 若删除的是当前主目标，应用会自动选择下一个可用目标或进入空状态
+
+记录：
+- 状态：pending
+- 执行日期：待补
+- 实际结果：待执行
+- 证据：待补
+- 备注：待补
 
 ### M5. 学习计划编辑与版本链路
 前置条件：
@@ -156,6 +184,13 @@
 - 快照对比可查看差异
 - 重生成后当前草案被替换，旧版本进入历史快照
 
+记录：
+- 状态：pending
+- 执行日期：待补
+- 实际结果：待执行
+- 证据：待补
+- 备注：待补
+
 ### M6. 执行状态与复盘
 前置条件：
 - 当前计划里存在任务
@@ -170,6 +205,13 @@
 - 任务状态、备注和更新时间可保存
 - 首页聚焦卡和风险卡会响应执行信号
 - 复盘输入会被独立持久化，并刷新建议上下文
+
+记录：
+- 状态：pending
+- 执行日期：待补
+- 实际结果：待执行
+- 证据：待补
+- 备注：待补
 
 ### M7. 对话建议与 action preview 审核
 前置条件：
@@ -187,6 +229,13 @@
 - 已接受的预览可回写结构化实体
 - source label、reviewedAt、appliedAt 等审计字段会保留
 
+记录：
+- 状态：pending
+- 执行日期：待补
+- 实际结果：待执行
+- 证据：待补
+- 备注：待补
+
 ### M8. AI runtime 与错误反馈
 前置条件：
 - 至少配置一个可用 Provider；如无可用 secret，则验证错误提示路径
@@ -202,6 +251,13 @@
 - 健康检查结果可见
 - capability 调用会更新最近状态和请求列表
 - 缺少 secret、provider 不可用或路由异常时，用户能看到可理解的错误反馈
+
+记录：
+- 状态：pending
+- 执行日期：待补
+- 实际结果：待执行
+- 证据：待补
+- 备注：待补
 
 ## Go / No-Go 判断
 

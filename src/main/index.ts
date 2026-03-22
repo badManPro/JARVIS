@@ -17,6 +17,7 @@ const isDev = !app.isPackaged;
 let storageService: AppStorageService | null = null;
 
 function createWindow() {
+  const preloadPath = path.join(__dirname, '../preload/index.cjs');
   const window = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -24,7 +25,7 @@ function createWindow() {
     minHeight: 760,
     backgroundColor: '#F8FAFC',
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
     },

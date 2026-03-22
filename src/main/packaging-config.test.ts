@@ -84,6 +84,19 @@ test('package.json exposes macOS installer-oriented electron-builder config', ()
   assert.deepEqual(macTargets, ['dmg', 'zip']);
 });
 
+test('main process points to a CommonJS preload build for Electron', () => {
+  const mainSource = readWorkspaceFile('src/main/index.ts');
+  const compiledPreloadPath = path.resolve(process.cwd(), 'dist-electron/src/preload/index.cjs');
+
+  assert.match(mainSource, /preload:\s*preloadPath/);
+  assert.match(mainSource, /path\.join\(__dirname,\s*'\.\.\/preload\/index\.cjs'\)/);
+  assert.ok(fs.existsSync(compiledPreloadPath));
+
+  const compiledPreload = fs.readFileSync(compiledPreloadPath, 'utf8');
+  assert.doesNotMatch(compiledPreload, /import\s+\{ contextBridge, ipcRenderer \}\s+from\s+'electron'/);
+  assert.match(compiledPreload, /require\("electron"\)|require\('electron'\)/);
+});
+
 test('packaging wrapper restores better-sqlite3 back to the Node runtime after electron-builder runs', () => {
   const script = readWorkspaceFile('scripts/run-electron-builder.mjs');
 
@@ -97,7 +110,13 @@ test('dev wrapper rebuilds better-sqlite3 for Electron before launch and restore
 
   assert.match(script, /\['run', 'rebuild:native:electron'\]/);
   assert.match(script, /\['exec', 'wait-on', '--', 'tcp:5173', 'dist-electron\/src\/main\/index\.js'\]/);
-  assert.match(script, /\['exec', 'electron', '--', '\.'\]/);
+  assert.match(script, /node_modules\/\.ignored\/electron/);
+  assert.match(script, /node_modules\/\.ignored_electron/);
+  assert.match(script, /path\.join\(packageDir, 'path\.txt'\)/);
+  assert.match(script, /resolveElectronCommand/);
+  assert.match(script, /fs\.readFileSync\(pathFile, 'utf8'\)\.trim\(\)/);
+  assert.match(script, /path\.join\(packageDir, 'dist', executableRelativePath\)/);
+  assert.match(script, /electronCommand\.command/);
   assert.match(script, /allowRequestedSignalInterruption/);
   assert.match(script, /allowRequestedSignalInterruption && requestedSignal && \(signal \|\| code === 1\)/);
   assert.match(script, /isCleaningUp/);
@@ -111,7 +130,11 @@ test('node rebuild wrapper uses workspace-local caches and can restore a hidden 
 
   assert.match(script, /npm_config_cache/);
   assert.match(script, /npm_config_devdir/);
-  assert.match(script, /\.ignored\/better-sqlite3\/build\/Release\/better_sqlite3\.node/);
   assert.match(script, /\.ignored_better-sqlite3\/build\/Release\/better_sqlite3\.node/);
+  assert.match(script, /\.ignored\/better-sqlite3\/build\/Release\/better_sqlite3\.node/);
+  assert.ok(
+    script.indexOf(".ignored_better-sqlite3/build/Release/better_sqlite3.node")
+      < script.indexOf(".ignored/better-sqlite3/build/Release/better_sqlite3.node"),
+  );
   assert.match(script, /copyFileSync/);
 });

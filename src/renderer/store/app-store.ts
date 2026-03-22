@@ -23,6 +23,7 @@ import {
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
+import { getCachedStorageBridge } from '@shared/storage-bridge-cache';
 
 type AppStore = AppState & {
   aiRuntimeSummary: AiRuntimeSummaryItem[];
@@ -53,7 +54,7 @@ type AppStore = AppState & {
 };
 
 function getBridge() {
-  return window.learningCompanion?.storage;
+  return getCachedStorageBridge(window);
 }
 
 function mergeProviders(state: AppState, providers: ProviderConfig[]): AppState {

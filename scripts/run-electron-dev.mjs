@@ -1,7 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { restoreHiddenBackup, runNodeNativeRebuild } from './run-node-native-rebuild.mjs';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const workspaceRoot = process.cwd();
 const signalExitCodes = {
   SIGINT: 130,
   SIGTERM: 143,
@@ -25,6 +28,36 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   forwardSignal('SIGTERM');
 });
+
+function resolveElectronCommand() {
+  const packageCandidates = [
+    path.resolve(workspaceRoot, 'node_modules/electron'),
+    path.resolve(workspaceRoot, 'node_modules/.ignored/electron'),
+    path.resolve(workspaceRoot, 'node_modules/.ignored_electron'),
+  ];
+
+  for (const packageDir of packageCandidates) {
+    const pathFile = path.join(packageDir, 'path.txt');
+    if (!fs.existsSync(pathFile)) {
+      continue;
+    }
+
+    const executableRelativePath = fs.readFileSync(pathFile, 'utf8').trim();
+    const executablePath = path.join(packageDir, 'dist', executableRelativePath);
+
+    if (fs.existsSync(executablePath)) {
+      return {
+        command: executablePath,
+        args: ['.'],
+      };
+    }
+  }
+
+  return {
+    command: npmCommand,
+    args: ['exec', 'electron', '--', '.'],
+  };
+}
 
 function run(command, args, options = {}) {
   const { allowRequestedSignalInterruption = false } = options;
@@ -71,6 +104,7 @@ function run(command, args, options = {}) {
 
 async function main() {
   let launchError = null;
+  const electronCommand = resolveElectronCommand();
 
   await run(npmCommand, ['run', 'rebuild:native:electron']);
 
@@ -81,8 +115,8 @@ async function main() {
       { allowRequestedSignalInterruption: true },
     );
     await run(
-      npmCommand,
-      ['exec', 'electron', '--', '.'],
+      electronCommand.command,
+      electronCommand.args,
       { allowRequestedSignalInterruption: true },
     );
   } catch (error) {

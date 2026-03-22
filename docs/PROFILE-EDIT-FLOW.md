@@ -24,7 +24,7 @@
    - 点击“保存画像”后调用 Zustand store 的 `saveUserProfile`
 2. `src/renderer/store/app-store.ts`
    - 调用 `window.learningCompanion.storage.saveUserProfile(profile)`
-3. `src/preload/index.ts`
+3. `src/preload/index.cts`
    - 通过 preload 暴露 IPC bridge
 4. `src/main/index.ts`
    - `ipcMain.handle('storage:save-user-profile', ...)`
