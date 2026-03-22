@@ -65,7 +65,7 @@ function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: 'inherit',
-      shell: false,
+      shell: process.platform === 'win32',
     });
 
     activeChild = child;

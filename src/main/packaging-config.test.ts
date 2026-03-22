@@ -107,8 +107,8 @@ test('release workflow builds macOS and Windows artifacts and publishes them to 
   assert.match(workflow, /build-macos:/);
   assert.match(workflow, /build-windows:/);
   assert.match(workflow, /release:/);
-  assert.match(workflow, /npm run dist -- --mac --arm64/);
-  assert.match(workflow, /npm run dist -- --win --x64/);
+  assert.match(workflow, /npm run dist -- --publish never --mac --arm64/);
+  assert.match(workflow, /npm run dist -- --publish never --win --x64/);
   assert.match(workflow, /gh release (create|upload)/);
 });
 
@@ -165,4 +165,14 @@ test('node rebuild wrapper uses workspace-local caches and can restore a hidden 
       < script.indexOf(".ignored/better-sqlite3/build/Release/better_sqlite3.node"),
   );
   assert.match(script, /copyFileSync/);
+});
+
+test('npm-based wrapper scripts enable shell launch on Windows for npm.cmd', () => {
+  const builderScript = readWorkspaceFile('scripts/run-electron-builder.mjs');
+  const rebuildScript = readWorkspaceFile('scripts/run-node-native-rebuild.mjs');
+  const devScript = readWorkspaceFile('scripts/run-electron-dev.mjs');
+
+  assert.match(builderScript, /shell:\s*process\.platform\s*===\s*'win32'/);
+  assert.match(rebuildScript, /shell:\s*process\.platform\s*===\s*'win32'/);
+  assert.match(devScript, /shell:\s*process\.platform\s*===\s*'win32'/);
 });
