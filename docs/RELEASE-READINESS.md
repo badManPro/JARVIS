@@ -2,14 +2,20 @@
 
 ## 当前判断
 - 日期：2026-03-22
-- 当前阶段：`Phase 6 / Task 1` 已完成
-- 当前状态：项目已经具备一套可重复执行的自动预检命令和手测路径，适合继续做集成级验收与演示准备
-- 尚未完成：仓库还没有 installer 打包配置、打包脚本和安装体验验证，因此暂不能把当前状态视为“可安装发布”
+- 当前阶段：`Phase 6 / Task 3` 已完成
+- 当前状态：项目已经具备一套可重复执行的自动预检命令、关键业务闭环的集成级自动验证，以及可生成 macOS arm64 `.app` / `.zip` / `.dmg` 的 packaging pipeline；DMG 内容和 app 签名结构也已完成基础检查
+- 尚未完成：首次启动引导和空状态验收、正式发布元数据（`author` / app icon）、Developer ID 签名与 notarization 仍未完成，因此暂不能把当前状态视为“正式可分发发布版”
 
 ## 最新预检结果
 - `npm run lint`：PASS
 - `npm run build`：PASS
-- `node --test dist-electron/src/**/*.test.js`：PASS（35/35）
+- `node --test dist-electron/src/**/*.test.js`：PASS（40/40）
+- 关键链路集成验证：PASS（建议审核落库闭环、执行/复盘反馈回流闭环）
+- `npm run package`：PASS（生成 `release/mac-arm64/Learning Companion.app`）
+- `npm run dist`：PASS（生成 `release/Learning Companion-0.1.0-arm64.dmg` 与 `release/Learning Companion-0.1.0-arm64-mac.zip`，并在结束后自动恢复 `better-sqlite3` 的 Node ABI）
+- DMG 挂载内容检查：PASS（包含 `Learning Companion.app` 与 `/Applications` 快捷方式）
+- `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Learning Companion.app"`：PASS
+- `spctl -a -vv -t open "release/mac-arm64/Learning Companion.app"`：返回 `internal error in Code Signing subsystem`，当前只可视为 ad-hoc 签名环境下的观察结果，不能替代正式 Gatekeeper 验收
 - 人工手测：清单已补齐，本次会话未实际逐项执行 `M1` 到 `M8`
 
 ## 自动预检矩阵
@@ -19,6 +25,38 @@
 | 类型检查 | `npm run lint` | 验证 TypeScript 主进程 / 渲染进程在当前代码树下无静态错误 | 命令退出码为 0 |
 | 生产构建 | `npm run build` | 同时构建 renderer 与 Electron main/preload 输出 | 命令退出码为 0，生成最新 `dist/` 与 `dist-electron/` |
 | 编译后全量测试 | `node --test dist-electron/src/**/*.test.js` | 对编译产物执行当前 Node 测试集，避免只验证源码层 | 所有测试通过 |
+| Unpacked app smoke check | `npm run package` | 生成可直接检查目录结构的 macOS app 产物 | 命令退出码为 0，生成 `release/mac-arm64/Learning Companion.app` |
+| Installer build | `npm run dist` | 生成用于安装分发的 ZIP / DMG 产物 | 命令退出码为 0，生成 `release/*.zip` 与 `release/*.dmg` |
+
+## 打包与安装检查
+
+### P1. 目录包 smoke check
+步骤：
+1. 运行 `npm run package`
+2. 确认生成 `release/mac-arm64/Learning Companion.app`
+3. 对 `.app` 执行 `codesign --verify --deep --strict --verbose=2`
+
+预期结果：
+- 可以产出 unpacked app
+- `.app` 的签名结构校验通过
+
+### P2. Installer 内容检查
+步骤：
+1. 运行 `npm run dist`
+2. 挂载 `release/Learning Companion-0.1.0-arm64.dmg`
+3. 确认挂载卷内包含 `Learning Companion.app`
+4. 确认挂载卷内包含指向 `/Applications` 的快捷方式
+
+预期结果：
+- 可以产出 ZIP / DMG
+- DMG 内容符合标准拖拽安装布局
+
+### P3. 已知安装限制
+当前检查中观测到的限制：
+- `package.json` 仍缺少 `author`，builder 会给出 warning
+- 当前未配置自定义应用图标，仍使用默认 Electron icon
+- macOS 目前只能做 ad-hoc 签名，builder 会跳过 notarization
+- `spctl` 结果不能被视为正式发布级 Gatekeeper 验收
 
 ## 手测路径
 
@@ -150,16 +188,16 @@
 - 手测过程中没有出现结构化数据丢失、启动失败、页面白屏或明显错误反馈缺失
 
 ### 当前明确不能宣称的事情
-- 不能宣称“已有 installer”
-- 不能宣称“打包产物已验证可安装”
+- 不能宣称“已完成正式 macOS 签名 / notarization”
+- 不能宣称“已通过无系统警告的 Gatekeeper 安装验收”
 - 不能宣称“首次启动引导和空状态已验收”
 
-## 打包与发布缺口
-- `package.json` 当前没有 `package` / `dist` / `make` 脚本
-- 仓库没有 `electron-builder` / `electron-forge` 之类的打包配置
-- 还没有安装包输出路径、签名策略、安装后数据目录验证记录
+## 剩余发布缺口
+- `package.json` 仍缺少 `author`
+- 仓库还没有正式发布用的 app icon / DMG branding 资源
+- 还没有 Developer ID 签名、notarization 和 Gatekeeper 放行记录
+- 首次启动引导、空状态和安装后数据目录行为仍未做任务级验收
 
 这些缺口留给后续任务处理：
-1. `Phase 6 / Task 2`：为关键链路补集成级验证
-2. `Phase 6 / Task 3`：Electron 打包与安装体验检查
-3. `Phase 6 / Task 4`：首次启动引导和空状态检查
+1. `Phase 6 / Task 4`：首次启动引导和空状态检查
+2. `Release Candidate`：最终回归与演示准备

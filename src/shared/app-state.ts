@@ -1004,6 +1004,11 @@ function extractPlanTitle(content: string) {
 }
 
 function extractAppendedTaskTitle(content: string) {
+  const taskQuoted = content.match(/(?:新增|加入|补一个)[^「“"]*(?:任务|行动)?[「“"]([^」”"]+)[」”"]/);
+  if (taskQuoted?.[1]) {
+    return taskQuoted[1].trim();
+  }
+
   const quoted = extractQuotedContent(content);
   if (quoted && /(任务|行动)/.test(content)) {
     return quoted;

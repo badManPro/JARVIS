@@ -1,0 +1,63 @@
+import { spawn } from 'node:child_process';
+
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const builderArgs = process.argv.slice(2);
+
+function run(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: 'inherit',
+      shell: false,
+    });
+
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(
+        signal
+          ? `${command} ${args.join(' ')} exited with signal ${signal}`
+          : `${command} ${args.join(' ')} exited with code ${code ?? 'unknown'}`,
+      ));
+    });
+  });
+}
+
+async function main() {
+  let builderAttempted = false;
+  let builderError = null;
+
+  await run(npmCommand, ['run', 'build']);
+  builderAttempted = true;
+
+  try {
+    await run(npmCommand, ['exec', 'electron-builder', '--', ...builderArgs]);
+  } catch (error) {
+    builderError = error;
+  } finally {
+    if (builderAttempted) {
+      try {
+        await run(npmCommand, ['run', 'rebuild:native:node']);
+      } catch (restoreError) {
+        if (!builderError) {
+          throw restoreError;
+        }
+
+        console.error('failed to restore better-sqlite3 back to the Node runtime after electron-builder:');
+        console.error(restoreError);
+      }
+    }
+  }
+
+  if (builderError) {
+    throw builderError;
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

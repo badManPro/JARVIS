@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AppState } from '../../shared/app-state.js';
-import { seedState } from '../../shared/app-state.js';
+import { seedState, updateConversationActionPreviewReview } from '../../shared/app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { createPlanSnapshot } from '../../shared/plan-draft.js';
 import { createDatabase } from '../db/client.js';
@@ -496,6 +496,70 @@ test('runProfileExtraction writes AI suggestions into conversation preview flow'
   assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.execution?.type === 'plan_update'), true);
 });
 
+test('accepted profile extraction previews persist profile, goal, and plan changes after reload', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => ({
+      capability: 'profile_extraction',
+      providerId: 'openai',
+      providerLabel: 'OpenAI / GPT',
+      model: 'gpt-4.1-mini',
+      suggestions: [
+        '采纳：把学习窗口调整为工作日晚间 20:30 - 21:15',
+        '采纳：把当前主目标周期改为 6 周，并把成功标准调整为完成一个可演示的本地优先 AI MVP',
+        '采纳：把计划标题改成「AI 强化学习冲刺草案」，并新增任务「拆解本周 MVP 功能清单」',
+      ],
+    }),
+  });
+
+  const initialState = service.initialize();
+  const extractedState = await service.runProfileExtraction();
+  const acceptedConversation = extractedState.conversation.actionPreviews.reduce(
+    (conversation, preview) => updateConversationActionPreviewReview(conversation, {
+      actionId: preview.id,
+      reviewStatus: 'accepted',
+      reviewedAt: '2026-03-22T21:30:00.000Z',
+    }),
+    extractedState.conversation,
+  );
+
+  service.saveAppState({
+    ...extractedState,
+    conversation: acceptedConversation,
+  });
+
+  const applyResult = service.applyAcceptedConversationActionPreviews();
+  const appliedGoal = applyResult.state.goals.find((goal) => goal.id === applyResult.state.plan.activeGoalId);
+  const appliedDraft = applyResult.state.plan.drafts.find((draft) => draft.goalId === applyResult.state.plan.activeGoalId);
+
+  assert.deepEqual(applyResult.skippedActionIds, []);
+  assert.equal(applyResult.appliedActionIds.length, 3);
+  assert.equal(applyResult.state.profile.bestStudyWindow, '工作日晚间 20:30 - 21:15');
+  assert.equal(
+    applyResult.state.profile.planImpact.some((item) => item.includes('工作日晚间 20:30 - 21:15')),
+    true,
+  );
+  assert.equal(appliedGoal?.cycle, '6 周');
+  assert.equal(appliedGoal?.successMetric, '完成一个可演示的本地优先 AI MVP');
+  assert.equal(appliedDraft?.title, 'AI 强化学习冲刺草案');
+  assert.equal(appliedDraft?.tasks.some((task) => task.title === '拆解本周 MVP 功能清单'), true);
+  assert.equal(
+    applyResult.state.conversation.actionPreviews
+      .filter((preview) => applyResult.appliedActionIds.includes(preview.id))
+      .every((preview) => preview.status === 'applied' && preview.reviewStatus === 'accepted' && Boolean(preview.appliedAt)),
+    true,
+  );
+
+  const reloaded = service.loadAppState();
+  const reloadedGoal = reloaded.goals.find((goal) => goal.id === initialState.plan.activeGoalId);
+  const reloadedDraft = reloaded.plan.drafts.find((draft) => draft.goalId === initialState.plan.activeGoalId);
+
+  assert.equal(reloaded.profile.bestStudyWindow, '工作日晚间 20:30 - 21:15');
+  assert.equal(reloadedGoal?.cycle, '6 周');
+  assert.equal(reloadedGoal?.successMetric, '完成一个可演示的本地优先 AI MVP');
+  assert.equal(reloadedDraft?.title, 'AI 强化学习冲刺草案');
+  assert.equal(reloadedDraft?.tasks.some((task) => task.title === '拆解本周 MVP 功能清单'), true);
+});
+
 test('regenerateLearningPlanDraft archives the current draft and replaces it with AI-generated content', async () => {
   const executeCalls: AiRequest[] = [];
   const { service } = createHarness({
@@ -629,6 +693,74 @@ test('generatePlanAdjustmentSuggestions merges AI suggestions back into the conv
     '采纳：把计划标题改成「AI 调整版草案」，并新增任务「安排一次 30 分钟复盘」',
     '进行中：把真实 AI Provider 的计划调整建议接入当前预览链路',
   ]);
+  assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.title === '计划调整预览'), true);
+});
+
+test('generatePlanAdjustmentSuggestions consumes the latest task execution and reflection feedback', async () => {
+  const executeCalls: AiRequest[] = [];
+  const { service } = createHarness({
+    aiExecute: async (_settings, request) => {
+      executeCalls.push(request);
+      return {
+        capability: 'plan_adjustment',
+        providerId: 'glm',
+        providerLabel: '智谱 GLM',
+        model: 'glm-4-flash',
+        text: '采纳：把计划标题改成「复盘驱动调整版」，并新增任务「安排一次 30 分钟复盘」',
+      };
+    },
+  });
+
+  const initialState = service.initialize();
+  const activeDraft = initialState.plan.drafts.find((draft) => draft.goalId === initialState.plan.activeGoalId);
+  assert.ok(activeDraft);
+  const targetTask = activeDraft.tasks[0];
+  assert.ok(targetTask);
+
+  service.updatePlanTaskStatus({
+    draftId: activeDraft.id,
+    taskId: targetTask.id,
+    status: 'delayed',
+    statusNote: '本周先补集成级验证，计划调整顺延。',
+  });
+
+  service.saveReflectionEntry({
+    period: 'weekly',
+    obstacle: '本周在补关键链路集成验证，连续时间块被切碎。',
+    difficultyFit: 'matched',
+    timeFit: 'insufficient',
+    moodScore: 3,
+    confidenceScore: 4,
+    accomplishmentScore: 3,
+    insight: '先把每条闭环都变成自动测试，再进入打包阶段。',
+    followUpActions: ['把任务拆成可以一次验证一条闭环', '先收口关键链路，再补安装体验'],
+  });
+
+  const nextState = await service.generatePlanAdjustmentSuggestions(initialState.plan.activeGoalId);
+  const request = executeCalls[0] as Extract<AiRequest, { capability: 'plan_adjustment' }>;
+  const requestTask = request.currentDraft.tasks.find((task) => task.id === targetTask.id);
+  const weeklyEntry = request.reflection.entries.find((entry) => entry.period === 'weekly');
+
+  assert.equal(executeCalls.length, 1);
+  assert.ok(requestTask);
+  assert.equal(requestTask.status, 'delayed');
+  assert.equal(requestTask.statusNote, '本周先补集成级验证，计划调整顺延。');
+  assert.equal(weeklyEntry?.obstacle, '本周在补关键链路集成验证，连续时间块被切碎。');
+  assert.equal(weeklyEntry?.insight, '先把每条闭环都变成自动测试，再进入打包阶段。');
+  assert.deepEqual(weeklyEntry?.followUpActions, ['把任务拆成可以一次验证一条闭环', '先收口关键链路，再补安装体验']);
+  assert.equal(
+    request.feedback.some((item) => item.includes('本周先补集成级验证，计划调整顺延。')),
+    true,
+  );
+  assert.equal(
+    request.feedback.some((item) => item.includes('本周在补关键链路集成验证，连续时间块被切碎。')),
+    true,
+  );
+  assert.equal(
+    request.feedback.some((item) => item.includes('把任务拆成可以一次验证一条闭环')),
+    true,
+  );
+  assert.equal(nextState.conversation.suggestions.some((item) => item.includes('复盘驱动调整版')), true);
   assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.title === '计划调整预览'), true);
 });
 
