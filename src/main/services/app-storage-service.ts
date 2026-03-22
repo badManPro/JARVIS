@@ -21,6 +21,7 @@ import type {
 } from '../../shared/ai-service.js';
 import {
   applyAcceptedConversationActionPreviews,
+  createEmptyAppState,
   resolveConversationState,
   saveReflectionEntry as applyReflectionEntrySave,
   seedState,
@@ -73,7 +74,7 @@ export class AppStorageService {
       return merged;
     }
 
-    const initialState = this.withProviderSecrets(this.prepareState(this.withSnapshotConversation(seedState)).state);
+    const initialState = this.withProviderSecrets(this.prepareState(createEmptyAppState()).state);
     this.persistStateAtomically(initialState);
     return initialState;
   }
@@ -94,7 +95,7 @@ export class AppStorageService {
       return merged;
     }
 
-    const hydratedFromSnapshot = this.prepareState(this.withSnapshotConversation(seedState)).state;
+    const hydratedFromSnapshot = this.prepareState(createEmptyAppState()).state;
     const merged = this.withProviderSecrets(hydratedFromSnapshot);
     this.persistStateAtomically(merged);
     return merged;
@@ -472,16 +473,17 @@ export class AppStorageService {
       return null;
     }
 
+    const emptyBaseState = createEmptyAppState();
     const prepared = this.prepareState(this.withSnapshotConversation({
-      ...seedState,
+      ...emptyBaseState,
       profile,
       goals,
       plan,
       reflection: {
-        ...seedState.reflection,
+        ...emptyBaseState.reflection,
         entries: this.entitiesRepository.loadReflectionEntries(),
       },
-      settings: this.settingsRepository.loadSettings() ?? seedState.settings,
+      settings: this.settingsRepository.loadSettings() ?? emptyBaseState.settings,
     }));
 
     if (prepared.repaired) {

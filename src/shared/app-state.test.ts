@@ -4,6 +4,7 @@ import {
   applyAcceptedConversationActionPreviews,
   resolveConversationState,
   saveReflectionEntry,
+  syncExecutionDerivedState,
   seedState,
   updatePlanTaskStatus,
   updateConversationActionPreviewReview,
@@ -166,6 +167,96 @@ test('seedState derives a structured home priority action and top risk summary',
   assert.ok(seedState.dashboard.riskSignals.length >= 1);
   assert.equal(seedState.dashboard.riskSignals[0]?.level, 'medium');
   assert.match(seedState.dashboard.riskSignals[0]?.detail ?? '', /临时事务打断|可交付物/);
+});
+
+test('syncExecutionDerivedState derives onboarding guidance for a first-run empty state', () => {
+  const emptyLikeState = syncExecutionDerivedState({
+    ...JSON.parse(JSON.stringify(seedState)),
+    profile: {
+      name: '',
+      identity: '',
+      timeBudget: '',
+      pacePreference: '',
+      strengths: [],
+      blockers: [],
+      bestStudyWindow: '',
+      planImpact: [],
+    },
+    goals: [],
+    plan: {
+      activeGoalId: '',
+      drafts: [],
+      snapshots: [],
+    },
+    conversation: {
+      ...seedState.conversation,
+      title: '开始你的第一次学习规划',
+      relatedGoal: '暂未设置目标',
+      relatedPlan: '暂无计划草案',
+      tags: [],
+      messages: [],
+      suggestions: [],
+      actionPreviews: [],
+    },
+    reflection: {
+      ...seedState.reflection,
+      period: '阶段复盘',
+      completedTasks: 0,
+      actualDuration: '0 分钟',
+      deviation: '当前周期还没有真实执行记录。',
+      insight: '',
+      nextActions: [],
+      recentTaskExecutions: [],
+      entries: [
+        {
+          ...seedState.reflection.entries[0],
+          obstacle: '',
+          insight: '',
+          nextActions: [],
+          followUpActions: [],
+          recentTaskExecutions: [],
+          updatedAt: undefined,
+        },
+        {
+          ...seedState.reflection.entries[1],
+          obstacle: '',
+          insight: '',
+          nextActions: [],
+          followUpActions: [],
+          recentTaskExecutions: [],
+          updatedAt: undefined,
+        },
+        {
+          ...seedState.reflection.entries[2],
+          obstacle: '',
+          insight: '',
+          nextActions: [],
+          followUpActions: [],
+          recentTaskExecutions: [],
+          updatedAt: undefined,
+        },
+      ],
+    },
+  });
+
+  const onboarding = (emptyLikeState.dashboard as typeof emptyLikeState.dashboard & {
+    onboarding?: {
+      active: boolean;
+      completedCount: number;
+      totalCount: number;
+      steps: Array<{ id: string; status: string }>;
+    };
+  }).onboarding;
+
+  assert.ok(onboarding);
+  assert.equal(onboarding.active, true);
+  assert.equal(onboarding.completedCount, 0);
+  assert.equal(onboarding.totalCount >= 3, true);
+  assert.equal(onboarding.steps[0]?.id, 'profile');
+  assert.equal(onboarding.steps[0]?.status, 'current');
+  assert.equal(onboarding.steps.some((step) => step.id === 'goal' && step.status === 'pending'), true);
+  assert.equal(onboarding.steps.some((step) => step.id === 'execution' && step.status === 'pending'), true);
+  assert.match(emptyLikeState.dashboard.priorityAction.title, /首次设置|补全画像|创建首个目标/);
 });
 
 test('resolveConversationState parses reflection-driven profile suggestions into executable previews', () => {

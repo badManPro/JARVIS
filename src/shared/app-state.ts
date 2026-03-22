@@ -215,6 +215,8 @@ export type UpdatePlanTaskStatusInput = {
 
 export type DashboardPriorityActionKind = 'continue' | 'start' | 'review';
 export type DashboardRiskLevel = 'high' | 'medium' | 'low';
+export type DashboardOnboardingStepStatus = 'complete' | 'current' | 'pending';
+export type DashboardOnboardingPage = 'profile' | 'goals' | 'plans' | 'settings';
 
 export type DashboardPriorityAction = {
   kind: DashboardPriorityActionKind;
@@ -233,6 +235,29 @@ export type DashboardRiskSignal = {
   action: string;
 };
 
+export type DashboardOnboardingStep = {
+  id: 'profile' | 'goal' | 'plan' | 'execution';
+  title: string;
+  detail: string;
+  actionLabel: string;
+  pageId: DashboardOnboardingPage;
+  status: DashboardOnboardingStepStatus;
+};
+
+export type DashboardOnboardingState = {
+  active: boolean;
+  title: string;
+  detail: string;
+  completedCount: number;
+  totalCount: number;
+  steps: DashboardOnboardingStep[];
+  optionalAction?: {
+    label: string;
+    detail: string;
+    pageId: DashboardOnboardingPage;
+  };
+};
+
 export type AppState = {
   profile: UserProfile;
   dashboard: {
@@ -246,6 +271,7 @@ export type AppState = {
     reflectionSummary: string;
     priorityAction: DashboardPriorityAction;
     riskSignals: DashboardRiskSignal[];
+    onboarding: DashboardOnboardingState;
   };
   goals: LearningGoal[];
   plan: LearningPlanState;
@@ -292,12 +318,121 @@ const reflectionPeriodLabels = {
   stage: '阶段复盘',
 } satisfies Record<ReflectionPeriod, string>;
 
+const defaultProviderConfigs: ProviderConfig[] = [
+  { id: 'openai', label: 'OpenAI / GPT', enabled: true, endpoint: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', authMode: 'apiKey', capabilityTags: ['profile_extraction', 'plan_generation', 'chat_general'], healthStatus: 'ready', keyPreview: '未配置', hasSecret: false },
+  { id: 'glm', label: 'Zhipu / GLM', enabled: false, endpoint: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5', authMode: 'apiKey', capabilityTags: ['plan_adjustment', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
+  { id: 'kimi', label: 'Moonshot / Kimi', enabled: false, endpoint: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k', authMode: 'apiKey', capabilityTags: ['chat_general', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
+  { id: 'deepseek', label: 'DeepSeek', enabled: false, endpoint: 'https://api.deepseek.com', model: 'deepseek-chat', authMode: 'apiKey', capabilityTags: ['plan_generation', 'plan_adjustment'], healthStatus: 'warning', keyPreview: '未配置', hasSecret: false },
+];
+
+const defaultRouting = {
+  profileExtraction: 'openai',
+  planGeneration: 'deepseek',
+  planAdjustment: 'glm',
+  reflectionSummary: 'kimi',
+  generalChat: 'openai',
+} satisfies AppState['settings']['routing'];
+
 function getActiveConversationGoal(goals: LearningGoal[], activeGoalId: string) {
   return goals.find((goal) => goal.id === activeGoalId) ?? goals[0] ?? null;
 }
 
 function getActiveConversationDraft(plan: LearningPlanState) {
   return plan.drafts.find((draft) => draft.goalId === plan.activeGoalId) ?? plan.drafts[0] ?? null;
+}
+
+function cloneProviderConfigs(providers: ProviderConfig[]) {
+  return providers.map((provider) => ({
+    ...provider,
+    capabilityTags: [...provider.capabilityTags],
+  }));
+}
+
+function createDefaultSettings(): AppState['settings'] {
+  return {
+    theme: '跟随系统',
+    startPage: '首页',
+    providers: cloneProviderConfigs(defaultProviderConfigs),
+    routing: {
+      ...defaultRouting,
+    },
+  };
+}
+
+function createDashboardSkeleton(): AppState['dashboard'] {
+  return {
+    todayFocus: '完成首次设置',
+    stage: '首次启动引导',
+    duration: '10 分钟',
+    weeklyCompletion: 0,
+    streakDays: 0,
+    alerts: [],
+    quickActions: ['完善用户画像', '创建首个目标', '配置 AI Provider（可选）'],
+    reflectionSummary: '当前还是首次启动空状态。先补齐基础输入，再开始第一项任务。',
+    priorityAction: {
+      kind: 'start',
+      title: '完成首次设置：完善用户画像',
+      detail: '先补全你的当前基础、时间预算和最佳学习窗口，后续目标与计划才有稳定约束。',
+      reason: '当前仍是空状态，先让系统知道你是谁、何时能学、想往哪里走。',
+      duration: '10 分钟',
+    },
+    riskSignals: [],
+    onboarding: {
+      active: true,
+      title: '首次启动引导',
+      detail: '先补齐基础输入，再开始第一项任务。',
+      completedCount: 0,
+      totalCount: 4,
+      steps: [],
+    },
+  };
+}
+
+export function createEmptyAppState(): AppState {
+  const baseState: AppState = {
+    profile: {
+      name: '',
+      identity: '',
+      timeBudget: '',
+      pacePreference: '',
+      strengths: [],
+      blockers: [],
+      bestStudyWindow: '',
+      planImpact: [],
+    },
+    dashboard: createDashboardSkeleton(),
+    goals: [],
+    plan: {
+      activeGoalId: '',
+      drafts: [],
+      snapshots: [],
+    },
+    conversation: {
+      title: '开始你的第一次学习规划',
+      relatedGoal: EMPTY_RELATED_GOAL_LABEL,
+      relatedPlan: EMPTY_RELATED_PLAN_LABEL,
+      tags: ['首次启动', '空状态'],
+      messages: [],
+      suggestions: [],
+      actionPreviews: [],
+    },
+    reflection: {
+      period: reflectionPeriodLabels[DEFAULT_REFLECTION_PERIOD],
+      completedTasks: 0,
+      actualDuration: '0 分钟',
+      deviation: '当前周期还没有真实执行记录。',
+      insight: '',
+      nextActions: [],
+      recentTaskExecutions: [],
+      entries: reflectionPeriods.map((period) => createEmptyReflectionEntry(period)),
+    },
+    settings: createDefaultSettings(),
+  };
+
+  return {
+    ...syncExecutionDerivedState(baseState),
+    conversation: resolveConversationState(baseState),
+  };
 }
 
 function normalizeTaskStatus(status?: string): TaskStatus {
@@ -631,6 +766,7 @@ function buildPriorityAction(
   stageTitle: string,
   summary: ReturnType<typeof buildTaskStatusSummary>,
   defaultReflectionEntry: ReflectionEntry,
+  onboarding: DashboardOnboardingState,
 ): DashboardPriorityAction {
   if (focusTask) {
     const isInProgress = focusTask.status === 'in_progress';
@@ -643,6 +779,17 @@ function buildPriorityAction(
         : `这是 ${stageTitle} 当前最直接的下一步。`,
       duration: focusTask.duration || '15 分钟',
       taskId: focusTask.id,
+    };
+  }
+
+  if (onboarding.active) {
+    const nextStep = onboarding.steps.find((step) => step.status !== 'complete') ?? onboarding.steps[0];
+    return {
+      kind: 'start',
+      title: `完成首次设置：${nextStep?.actionLabel ?? '开始使用应用'}`,
+      detail: nextStep?.detail ?? '先补齐基础输入，再开始第一项任务。',
+      reason: '当前仍是首次启动空状态，先把画像、目标和计划骨架补齐，后续首页与对话才有真实上下文。',
+      duration: nextStep?.id === 'execution' ? '15 分钟' : '10 分钟',
     };
   }
 
@@ -737,6 +884,7 @@ function buildDashboardRiskSignals(
   summary: ReturnType<typeof buildTaskStatusSummary>,
   reflectionEntries: ReflectionEntry[],
   priorityAction: DashboardPriorityAction,
+  onboarding: DashboardOnboardingState,
 ): DashboardRiskSignal[] {
   const combined = [
     ...buildTaskRiskSignals(summary),
@@ -744,6 +892,19 @@ function buildDashboardRiskSignals(
   ];
 
   if (!combined.length) {
+    if (onboarding.active) {
+      const nextStep = onboarding.steps.find((step) => step.status !== 'complete') ?? onboarding.steps[0];
+      return [
+        {
+          id: 'first-run-setup',
+          level: 'low',
+          title: '首次设置尚未完成',
+          detail: onboarding.detail,
+          action: nextStep?.actionLabel ?? '返回首页查看引导',
+        },
+      ];
+    }
+
     return [
       {
         id: 'focus-discipline',
@@ -765,6 +926,97 @@ function buildDashboardRiskSignals(
   }).slice(0, 3);
 }
 
+function isProfileReady(profile: UserProfile) {
+  return Boolean(
+    profile.identity.trim()
+    && profile.timeBudget.trim()
+    && profile.bestStudyWindow.trim(),
+  );
+}
+
+function hasConfiguredProvider(settings: AppState['settings']) {
+  return settings.providers.some((provider) => provider.enabled && (provider.authMode === 'none' || provider.hasSecret));
+}
+
+function buildDashboardOnboarding(
+  state: AppState,
+  activeDraft: LearningPlanDraft | null,
+  recentTaskExecutions: ReflectionTaskExecution[],
+): DashboardOnboardingState {
+  const profileReady = isProfileReady(state.profile);
+  const hasGoals = state.goals.length > 0;
+  const hasPlan = Boolean(activeDraft && activeDraft.tasks.length);
+  const hasExecution = recentTaskExecutions.length > 0;
+  const providerConfigured = hasConfiguredProvider(state.settings);
+
+  const rawSteps: Array<Omit<DashboardOnboardingStep, 'status'> & { status: 'complete' | 'pending' }> = [
+    {
+      id: 'profile',
+      title: '补全画像基础',
+      detail: '先写清当前基础、时间预算和最佳学习窗口，后续目标与计划才有可信约束。',
+      actionLabel: '完善用户画像',
+      pageId: 'profile',
+      status: profileReady ? 'complete' : 'pending',
+    },
+    {
+      id: 'goal',
+      title: '创建首个目标',
+      detail: '把“想学什么”定义成一个具体目标，系统才能开始为你规划。',
+      actionLabel: '创建首个目标',
+      pageId: 'goals',
+      status: hasGoals ? 'complete' : 'pending',
+    },
+    {
+      id: 'plan',
+      title: '生成首版计划草案',
+      detail: '保存目标后，计划页会自动拥有首版草案；先确认它是否足够可执行。',
+      actionLabel: '查看首版计划',
+      pageId: 'plans',
+      status: hasPlan ? 'complete' : 'pending',
+    },
+    {
+      id: 'execution',
+      title: '记录第一次执行',
+      detail: '在计划页标记一次开始、完成、延后或跳过，让首页和复盘开始消费真实信号。',
+      actionLabel: '开始第一次任务',
+      pageId: 'plans',
+      status: hasExecution ? 'complete' : 'pending',
+    },
+  ];
+
+  let currentAssigned = false;
+  const steps = rawSteps.map((step) => {
+    if (step.status === 'pending' && !currentAssigned) {
+      currentAssigned = true;
+      return {
+        ...step,
+        status: 'current',
+      } satisfies DashboardOnboardingStep;
+    }
+
+    return step satisfies DashboardOnboardingStep;
+  });
+
+  const completedCount = steps.filter((step) => step.status === 'complete').length;
+  const nextStep = steps.find((step) => step.status !== 'complete');
+
+  return {
+    active: completedCount < steps.length,
+    title: completedCount ? `首次启动引导 ${completedCount}/${steps.length}` : '首次启动引导',
+    detail: nextStep?.detail ?? '核心初始化已完成，可以开始稳定执行与复盘。',
+    completedCount,
+    totalCount: steps.length,
+    steps,
+    optionalAction: providerConfigured
+      ? undefined
+      : {
+        label: '配置 AI Provider',
+        detail: '可选：接入至少一个 Provider，启用真实画像提取、计划生成和运行时健康检查。',
+        pageId: 'settings',
+      },
+  };
+}
+
 function buildExecutionDerivedState(state: AppState) {
   const activeGoal = getActiveConversationGoal(state.goals, state.plan.activeGoalId);
   const activeDraft = getActiveConversationDraft(state.plan);
@@ -775,11 +1027,6 @@ function buildExecutionDerivedState(state: AppState) {
   const focusTask = summary.inProgressTask ?? summary.nextTodoTask;
   const completionRate = summary.total ? Math.round((summary.doneTasks.length / summary.total) * 100) : 0;
   const stageTitle = pickCurrentStage(activeDraft);
-  const nextActions = Array.from(new Set([
-    summary.delayedTasks[0] ? `优先重排：${summary.delayedTasks[0].title}` : null,
-    focusTask ? `${focusTask.status === 'in_progress' ? '继续推进' : '开始执行'}：${focusTask.title}` : '查看复盘并准备下一阶段任务',
-    summary.skippedTasks.length ? '在复盘中补充跳过原因，避免同类阻塞重复出现' : null,
-  ].filter(Boolean) as string[]));
   const manualReflectionEntries = resolveReflectionEntries(state.reflection);
   const now = new Date();
   const reflectionEntries = reflectionPeriods.map((period) => {
@@ -787,25 +1034,41 @@ function buildExecutionDerivedState(state: AppState) {
     return buildReflectionEntry(period, tasks, manualEntry, now);
   });
   const defaultReflectionEntry = reflectionEntries.find((entry) => entry.period === DEFAULT_REFLECTION_PERIOD) ?? reflectionEntries[0] ?? createEmptyReflectionEntry(DEFAULT_REFLECTION_PERIOD);
-  const priorityAction = buildPriorityAction(focusTask, stageTitle, summary, defaultReflectionEntry);
-  const riskSignals = buildDashboardRiskSignals(summary, reflectionEntries, priorityAction);
+  const onboarding = buildDashboardOnboarding(state, activeDraft, recentTaskExecutions);
+  const priorityAction = buildPriorityAction(focusTask, stageTitle, summary, defaultReflectionEntry, onboarding);
+  const riskSignals = buildDashboardRiskSignals(summary, reflectionEntries, priorityAction, onboarding);
   const alerts = riskSignals.map((signal) => `${signal.title}：${signal.detail}`);
-  const executionSummaryLine = `${activeGoal?.title ?? '当前目标'}已完成 ${summary.doneTasks.length}/${summary.total} 项；延后 ${summary.delayedTasks.length} 项，跳过 ${summary.skippedTasks.length} 项。`;
+  const nextActions = onboarding.active && !summary.total
+    ? [
+      ...onboarding.steps.filter((step) => step.status !== 'complete').slice(0, 3).map((step) => step.actionLabel),
+      onboarding.optionalAction?.label,
+    ].filter(Boolean) as string[]
+    : Array.from(new Set([
+      summary.delayedTasks[0] ? `优先重排：${summary.delayedTasks[0].title}` : null,
+      focusTask ? `${focusTask.status === 'in_progress' ? '继续推进' : '开始执行'}：${focusTask.title}` : '查看复盘并准备下一阶段任务',
+      summary.skippedTasks.length ? '在复盘中补充跳过原因，避免同类阻塞重复出现' : null,
+    ].filter(Boolean) as string[]));
+  const executionSummaryLine = onboarding.active && !summary.total
+    ? '当前还没有学习目标、计划任务和执行记录。先完成首次设置，再开始第一项任务。'
+    : `${activeGoal?.title ?? '当前目标'}已完成 ${summary.doneTasks.length}/${summary.total} 项；延后 ${summary.delayedTasks.length} 项，跳过 ${summary.skippedTasks.length} 项。`;
 
   return {
     dashboard: {
       ...state.dashboard,
       todayFocus: priorityAction.title,
-      stage: stageTitle,
+      stage: onboarding.active && !summary.total ? '首次启动引导' : stageTitle,
       duration: priorityAction.duration,
       weeklyCompletion: completionRate,
       alerts,
       quickActions: nextActions,
-      reflectionSummary: defaultReflectionEntry.insight
-        ? `${executionSummaryLine} ${defaultReflectionEntry.label}：${defaultReflectionEntry.insight}`
-        : executionSummaryLine,
+      reflectionSummary: onboarding.active && !summary.total
+        ? `${executionSummaryLine} ${onboarding.detail}`
+        : (defaultReflectionEntry.insight
+          ? `${executionSummaryLine} ${defaultReflectionEntry.label}：${defaultReflectionEntry.insight}`
+          : executionSummaryLine),
       priorityAction,
       riskSignals,
+      onboarding,
     },
     reflection: {
       ...state.reflection,
@@ -1834,6 +2097,14 @@ const baseSeedState: AppState = {
       duration: '45 分钟',
     },
     riskSignals: [],
+    onboarding: {
+      active: false,
+      title: '首次启动引导',
+      detail: '',
+      completedCount: 4,
+      totalCount: 4,
+      steps: [],
+    },
   },
   goals: [
     {
@@ -1963,23 +2234,7 @@ const baseSeedState: AppState = {
       }),
     ],
   },
-  settings: {
-    theme: '跟随系统',
-    startPage: '首页',
-    providers: [
-      { id: 'openai', label: 'OpenAI / GPT', enabled: true, endpoint: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', authMode: 'apiKey', capabilityTags: ['profile_extraction', 'plan_generation', 'chat_general'], healthStatus: 'ready', keyPreview: '未配置', hasSecret: false },
-      { id: 'glm', label: 'Zhipu / GLM', enabled: false, endpoint: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5', authMode: 'apiKey', capabilityTags: ['plan_adjustment', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
-      { id: 'kimi', label: 'Moonshot / Kimi', enabled: false, endpoint: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k', authMode: 'apiKey', capabilityTags: ['chat_general', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
-      { id: 'deepseek', label: 'DeepSeek', enabled: false, endpoint: 'https://api.deepseek.com', model: 'deepseek-chat', authMode: 'apiKey', capabilityTags: ['plan_generation', 'plan_adjustment'], healthStatus: 'warning', keyPreview: '未配置', hasSecret: false },
-    ],
-    routing: {
-      profileExtraction: 'openai',
-      planGeneration: 'deepseek',
-      planAdjustment: 'glm',
-      reflectionSummary: 'kimi',
-      generalChat: 'openai',
-    },
-  },
+  settings: createDefaultSettings(),
 };
 
 export const seedState: AppState = {

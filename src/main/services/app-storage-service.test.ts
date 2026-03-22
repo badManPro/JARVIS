@@ -70,18 +70,20 @@ function createRuntimeSummary(settings: AppState['settings']): AiRuntimeSummaryI
 
 function createHarness(options: {
   snapshotState?: AppState;
+  bootstrapSeedState?: boolean;
   aiExecute?: (settings: AppState['settings'], request: AiRequest) => Promise<AiResult>;
   aiCheckHealth?: (settings: AppState['settings'], providerId: AppState['settings']['providers'][number]['id']) => Promise<AiProviderHealthCheckResult>;
 } = {}) {
-  const { snapshotState, aiExecute, aiCheckHealth } = options;
+  const { snapshotState, bootstrapSeedState = true, aiExecute, aiCheckHealth } = options;
   const { db } = createDatabase(':memory:');
   const appStateRepository = new AppStateRepository(db);
   const entitiesRepository = new EntitiesRepository(db);
   const providerSecretRepository = new ProviderSecretRepository(db);
   const settingsRepository = new SettingsRepository(db);
 
-  if (snapshotState) {
-    appStateRepository.saveRaw(snapshotState);
+  const initialSnapshot = snapshotState ?? (bootstrapSeedState ? cloneState() : undefined);
+  if (initialSnapshot) {
+    appStateRepository.saveRaw(initialSnapshot);
   }
 
   const service = new AppStorageService(
@@ -171,8 +173,9 @@ function createPersistenceFailureHarness(options: {
     }),
   };
 
-  if (snapshotState) {
-    seedAppStateRepository.saveRaw(snapshotState);
+  const initialSnapshot = snapshotState ?? cloneState();
+  if (initialSnapshot) {
+    seedAppStateRepository.saveRaw(initialSnapshot);
   }
 
   const bootstrapService = new AppStorageService(
@@ -263,6 +266,26 @@ test('initialize rewrites legacy full snapshots into a reduced conversation snap
   assert.equal('settings' in payload, false);
   assert.equal('reflection' in payload, false);
   assert.equal('dashboard' in payload, false);
+});
+
+test('initialize uses a real empty first-run state when no persisted data exists', () => {
+  const { service, entitiesRepository } = createHarness({ bootstrapSeedState: false });
+
+  const initializedState = service.initialize();
+
+  assert.equal(initializedState.profile.identity, '');
+  assert.equal(initializedState.goals.length, 0);
+  assert.equal(initializedState.plan.activeGoalId, '');
+  assert.equal(initializedState.plan.drafts.length, 0);
+  assert.equal(initializedState.plan.snapshots.length, 0);
+  assert.equal(initializedState.conversation.messages.length, 0);
+  assert.equal(initializedState.conversation.relatedGoal, '暂未设置目标');
+  assert.equal(initializedState.conversation.relatedPlan, '暂无计划草案');
+  assert.equal((initializedState.dashboard as AppState['dashboard'] & { onboarding?: { active?: boolean } }).onboarding?.active, true);
+
+  const persistedProfile = entitiesRepository.loadUserProfile();
+  assert.ok(persistedProfile);
+  assert.equal(persistedProfile.identity, '');
 });
 
 test('saveAppState persists provider configs and routing into structured settings', () => {

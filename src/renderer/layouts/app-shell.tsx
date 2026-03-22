@@ -14,6 +14,7 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
     () => pages.find((page) => page.id === currentPage) ?? pages[0],
     [currentPage],
   );
+  const dashboard = useAppStore((state) => state.dashboard);
   const profile = useAppStore((state) => state.profile);
   const planState = useAppStore((state) => state.plan);
   const settings = useAppStore((state) => state.settings);
@@ -56,9 +57,14 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
         </nav>
 
         <div className="mt-auto rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-          <div className="font-medium text-white">当前计划草案</div>
-          <p className="mt-2">{activePlanDraft?.summary ?? '切换目标后会加载该目标对应的计划草案。'}</p>
-          <div className="mt-3 text-xs text-slate-400">当前用户：{profile.name} · 默认通用对话模型：{settings.routing.generalChat}</div>
+          <div className="font-medium text-white">{dashboard.onboarding.active ? '首次启动引导' : '当前计划草案'}</div>
+          <p className="mt-2">{dashboard.onboarding.active ? dashboard.onboarding.detail : (activePlanDraft?.summary ?? '切换目标后会加载该目标对应的计划草案。')}</p>
+          <div className="mt-3 text-xs text-slate-400">当前用户：{profile.name || '未命名'} · 默认通用对话模型：{settings.routing.generalChat}</div>
+          {dashboard.onboarding.active ? (
+            <div className="mt-2 text-xs text-slate-400">
+              下一步：{dashboard.onboarding.steps.find((step) => step.status !== 'complete')?.actionLabel ?? '回到首页查看引导'}
+            </div>
+          ) : null}
         </div>
       </aside>
 
@@ -99,7 +105,7 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
           ))}
         </section>
 
-        <PageContent page={activePage} />
+        <PageContent page={activePage} onPageChange={onPageChange} />
       </main>
     </div>
   );

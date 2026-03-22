@@ -11,8 +11,8 @@
 ## 2. 当前判断
 
 ### 当前总进度
-- **整体进度估算：99%**
-- **当前阶段：Phase 6 进行中，下一任务为 `Phase 6 / Task 4`（首次启动引导和空状态检查）**
+- **整体进度估算：100%**
+- **当前阶段：Phase 6 已完成，下一任务为 `Release Candidate`（最终回归与演示准备）**
 
 > 说明：这个百分比是基于“产品可用闭环”而不是“代码文件数量”估算的。文档、骨架和本地持久化已经完成一部分，但关键用户价值仍集中在后续阶段。
 
@@ -35,11 +35,13 @@
 - 复盘页已支持日 / 周 / 阶段复盘的结构化输入、周期切换和独立本地持久化，`profile_extraction` / `plan_adjustment` 也已开始显式消费这些输入。
 - 画像建议预览已能解析学习窗口、时间预算、节奏偏好、阻力因素和计划影响等可执行更新。
 - 首页首屏现已把执行状态与复盘输入压成结构化“今日优先动作 + 风险提醒”卡片，用户进入应用即可看到当前主动作、原因和建议处理动作。
+- 空数据库首次启动现已进入真实空状态，不再自动持久化示例画像、目标、计划和对话。
+- 首页、侧栏与对话页现已补齐首启引导和空状态入口，用户可从首页直接进入画像、目标、计划与设置页完成第一轮初始化。
 
 ### 当前最该做的事情
-- **Phase 6 / Task 4：首次启动引导和空状态检查。**
+- **Release Candidate：最终回归与演示准备。**
 
-这一步应该把当前已经能产出真实 macOS installer 的应用，推进到首次打开体验、空状态文案和演示路径的最终验收，为 Release Candidate 收口。
+这一步应该把已经完成实现和自动化验证的应用，推进到最终手工走查、演示路径确认和发布候选物收口。
 
 ## 3. 执行总策略
 1. 先把本地闭环做实，再接 AI。
@@ -86,7 +88,7 @@
 | Phase 3 | AI Service 与 Provider 运行时接入 | complete | 100% | 把 capability route 真的接到模型调用层 |
 | Phase 4 | 执行与复盘闭环 | complete | 100% | 让任务执行、复盘、计划调整形成闭环 |
 | Phase 5 | 数据层硬化与迁移 | complete | 100% | 降低快照兜底，补齐迁移和一致性保障 |
-| Phase 6 | 发布准备与质量收口 | in_progress | 75% | 完成验收、打包、发布前检查 |
+| Phase 6 | 发布准备与质量收口 | complete | 100% | 完成验收、打包、发布前检查 |
 
 ## 6. 分阶段实施方案
 
@@ -258,8 +260,8 @@
   - **Next Task: Phase 6 / Task 1 / 完成端到端验收、打包和发布前检查**
 
 ### Phase 6 · 发布准备与质量收口
-- **状态：** in_progress
-- **完成度：** 75%
+- **状态：** complete
+- **完成度：** 100%
 - **目标：**
   - 把项目从“开发态可跑”推进到“可交付演示/内测”状态。
 - **范围：**
@@ -281,7 +283,8 @@
   - Task 1 已完成：新增 `docs/RELEASE-READINESS.md`，补齐自动预检命令、手测路径、go/no-go 判断和当前打包缺口说明
   - Task 2 已完成：`AppStorageService` 新增两条关键链路集成测试，覆盖建议审核落库闭环和执行/复盘 feedback 回流闭环；期间修复了双引号建议里的新增任务标题解析
   - Task 3 已完成：已接入 `electron-builder` 与 `package` / `dist` 脚本，修正 Electron 生产入口路径，成功生成 macOS arm64 的 `.app` / `.zip` / `.dmg`，并完成 DMG 内容检查与 `codesign --verify` 基础校验
-  - 项目当前唯一下一任务：**Phase 6 / Task 4 / 首次启动引导和空状态检查**
+  - Task 4 已完成：新增真实 `createEmptyAppState()` 首启空状态工厂，`AppStorageService` 和 renderer store 不再把 `seedState` 作为空数据库默认数据；首页新增 onboarding checklist，侧栏和对话页补齐空状态入口，并通过新增自动化测试覆盖首启空状态与 onboarding 派生
+  - 项目当前唯一下一任务：**Release Candidate / 进行最终回归与演示准备**
 - **本阶段完成后指定的下一个任务：**
   - **Next Task: Release Candidate / 进行最终回归与演示准备**
 
@@ -293,9 +296,9 @@
 5. 最后用 Phase 5 和 Phase 6 做稳定性与交付收口。
 
 ## 8. 当前建议的最近三项任务
-1. **Phase 6 / Task 4**：首次启动引导和空状态检查
-2. **Release Candidate**：最终回归与演示准备
-3. **发布元数据与签名收口**：补 `author` / app icon / Developer ID & notarization 策略
+1. **Release Candidate**：最终回归与演示准备
+2. **发布元数据与签名收口**：补 `author` / app icon / Developer ID & notarization 策略
+3. **AI runtime tracing / metrics 收口**：继续增强排障体验与发布后观测性
 
 ## 9. 阶段完成更新模板
 每次阶段收尾时，必须按以下格式更新进度文档或路线图状态：

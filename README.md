@@ -156,12 +156,14 @@ npm run dist
 - `docs/RELEASE-READINESS.md` 已补齐 Phase 6 的自动预检矩阵、手测路径、打包/安装检查结果与剩余发布限制说明
 - 已接入 `electron-builder`，当前可生成 macOS arm64 的 unpacked app、ZIP 和 DMG，并完成 DMG 内容与基础签名校验
 - 关键链路集成测试现已覆盖“对话建议审核后写回 profile / goal / plan”与“执行/复盘反馈进入 plan adjustment request”两条闭环，并修复了双引号建议里的新增任务标题解析
+- 空数据库首次启动现已进入真实空状态，不再自动写入示例画像、目标、计划和对话
+- 首页、侧栏和对话页现已补齐首启 onboarding 与空状态入口，用户可直接跳到画像 / 目标 / 计划 / 设置页完成第一次初始化
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. `Phase 6 / Task 4`：首次启动引导和空状态检查
-2. `Release Candidate`：最终回归与演示准备
+1. `Release Candidate`：最终回归与演示准备
+2. 发布元数据与签名收口
 3. 继续细化 AI runtime 的 tracing / metrics 与排障体验
 
 ## 当前推荐下一任务
-- `Phase 6 / Task 4`：首次启动引导和空状态检查
+- `Release Candidate`：最终回归与演示准备

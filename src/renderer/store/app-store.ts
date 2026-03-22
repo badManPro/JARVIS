@@ -14,9 +14,9 @@ import type {
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
 import {
   applyAcceptedConversationActionPreviews,
+  createEmptyAppState,
   resolveConversationState,
   saveReflectionEntry as applyReflectionEntrySave,
-  seedState,
   updateConversationActionPreviewReview,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
 } from '@shared/app-state';
@@ -120,7 +120,7 @@ function extractAppState(state: AppStore): AppState {
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
-  ...seedState,
+  ...createEmptyAppState(),
   aiRuntimeSummary: [],
   aiObservability: createEmptyAiObservability(),
   hydrated: false,

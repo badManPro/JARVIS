@@ -80,19 +80,25 @@ function getActivePlanDraft(drafts: LearningPlanDraft[], activeGoalId: string) {
   return drafts.find((draft) => draft.goalId === activeGoalId) ?? drafts[0] ?? null;
 }
 
-export function PageContent({ page }: { page: PageDefinition }) {
+export function PageContent({
+  page,
+  onPageChange,
+}: {
+  page: PageDefinition;
+  onPageChange: (pageId: string) => void;
+}) {
   const state = useAppStore();
 
   switch (page.id) {
     case 'home':
-      return <HomeContent dashboard={state.dashboard} />;
+      return <HomeContent dashboard={state.dashboard} onPageChange={onPageChange} />;
     case 'plans': {
       return <PlansContent />;
     }
     case 'goals':
       return <GoalsContent />;
     case 'conversation':
-      return <ConversationContent />;
+      return <ConversationContent onPageChange={onPageChange} />;
     case 'profile':
       return <ProfileContent />;
     case 'reflection':
@@ -104,109 +110,177 @@ export function PageContent({ page }: { page: PageDefinition }) {
   }
 }
 
-function HomeContent({ dashboard }: { dashboard: AppState['dashboard'] }) {
+function HomeContent({
+  dashboard,
+  onPageChange,
+}: {
+  dashboard: AppState['dashboard'];
+  onPageChange: (pageId: string) => void;
+}) {
   const primaryRisk = dashboard.riskSignals[0] ?? null;
   const secondaryRisks = dashboard.riskSignals.slice(1);
+  const pendingOnboardingSteps = dashboard.onboarding.steps.filter((step) => step.status !== 'complete');
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[1.45fr,0.95fr]">
-      <Card className="overflow-hidden border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.38),_transparent_46%),linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge className="bg-slate-900 text-white">{priorityActionLabel(dashboard.priorityAction)}</Badge>
-          <Badge className="bg-white text-slate-700">{dashboard.stage}</Badge>
-          <Badge className="bg-white text-slate-700">{dashboard.priorityAction.duration}</Badge>
-          <Badge className="bg-emerald-50 text-emerald-700">本周完成率 {dashboard.weeklyCompletion}%</Badge>
-        </div>
-        <div className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-start">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
-            <Target className="h-6 w-6" />
-          </div>
-          <div className="flex-1">
-            <SectionTitle className="text-2xl leading-tight text-slate-950">{dashboard.priorityAction.title}</SectionTitle>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700">{dashboard.priorityAction.detail}</p>
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white/85 p-4">
-              <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">为什么现在做</div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{dashboard.priorityAction.reason}</p>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600">
-              <Badge className="bg-slate-100 text-slate-700">连续学习 {dashboard.streakDays} 天</Badge>
-              <Badge className="bg-slate-100 text-slate-700">已识别风险 {dashboard.riskSignals.length} 条</Badge>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <Card className={primaryRisk ? riskPanelClassName(primaryRisk.level) : 'border-slate-200 bg-white'}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <SectionTitle className="flex items-center gap-2">
-              <CircleAlert className="h-5 w-5" />
-              当前风险提醒
-            </SectionTitle>
-            <Muted className="mt-2">先处理最可能拖慢今日节奏的问题。</Muted>
-          </div>
-          <Badge className={primaryRisk ? riskBadgeClassName(primaryRisk.level) : 'bg-slate-100 text-slate-700'}>
-            {primaryRisk ? riskLevelLabel(primaryRisk.level) : '稳定'}
-          </Badge>
-        </div>
-        {primaryRisk ? (
-          <div className="mt-5 space-y-4">
+    <div className="space-y-4">
+      {dashboard.onboarding.active ? (
+        <Card className="border-sky-200 bg-[radial-gradient(circle_at_top_right,_rgba(125,211,252,0.22),_transparent_35%),linear-gradient(180deg,_#f8fdff_0%,_#eff6ff_100%)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-lg font-semibold text-slate-950">{primaryRisk.title}</div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{primaryRisk.detail}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-slate-900 text-white">{dashboard.onboarding.title}</Badge>
+                <Badge className="bg-white text-slate-700">已完成 {dashboard.onboarding.completedCount}/{dashboard.onboarding.totalCount}</Badge>
+                {dashboard.onboarding.optionalAction ? <Badge className="bg-sky-50 text-sky-700">AI 配置可选</Badge> : null}
+              </div>
+              <SectionTitle className="mt-4 text-2xl leading-tight text-slate-950">先把第一轮学习上下文搭好</SectionTitle>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">{dashboard.onboarding.detail}</p>
             </div>
-            <div className="rounded-2xl border border-white/70 bg-white/85 p-4">
-              <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">建议处理动作</div>
-              <p className="mt-2 text-sm leading-6 text-slate-800">{primaryRisk.action}</p>
+            {pendingOnboardingSteps[0] ? (
+              <button
+                type="button"
+                className={primaryButtonClassName}
+                onClick={() => onPageChange(pendingOnboardingSteps[0].pageId)}
+              >
+                去{pendingOnboardingSteps[0].actionLabel}
+              </button>
+            ) : null}
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {dashboard.onboarding.steps.map((step) => (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => onPageChange(step.pageId)}
+                className="rounded-2xl border border-white/70 bg-white/85 px-4 py-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium text-slate-900">{step.title}</div>
+                  <Badge className={onboardingStatusBadgeClassName(step.status)}>{onboardingStatusLabel(step.status)}</Badge>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{step.detail}</p>
+                <div className="mt-3 text-xs font-medium text-slate-500">下一步：{step.actionLabel}</div>
+              </button>
+            ))}
+          </div>
+
+          {dashboard.onboarding.optionalAction ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-white/90 px-4 py-4">
+              <div>
+                <div className="text-sm font-medium text-slate-900">{dashboard.onboarding.optionalAction.label}</div>
+                <div className="mt-1 text-sm text-slate-600">{dashboard.onboarding.optionalAction.detail}</div>
+              </div>
+              <button
+                type="button"
+                className={secondaryButtonClassName}
+                onClick={() => onPageChange(dashboard.onboarding.optionalAction?.pageId ?? 'settings')}
+              >
+                去设置页
+              </button>
             </div>
-            {secondaryRisks.length ? (
-              <div className="space-y-2">
-                {secondaryRisks.map((risk) => (
-                  <div key={risk.id} className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-slate-900">{risk.title}</div>
-                      <Badge className={riskBadgeClassName(risk.level)}>{riskLevelLabel(risk.level)}</Badge>
+          ) : null}
+        </Card>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-[1.45fr,0.95fr]">
+        <Card className="overflow-hidden border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.38),_transparent_46%),linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="bg-slate-900 text-white">{priorityActionLabel(dashboard.priorityAction)}</Badge>
+            <Badge className="bg-white text-slate-700">{dashboard.stage}</Badge>
+            <Badge className="bg-white text-slate-700">{dashboard.priorityAction.duration}</Badge>
+            <Badge className="bg-emerald-50 text-emerald-700">本周完成率 {dashboard.weeklyCompletion}%</Badge>
+          </div>
+          <div className="mt-5 flex flex-col gap-5 lg:flex-row lg:items-start">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+              <Target className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <SectionTitle className="text-2xl leading-tight text-slate-950">{dashboard.priorityAction.title}</SectionTitle>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700">{dashboard.priorityAction.detail}</p>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white/85 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">为什么现在做</div>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{dashboard.priorityAction.reason}</p>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-600">
+                <Badge className="bg-slate-100 text-slate-700">连续学习 {dashboard.streakDays} 天</Badge>
+                <Badge className="bg-slate-100 text-slate-700">已识别风险 {dashboard.riskSignals.length} 条</Badge>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className={primaryRisk ? riskPanelClassName(primaryRisk.level) : 'border-slate-200 bg-white'}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <SectionTitle className="flex items-center gap-2">
+                <CircleAlert className="h-5 w-5" />
+                当前风险提醒
+              </SectionTitle>
+              <Muted className="mt-2">先处理最可能拖慢今日节奏的问题。</Muted>
+            </div>
+            <Badge className={primaryRisk ? riskBadgeClassName(primaryRisk.level) : 'bg-slate-100 text-slate-700'}>
+              {primaryRisk ? riskLevelLabel(primaryRisk.level) : '稳定'}
+            </Badge>
+          </div>
+          {primaryRisk ? (
+            <div className="mt-5 space-y-4">
+              <div>
+                <div className="text-lg font-semibold text-slate-950">{primaryRisk.title}</div>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{primaryRisk.detail}</p>
+              </div>
+              <div className="rounded-2xl border border-white/70 bg-white/85 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">建议处理动作</div>
+                <p className="mt-2 text-sm leading-6 text-slate-800">{primaryRisk.action}</p>
+              </div>
+              {secondaryRisks.length ? (
+                <div className="space-y-2">
+                  {secondaryRisks.map((risk) => (
+                    <div key={risk.id} className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium text-slate-900">{risk.title}</div>
+                        <Badge className={riskBadgeClassName(risk.level)}>{riskLevelLabel(risk.level)}</Badge>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">{risk.action}</p>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-700">{risk.action}</p>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+              当前没有明显风险，继续保持单任务推进即可。
+            </div>
+          )}
+        </Card>
+
+        <Card className="xl:col-span-2">
+          <div className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
+            <div>
+              <SectionTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-slate-700" />
+                近期复盘摘要
+              </SectionTitle>
+              <p className="mt-4 text-sm leading-7 text-slate-700">{dashboard.reflectionSummary}</p>
+            </div>
+            <div>
+              <SectionTitle className="flex items-center gap-2">
+                <Flag className="h-5 w-5 text-slate-700" />
+                补充动作
+              </SectionTitle>
+              <div className="mt-4 grid gap-3">
+                {dashboard.quickActions.map((action) => (
+                  <div key={action} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm">
+                      <Check className="h-4 w-4" />
+                    </div>
+                    <div className="text-sm leading-6 text-slate-700">{action}</div>
                   </div>
                 ))}
               </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-            当前没有明显风险，继续保持单任务推进即可。
-          </div>
-        )}
-      </Card>
-
-      <Card className="xl:col-span-2">
-        <div className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
-          <div>
-            <SectionTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-slate-700" />
-              近期复盘摘要
-            </SectionTitle>
-            <p className="mt-4 text-sm leading-7 text-slate-700">{dashboard.reflectionSummary}</p>
-          </div>
-          <div>
-            <SectionTitle className="flex items-center gap-2">
-              <Flag className="h-5 w-5 text-slate-700" />
-              补充动作
-            </SectionTitle>
-            <div className="mt-4 grid gap-3">
-              {dashboard.quickActions.map((action) => (
-                <div key={action} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm">
-                    <Check className="h-4 w-4" />
-                  </div>
-                  <div className="text-sm leading-6 text-slate-700">{action}</div>
-                </div>
-              ))}
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -486,7 +560,7 @@ function ReflectionContent() {
   );
 }
 
-function ConversationContent() {
+function ConversationContent({ onPageChange }: { onPageChange: (pageId: string) => void }) {
   const state = useAppStore();
   const runProfileExtraction = useAppStore((store) => store.runProfileExtraction);
   const reviewConversationActionPreview = useAppStore((store) => store.reviewConversationActionPreview);
@@ -597,12 +671,21 @@ function ConversationContent() {
         <SectionTitle>{conversation.title}</SectionTitle>
         <Muted className="mt-2">目标：{conversation.relatedGoal} · 计划：{conversation.relatedPlan}</Muted>
         <div className="mt-4 space-y-3">
-          {conversation.messages.map((message) => (
+          {conversation.messages.length ? conversation.messages.map((message) => (
             <div key={message.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
               <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">{message.role}</div>
               {message.content}
             </div>
-          ))}
+          )) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-4">
+              <div className="text-sm font-medium text-slate-900">当前还没有对话上下文</div>
+              <div className="mt-2 text-sm leading-6 text-slate-700">先完成画像和目标的基础设置，再回来触发建议提取或计划调整，这里才会出现真实对话与预览。</div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" className={secondaryButtonClassName} onClick={() => onPageChange('profile')}>去补画像</button>
+                <button type="button" className={secondaryButtonClassName} onClick={() => onPageChange('goals')}>去建目标</button>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -836,6 +919,32 @@ function priorityActionLabel(action: DashboardPriorityAction) {
       return '复盘优先';
     default:
       return '今日安排';
+  }
+}
+
+function onboardingStatusLabel(status: string) {
+  switch (status) {
+    case 'complete':
+      return '已完成';
+    case 'current':
+      return '现在做';
+    case 'pending':
+      return '待完成';
+    default:
+      return status;
+  }
+}
+
+function onboardingStatusBadgeClassName(status: string) {
+  switch (status) {
+    case 'complete':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'current':
+      return 'bg-slate-900 text-white';
+    case 'pending':
+      return 'bg-slate-100 text-slate-700';
+    default:
+      return 'bg-slate-100 text-slate-700';
   }
 }
 

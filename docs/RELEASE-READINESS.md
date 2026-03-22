@@ -2,21 +2,40 @@
 
 ## 当前判断
 - 日期：2026-03-22
-- 当前阶段：`Phase 6 / Task 3` 已完成
-- 当前状态：项目已经具备一套可重复执行的自动预检命令、关键业务闭环的集成级自动验证，以及可生成 macOS arm64 `.app` / `.zip` / `.dmg` 的 packaging pipeline；DMG 内容和 app 签名结构也已完成基础检查
-- 尚未完成：首次启动引导和空状态验收、正式发布元数据（`author` / app icon）、Developer ID 签名与 notarization 仍未完成，因此暂不能把当前状态视为“正式可分发发布版”
+- 当前阶段：`Phase 6 / Task 4` 已完成
+- 当前状态：项目已经具备一套可重复执行的自动预检命令、关键业务闭环的集成级自动验证、可生成 macOS arm64 `.app` / `.zip` / `.dmg` 的 packaging pipeline，以及真实首启空状态与首页 onboarding 引导；DMG 内容和 app 签名结构也已完成基础检查
+- 尚未完成：正式发布元数据（`author` / app icon / DMG branding）、Developer ID 签名与 notarization，以及 Release Candidate 级人工回归仍未完成，因此暂不能把当前状态视为“正式可分发发布版”
 
 ## 最新预检结果
 - `npm run lint`：PASS
 - `npm run build`：PASS
-- `node --test dist-electron/src/**/*.test.js`：PASS（40/40）
+- `node --test dist-electron/src/**/*.test.js`：PASS（42/42）
 - 关键链路集成验证：PASS（建议审核落库闭环、执行/复盘反馈回流闭环）
+- 首次启动与空状态自动验证：PASS（空数据库首启返回真实空状态，dashboard 派生 onboarding checklist）
 - `npm run package`：PASS（生成 `release/mac-arm64/Learning Companion.app`）
 - `npm run dist`：PASS（生成 `release/Learning Companion-0.1.0-arm64.dmg` 与 `release/Learning Companion-0.1.0-arm64-mac.zip`，并在结束后自动恢复 `better-sqlite3` 的 Node ABI）
 - DMG 挂载内容检查：PASS（包含 `Learning Companion.app` 与 `/Applications` 快捷方式）
 - `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Learning Companion.app"`：PASS
 - `spctl -a -vv -t open "release/mac-arm64/Learning Companion.app"`：返回 `internal error in Code Signing subsystem`，当前只可视为 ad-hoc 签名环境下的观察结果，不能替代正式 Gatekeeper 验收
-- 人工手测：清单已补齐，本次会话未实际逐项执行 `M1` 到 `M8`
+- 人工手测：清单已补齐，本次会话未实际逐项执行 `M1` 到 `M8`；首启 GUI 走查仍建议在 `Release Candidate` 阶段完成
+
+## 首次启动与空状态检查
+
+### F1. 空数据库首启
+结论：
+- 空数据库首次启动不再持久化 `seedState`
+- `AppStorageService` 现在会把首启状态初始化为真实空画像、空目标、空计划和空对话
+- renderer store 也已切到同一空状态工厂，避免 hydration 前闪出示例数据
+
+验证：
+- `src/main/services/app-storage-service.test.ts` 覆盖空数据库首启返回真实空状态
+- `src/shared/app-state.test.ts` 覆盖 dashboard onboarding checklist 派生
+
+### F2. 首屏引导与空状态入口
+结论：
+- 首页新增 onboarding checklist，指导用户先补画像、建目标、查看首版计划并记录首次执行
+- 侧栏底部在首启时不再假设存在“当前计划草案”，而是显示首启引导文案
+- 对话页在无消息时会显示空状态说明，并指向画像 / 目标页
 
 ## 自动预检矩阵
 
@@ -190,14 +209,14 @@
 ### 当前明确不能宣称的事情
 - 不能宣称“已完成正式 macOS 签名 / notarization”
 - 不能宣称“已通过无系统警告的 Gatekeeper 安装验收”
-- 不能宣称“首次启动引导和空状态已验收”
+- 不能宣称“已完成 Release Candidate 级最终人工回归”
 
 ## 剩余发布缺口
 - `package.json` 仍缺少 `author`
 - 仓库还没有正式发布用的 app icon / DMG branding 资源
 - 还没有 Developer ID 签名、notarization 和 Gatekeeper 放行记录
-- 首次启动引导、空状态和安装后数据目录行为仍未做任务级验收
+- 仍未完成 Release Candidate 级人工首启走查、安装后数据目录行为核验与演示路径确认
 
 这些缺口留给后续任务处理：
-1. `Phase 6 / Task 4`：首次启动引导和空状态检查
-2. `Release Candidate`：最终回归与演示准备
+1. `Release Candidate`：最终回归与演示准备
+2. 发布元数据与签名收口：补 `author` / app icon / Developer ID / notarization
