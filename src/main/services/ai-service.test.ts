@@ -200,3 +200,62 @@ test('AiService checkProviderHealth delegates to adapter and returns a ready res
   assert.equal(result.healthStatus, 'ready');
   assert.equal(result.message, '模型列表接口可访问。');
 });
+
+test('AiService allows a codex provider without a stored secret', async () => {
+  const settings = cloneSettings({
+    providers: seedState.settings.providers.map((provider) => (
+      provider.id === 'codex'
+        ? {
+          ...provider,
+          enabled: true,
+          endpoint: '',
+          model: 'gpt-5',
+          authMode: 'none',
+          capabilityTags: ['chat_general'],
+          healthStatus: 'unknown',
+          keyPreview: '由本机 Codex 登录提供',
+          hasSecret: false,
+        }
+        : { ...provider, enabled: false }
+    )),
+    routing: {
+      ...seedState.settings.routing,
+      generalChat: 'codex' as AppState['settings']['routing']['generalChat'],
+    },
+  });
+
+  const executed: string[] = [];
+  const adapter: AiProviderAdapter = {
+    name: 'codex-adapter',
+    supports: (provider) => provider.id === 'codex',
+    checkHealth: async () => ({
+      ok: true,
+      message: 'Codex 登录可用。',
+    }),
+    execute: async ({ provider }) => {
+      executed.push(provider.id);
+      return {
+        capability: 'chat_general',
+        providerId: provider.id,
+        providerLabel: provider.label,
+        model: provider.model,
+        text: 'Codex 输出',
+      } satisfies AiResult;
+    },
+  };
+
+  const service = new AiService({
+    getSecret: () => null,
+    adapters: [adapter],
+  });
+
+  const result = await service.execute(settings, {
+    capability: 'chat_general',
+    messages: seedState.conversation.messages,
+  });
+
+  assert.deepEqual(executed, ['codex']);
+  assert.equal(result.capability, 'chat_general');
+  assert.equal(result.providerId, 'codex');
+  assert.equal(result.text, 'Codex 输出');
+});

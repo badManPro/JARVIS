@@ -12,11 +12,20 @@ export function maskSecret(secret: string | null | undefined) {
   return `${trimmed.slice(0, 3)}****${trimmed.slice(-4)}`;
 }
 
+function describeNoSecretPreview(config: ProviderConfigInput) {
+  if (config.id === 'codex') {
+    return '复用本机 Codex 登录';
+  }
+
+  return '无需 Secret';
+}
+
 export function toSafeProviderConfig(config: ProviderConfigInput, secret: string | null, updatedAt?: string): ProviderConfig {
+  const usesStaticSecret = config.authMode !== 'none';
   return {
     ...config,
-    keyPreview: maskSecret(secret),
-    hasSecret: Boolean(secret && secret.trim()),
+    keyPreview: usesStaticSecret ? maskSecret(secret) : describeNoSecretPreview(config),
+    hasSecret: usesStaticSecret ? Boolean(secret && secret.trim()) : false,
     updatedAt,
   };
 }

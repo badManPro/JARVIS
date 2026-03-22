@@ -35,6 +35,7 @@ import type { ProviderConfigInput } from '@shared/provider-config';
 
 const providerOptions: Array<{ value: ProviderId; label: string }> = [
   { value: 'openai', label: 'OpenAI / GPT' },
+  { value: 'codex', label: 'OpenAI / Codex' },
   { value: 'glm', label: 'Zhipu / GLM' },
   { value: 'kimi', label: 'Moonshot / Kimi' },
   { value: 'deepseek', label: 'DeepSeek' },
@@ -2399,7 +2400,7 @@ function SettingsContent() {
   const aiObservability = useAppStore((store) => store.aiObservability);
   const refreshAiRuntimeSummary = useAppStore((store) => store.refreshAiRuntimeSummary);
   const refreshAiObservability = useAppStore((store) => store.refreshAiObservability);
-  const providerConfiguredCount = state.settings.providers.filter((provider) => provider.hasSecret).length;
+  const providerConfiguredCount = state.settings.providers.filter((provider) => provider.hasSecret || provider.authMode === 'none').length;
   const [settingsDraft, setSettingsDraft] = useState(state.settings);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
@@ -2669,6 +2670,8 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
   }, [provider]);
 
   const capabilitySet = useMemo(() => new Set(draft.capabilityTags), [draft.capabilityTags]);
+  const usesLocalCodexLogin = draft.id === 'codex';
+  const usesStaticSecret = draft.authMode !== 'none' && !usesLocalCodexLogin;
 
   const toggleCapability = (capability: ModelCapability) => {
     setDraft((current) => ({
@@ -2684,8 +2687,11 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
     setNotice(null);
     setNoticeTone('info');
     try {
-      await upsertProviderConfig({ config: draft, secret: secretDraft.trim() ? secretDraft : undefined });
-      setNotice(secretDraft.trim() ? '配置与 secret 已保存，可继续执行一次健康检查确认连通性。' : '配置已保存。');
+      const normalizedDraft = usesLocalCodexLogin
+        ? { ...draft, endpoint: '', authMode: 'none' as const }
+        : draft;
+      await upsertProviderConfig({ config: normalizedDraft, secret: usesStaticSecret && secretDraft.trim() ? secretDraft : undefined });
+      setNotice(usesStaticSecret && secretDraft.trim() ? '配置与 secret 已保存，可继续执行一次健康检查确认连通性。' : '配置已保存。');
       setSecretDraft('');
     } catch (error) {
       setNoticeTone('warning');
@@ -2738,11 +2744,11 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
 
       <div className="mt-4 grid gap-3">
         <Field label="展示名称"><input className={inputClassName} value={draft.label} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} /></Field>
-        <Field label="Endpoint"><input className={inputClassName} value={draft.endpoint} onChange={(event) => setDraft((current) => ({ ...current, endpoint: event.target.value }))} /></Field>
+        <Field label="Endpoint"><input className={inputClassName} value={draft.endpoint} placeholder={usesLocalCodexLogin ? 'Codex 登录型 Provider 不需要手动填写 Endpoint' : undefined} onChange={(event) => setDraft((current) => ({ ...current, endpoint: event.target.value }))} disabled={usesLocalCodexLogin} /></Field>
         <Field label="模型名"><input className={inputClassName} value={draft.model} onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))} /></Field>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="认证方式">
-            <select className={inputClassName} value={draft.authMode} onChange={(event) => setDraft((current) => ({ ...current, authMode: event.target.value as ProviderConfigInput['authMode'] }))}>
+            <select className={inputClassName} value={usesLocalCodexLogin ? 'none' : draft.authMode} onChange={(event) => setDraft((current) => ({ ...current, authMode: event.target.value as ProviderConfigInput['authMode'] }))} disabled={usesLocalCodexLogin}>
               <option value="apiKey">API Key</option>
               <option value="bearer">Bearer</option>
               <option value="none">None</option>
@@ -2770,11 +2776,17 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
             ))}
           </div>
         </Field>
-        <Field label="Secret（仅在填写时更新）">
-          <input className={inputClassName} type="password" placeholder={provider.hasSecret ? '已有已保存 secret，如需更新请重新输入' : '输入 API Key / Token'} value={secretDraft} onChange={(event) => setSecretDraft(event.target.value)} />
-        </Field>
+        {usesStaticSecret ? (
+          <Field label="Secret（仅在填写时更新）">
+            <input className={inputClassName} type="password" placeholder={provider.hasSecret ? '已有已保存 secret，如需更新请重新输入' : '输入 API Key / Token'} value={secretDraft} onChange={(event) => setSecretDraft(event.target.value)} />
+          </Field>
+        ) : (
+          <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">
+            {usesLocalCodexLogin ? '当前 Provider 会复用本机 `codex login` 登录态，不在应用内保存 API Key。若健康检查失败，请先确认本机 Codex 已登录且网络可访问。' : '当前 Provider 不需要手动填写 Secret。'}
+          </div>
+        )}
         <div className="text-xs text-slate-500">
-          <div>安全状态：{provider.hasSecret ? '已安全保存' : '未配置'}</div>
+          <div>安全状态：{usesStaticSecret ? (provider.hasSecret ? '已安全保存' : '未配置') : (usesLocalCodexLogin ? '复用本机 Codex 登录' : '无需 Secret')}</div>
           <div>连通性状态：{providerHealthStatusLabel(provider.healthStatus)}</div>
           <div>最近更新时间：{provider.updatedAt ?? '暂无'}</div>
         </div>
@@ -2787,7 +2799,7 @@ function ProviderEditor({ provider }: { provider: ProviderConfig }) {
             setNoticeTone('info');
             setNotice('已恢复为最近一次持久化的值。');
           }} disabled={saving}>恢复</button>
-          <button className={secondaryButtonClassName} type="button" onClick={() => void onClearSecret()} disabled={saving || checkingHealth}>清空 Secret</button>
+          {usesStaticSecret ? <button className={secondaryButtonClassName} type="button" onClick={() => void onClearSecret()} disabled={saving || checkingHealth}>清空 Secret</button> : null}
           <button className={secondaryButtonClassName} type="button" onClick={() => void onCheckHealth()} disabled={saving || checkingHealth}>
             {checkingHealth ? '检查中…' : '检查连通性'}
           </button>

@@ -16,7 +16,7 @@ function toModelsUrl(endpoint: string) {
   return new URL('models', base).toString();
 }
 
-function extractJsonPayload(text: string) {
+export function extractJsonPayload(text: string) {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
   const candidate = fenced ?? trimmed;
@@ -109,7 +109,7 @@ function formatReflectionContext(
   ].filter(Boolean) as string[];
 }
 
-function buildPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'plan_generation' }>) {
+export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'plan_generation' }>) {
   return [
     '你是一个学习规划助手。请只输出 JSON，不要输出 Markdown。',
     '输出格式：{"title":"", "summary":"", "basis":[""], "stages":[{"title":"","outcome":"","progress":"未开始"}], "tasks":[{"title":"","duration":"","note":"","status":"todo"}]}',
@@ -128,7 +128,7 @@ function buildPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'pl
   ].join('\n');
 }
 
-function buildProfileExtractionPrompt(request: Extract<AiRequest, { capability: 'profile_extraction' }>) {
+export function buildProfileExtractionPrompt(request: Extract<AiRequest, { capability: 'profile_extraction' }>) {
   return [
     '你是一个结构化建议生成器。请只输出 JSON，不要输出 Markdown。',
     '输出格式：{"suggestions":["采纳：...","采纳：..."]}',
@@ -150,7 +150,7 @@ function buildProfileExtractionPrompt(request: Extract<AiRequest, { capability: 
   ].join('\n');
 }
 
-function buildTextPrompt(request: Exclude<AiRequest, { capability: 'plan_generation' | 'profile_extraction' }>) {
+export function buildTextPrompt(request: Exclude<AiRequest, { capability: 'plan_generation' | 'profile_extraction' }>) {
   switch (request.capability) {
     case 'plan_adjustment':
       return [

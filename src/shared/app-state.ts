@@ -1,4 +1,4 @@
-export type ProviderId = 'openai' | 'glm' | 'kimi' | 'deepseek' | 'custom';
+export type ProviderId = 'openai' | 'codex' | 'glm' | 'kimi' | 'deepseek' | 'custom';
 export type GoalStatus = 'active' | 'paused' | 'completed';
 export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'delayed' | 'skipped';
 export type HealthStatus = 'unknown' | 'ready' | 'warning';
@@ -320,6 +320,7 @@ const reflectionPeriodLabels = {
 
 const defaultProviderConfigs: ProviderConfig[] = [
   { id: 'openai', label: 'OpenAI / GPT', enabled: true, endpoint: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', authMode: 'apiKey', capabilityTags: ['profile_extraction', 'plan_generation', 'chat_general'], healthStatus: 'ready', keyPreview: '未配置', hasSecret: false },
+  { id: 'codex', label: 'OpenAI / Codex', enabled: false, endpoint: '', model: 'gpt-5.2-codex', authMode: 'none', capabilityTags: ['profile_extraction', 'plan_generation', 'plan_adjustment', 'reflection_summary', 'chat_general'], healthStatus: 'unknown', keyPreview: '无需 Secret', hasSecret: false },
   { id: 'glm', label: 'Zhipu / GLM', enabled: false, endpoint: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5', authMode: 'apiKey', capabilityTags: ['plan_adjustment', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
   { id: 'kimi', label: 'Moonshot / Kimi', enabled: false, endpoint: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k', authMode: 'apiKey', capabilityTags: ['chat_general', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
   { id: 'deepseek', label: 'DeepSeek', enabled: false, endpoint: 'https://api.deepseek.com', model: 'deepseek-chat', authMode: 'apiKey', capabilityTags: ['plan_generation', 'plan_adjustment'], healthStatus: 'warning', keyPreview: '未配置', hasSecret: false },

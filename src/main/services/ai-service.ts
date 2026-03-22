@@ -1,5 +1,6 @@
 import type { AppState, ModelCapability, ProviderConfig, ProviderId } from '../../shared/app-state.js';
 import type { AiProviderAdapter, AiProviderHealthCheckResult, AiProviderRuntimeConfig, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import { CodexCliProviderAdapter } from './codex-cli-provider-adapter.js';
 import { OpenAiCompatibleProviderAdapter } from './openai-compatible-provider-adapter.js';
 
 const capabilityRouteKeyMap = {
@@ -37,7 +38,7 @@ export class AiService implements AiRuntimeService {
   constructor(
     private readonly options: AiServiceOptions,
   ) {
-    this.adapters = options.adapters ?? [new OpenAiCompatibleProviderAdapter()];
+    this.adapters = options.adapters ?? [new CodexCliProviderAdapter(), new OpenAiCompatibleProviderAdapter()];
   }
 
   getRuntimeSummary(settings: AppState['settings']) {
