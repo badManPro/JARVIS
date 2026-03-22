@@ -9,7 +9,9 @@
 ## 最新预检结果
 - `npm run lint`：PASS
 - `npm run build`：PASS
-- `node --test dist-electron/src/**/*.test.js`：PASS（42/42）
+- `node --test dist-electron/src/**/*.test.js`：PASS（44/44）
+- `npm run rebuild:native:electron`：PASS（成功将 `better-sqlite3` 切到 Electron ABI）
+- `npm run rebuild:native:node`：PASS（当前受限网络下 `npm rebuild` 下载 Node headers 失败时，wrapper 会回退到隐藏备份并恢复 Node ABI）
 - 关键链路集成验证：PASS（建议审核落库闭环、执行/复盘反馈回流闭环）
 - 首次启动与空状态自动验证：PASS（空数据库首启返回真实空状态，dashboard 派生 onboarding checklist）
 - `npm run package`：PASS（生成 `release/mac-arm64/Learning Companion.app`）
@@ -44,6 +46,7 @@
 | 类型检查 | `npm run lint` | 验证 TypeScript 主进程 / 渲染进程在当前代码树下无静态错误 | 命令退出码为 0 |
 | 生产构建 | `npm run build` | 同时构建 renderer 与 Electron main/preload 输出 | 命令退出码为 0，生成最新 `dist/` 与 `dist-electron/` |
 | 编译后全量测试 | `node --test dist-electron/src/**/*.test.js` | 对编译产物执行当前 Node 测试集，避免只验证源码层 | 所有测试通过 |
+| Native ABI 往返检查 | `npm run rebuild:native:electron` + `npm run rebuild:native:node` | 验证开发态启动前会切到 Electron ABI，结束后仍能恢复到 Node ABI | 两条命令都成功；受限网络下允许由隐藏备份完成恢复 |
 | Unpacked app smoke check | `npm run package` | 生成可直接检查目录结构的 macOS app 产物 | 命令退出码为 0，生成 `release/mac-arm64/Learning Companion.app` |
 | Installer build | `npm run dist` | 生成用于安装分发的 ZIP / DMG 产物 | 命令退出码为 0，生成 `release/*.zip` 与 `release/*.dmg` |
 
@@ -83,6 +86,7 @@
 前置条件：
 - 已执行 `npm install`
 - 本地可运行 `npm run dev`
+- 若刚执行过 `npm run dist` / `npm run package` 或其他 Electron ABI rebuild，允许首次启动前花一点时间重建 `better-sqlite3`
 
 步骤：
 1. 运行 `npm run dev`

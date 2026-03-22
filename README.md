@@ -101,6 +101,8 @@ npm install
 npm run dev
 ```
 
+该命令会先把 `better-sqlite3` 重建到 Electron ABI，再等待 renderer / main 就绪并启动应用；退出时会自动尝试恢复 Node ABI，避免后续 `npm run build` / `node --test` 被开发态运行污染。
+
 ### 3. 构建
 ```bash
 npm run build

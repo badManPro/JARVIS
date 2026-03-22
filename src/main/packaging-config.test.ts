@@ -43,11 +43,15 @@ test('package.json defines packaging scripts and electron-builder dependency', (
   );
   assert.equal(
     packageJson.scripts?.['dev:electron'],
-    'wait-on tcp:5173 dist-electron/src/main/index.js && electron .',
+    'node scripts/run-electron-dev.mjs',
+  );
+  assert.equal(
+    packageJson.scripts?.['rebuild:native:electron'],
+    'npm exec electron-rebuild -- -f -w better-sqlite3 -m .',
   );
   assert.equal(
     packageJson.scripts?.['rebuild:native:node'],
-    'npm rebuild better-sqlite3',
+    'node scripts/run-node-native-rebuild.mjs',
   );
   assert.equal(
     packageJson.scripts?.package,
@@ -86,4 +90,28 @@ test('packaging wrapper restores better-sqlite3 back to the Node runtime after e
   assert.match(script, /\['run', 'build'\]/);
   assert.match(script, /\['exec', 'electron-builder', '--', \.\.\.builderArgs\]/);
   assert.match(script, /\['run', 'rebuild:native:node'\]/);
+});
+
+test('dev wrapper rebuilds better-sqlite3 for Electron before launch and restores Node runtime on exit', () => {
+  const script = readWorkspaceFile('scripts/run-electron-dev.mjs');
+
+  assert.match(script, /\['run', 'rebuild:native:electron'\]/);
+  assert.match(script, /\['exec', 'wait-on', '--', 'tcp:5173', 'dist-electron\/src\/main\/index\.js'\]/);
+  assert.match(script, /\['exec', 'electron', '--', '\.'\]/);
+  assert.match(script, /allowRequestedSignalInterruption/);
+  assert.match(script, /allowRequestedSignalInterruption && requestedSignal && \(signal \|\| code === 1\)/);
+  assert.match(script, /isCleaningUp/);
+  assert.match(script, /if \(activeChild && !isCleaningUp\)/);
+  assert.match(script, /restoreHiddenBackup/);
+  assert.match(script, /runNodeNativeRebuild/);
+});
+
+test('node rebuild wrapper uses workspace-local caches and can restore a hidden better-sqlite3 backup', () => {
+  const script = readWorkspaceFile('scripts/run-node-native-rebuild.mjs');
+
+  assert.match(script, /npm_config_cache/);
+  assert.match(script, /npm_config_devdir/);
+  assert.match(script, /\.ignored\/better-sqlite3\/build\/Release\/better_sqlite3\.node/);
+  assert.match(script, /\.ignored_better-sqlite3\/build\/Release\/better_sqlite3\.node/);
+  assert.match(script, /copyFileSync/);
 });
