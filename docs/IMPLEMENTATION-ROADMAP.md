@@ -11,8 +11,8 @@
 ## 2. 当前判断
 
 ### 当前总进度
-- **整体进度估算：93%**
-- **当前阶段：Phase 4 已完成，下一任务为 `Phase 5 / Task 1`（明确 snapshot 与结构化表的最终边界）**
+- **整体进度估算：95%**
+- **当前阶段：Phase 5 进行中，下一任务为 `Phase 5 / Task 3`（增加关键数据一致性检查）**
 
 > 说明：这个百分比是基于“产品可用闭环”而不是“代码文件数量”估算的。文档、骨架和本地持久化已经完成一部分，但关键用户价值仍集中在后续阶段。
 
@@ -37,9 +37,9 @@
 - 首页首屏现已把执行状态与复盘输入压成结构化“今日优先动作 + 风险提醒”卡片，用户进入应用即可看到当前主动作、原因和建议处理动作。
 
 ### 当前最该做的事情
-- **Phase 5 / Task 1：明确 snapshot 与结构化表的最终边界。**
+- **Phase 5 / Task 3：增加关键数据一致性检查。**
 
-这一步应该开始收缩 `app_snapshots` 的兜底职责，定义哪些字段继续保留在快照，哪些必须迁移到结构化表，并为后续迁移脚本和一致性校验打基础。
+这一步应该开始为结构化真源补一致性守卫，识别 `app_snapshots`、结构化实体表和派生状态之间的异常组合，并给出可修复或可回退的处理策略。
 
 ## 3. 执行总策略
 1. 先把本地闭环做实，再接 AI。
@@ -85,7 +85,7 @@
 | Phase 2 | 对话驱动结构化动作 | complete | 100% | 让对话能把建议落成可确认动作 |
 | Phase 3 | AI Service 与 Provider 运行时接入 | complete | 100% | 把 capability route 真的接到模型调用层 |
 | Phase 4 | 执行与复盘闭环 | complete | 100% | 让任务执行、复盘、计划调整形成闭环 |
-| Phase 5 | 数据层硬化与迁移 | pending | 10% | 降低快照兜底，补齐迁移和一致性保障 |
+| Phase 5 | 数据层硬化与迁移 | in_progress | 50% | 降低快照兜底，补齐迁移和一致性保障 |
 | Phase 6 | 发布准备与质量收口 | pending | 0% | 完成验收、打包、发布前检查 |
 
 ## 6. 分阶段实施方案
@@ -222,13 +222,13 @@
   - Task 2 已完成：复盘页支持日 / 周 / 阶段周期切换、结构化表单和建议区，`reflection_entries` 会保存偏差说明、难度匹配、时间分配、自评、复盘结论和后续动作
   - Task 3 已完成：`runProfileExtraction` / `generatePlanAdjustmentSuggestions` 现都会携带 `reflection` 上下文；adapter prompt 会显式描述复盘偏差、洞察和后续动作，画像预览也能落成时间预算 / 节奏偏好 / 阻力因素 / 计划影响的结构化补丁
   - Task 4 已完成：首页首屏会根据任务执行状态与复盘输入派生 `priorityAction` / `riskSignals`，明确展示今日主动作、优先原因、当前主要风险与建议处理动作
-  - 项目当前唯一下一任务：**Phase 5 / Task 1 / 明确 snapshot 与结构化表的最终边界**
+  - 项目当前唯一下一任务：**Phase 5 / Task 3 / 增加关键数据一致性检查**
 - **本阶段完成后指定的下一个任务：**
-  - **Next Task: Phase 5 / Task 1 / 明确 snapshot 与结构化表的最终边界**
+  - **Next Task: Phase 5 / Task 3 / 增加关键数据一致性检查**
 
 ### Phase 5 · 数据层硬化与迁移
-- **状态：** pending
-- **完成度：** 10%
+- **状态：** in_progress
+- **完成度：** 50%
 - **目标：**
   - 减少 `app_snapshots` 的兜底职责，提升结构化存储的可维护性。
 - **范围：**
@@ -248,6 +248,10 @@
   - 前面几个阶段的实体结构稳定下来
 - **风险：**
   - 如果太早做彻底去快照化，会反复返工
+- **当前进展：**
+  - Task 1 已完成：`app_snapshots` 已收敛为 versioned conversation-only payload，`profile / goals / plan / reflection.entries / settings` 由结构化表重建，旧 full snapshot 仍可在初始化时被吸收并重写
+  - Task 2 已完成：`createDatabase()` 已改为显式 migration runner，数据库 schema 版本通过 `PRAGMA user_version` 管理，并覆盖 fresh DB 初始化与 legacy DB 升级路径
+  - 项目当前唯一下一任务：**Phase 5 / Task 3 / 增加关键数据一致性检查**
 - **本阶段完成后指定的下一个任务：**
   - **Next Task: Phase 6 / Task 1 / 完成端到端验收、打包和发布前检查**
 
@@ -282,8 +286,8 @@
 5. 最后用 Phase 5 和 Phase 6 做稳定性与交付收口。
 
 ## 8. 当前建议的最近三项任务
-1. **Phase 5 / Task 1**：去快照化并补齐迁移与一致性保护
-2. **Phase 5 / Task 2**：增加迁移脚本与版本管理
+1. **Phase 5 / Task 3**：增加关键数据一致性检查
+2. **Phase 5 / Task 4**：为删除/重排/重生成等高风险动作补事务保护
 3. **Phase 6 / Task 1**：完成端到端验收、打包和发布前检查
 
 ## 9. 阶段完成更新模板

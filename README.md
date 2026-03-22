@@ -31,6 +31,7 @@
 - 学习计划页已支持对单个任务执行“开始 / 完成 / 跳过 / 延后”，并把状态原因与最近流转时间写入本地
 - 首页现会基于真实任务执行与复盘输入展示结构化“今日优先动作”和“风险提醒”，并把复盘摘要与补充动作下沉为辅助信息
 - 复盘页已支持日 / 周 / 阶段周期切换、结构化输入表单、本地保存与建议区；手动输入会落到 `reflection_entries`
+- SQLite 初始化现已切换为显式 schema migration runner，并通过 `PRAGMA user_version` 管理数据库版本升级
 
 ## 技术栈
 - Electron
@@ -118,6 +119,7 @@ npm run build
 
 ## 当前存储实现说明
 - 数据库位置：Electron `app.getPath('userData')/learning-companion.sqlite`
+- SQLite schema version：启动时会按 `PRAGMA user_version` 执行有序迁移，当前通过显式 migration runner 管理版本升级
 - 当前落库策略：以结构化表作为画像 / 目标 / 计划 / 复盘 / 设置的真源，`app_snapshots` 仅保留未结构化的对话会话态
 - Provider secret 单独存于 `provider_secrets`，renderer 仅获取 `keyPreview`、`hasSecret`、`updatedAt` 等安全字段
 - 应用偏好、Provider 基础配置和 capability route 已拆到 `app_settings`、`provider_configs`、`model_routing` 并可在重启后回填
@@ -141,10 +143,10 @@ npm run build
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. `Phase 5 / Task 1`：明确 `app_snapshots` 与结构化表的最终边界，并开始准备迁移策略
-2. 继续细化 AI runtime 的 tracing / metrics 与排障体验
+1. `Phase 5 / Task 3`：增加关键数据一致性检查
+2. `Phase 5 / Task 4`：为删除 / 重排 / 重生成等高风险动作补事务保护
 3. 为关键链路补更多集成级验收
-4. 评估 `reflection_summary` 的业务接入和计划版本回滚
+4. 继续细化 AI runtime 的 tracing / metrics 与排障体验
 
 ## 当前推荐下一任务
-- `Phase 5 / Task 1`：明确 snapshot 与结构化表的最终边界
+- `Phase 5 / Task 3`：增加关键数据一致性检查
