@@ -149,6 +149,10 @@ test('packaging wrapper restores better-sqlite3 back to the Node runtime after e
   const script = readWorkspaceFile('scripts/run-electron-builder.mjs');
 
   assert.match(script, /\['run', 'build'\]/);
+  assert.match(script, /dist\/index\.html/);
+  assert.match(script, /rootRelativeAssetPattern/);
+  assert.match(script, /\/assets\\\//);
+  assert.match(script, /file:\/\/.*\.\/assets\//);
   assert.match(script, /\['exec', 'electron-builder', '--', \.\.\.builderArgs\]/);
   assert.match(script, /\['run', 'rebuild:native:node'\]/);
 });

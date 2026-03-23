@@ -1,7 +1,21 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const builderArgs = process.argv.slice(2);
+
+function validateRendererBuildForFileProtocol() {
+  const distIndexHtmlPath = path.resolve(process.cwd(), 'dist/index.html');
+  const indexHtml = fs.readFileSync(distIndexHtmlPath, 'utf8');
+  const rootRelativeAssetPattern = /(?:src|href)=["']\/assets\//;
+
+  if (rootRelativeAssetPattern.test(indexHtml)) {
+    throw new Error(
+      `Renderer build at ${distIndexHtmlPath} contains root-relative /assets/ references. Electron production loads index.html via file://, so bundled assets must use relative ./assets/ URLs.`,
+    );
+  }
+}
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
@@ -31,6 +45,7 @@ async function main() {
   let builderError = null;
 
   await run(npmCommand, ['run', 'build']);
+  validateRendererBuildForFileProtocol();
   builderAttempted = true;
 
   try {
