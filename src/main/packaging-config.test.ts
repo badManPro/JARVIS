@@ -10,6 +10,7 @@ type PackageJson = {
   build?: {
     appId?: string;
     productName?: string;
+    npmRebuild?: boolean;
     directories?: {
       output?: string;
     };
@@ -90,6 +91,7 @@ test('package.json exposes macOS installer-oriented electron-builder config', ()
 
   assert.equal(builderConfig?.appId, 'com.learningcompanion.app');
   assert.equal(builderConfig?.productName, 'Learning Companion');
+  assert.equal(builderConfig?.npmRebuild, false);
   assert.equal(builderConfig?.directories?.output, 'release');
   assert.deepEqual(builderConfig?.files, [
     'dist/**/*',
@@ -149,16 +151,38 @@ test('main process points to a CommonJS preload build for Electron', () => {
   assert.match(compiledPreload, /require\("electron"\)|require\('electron'\)/);
 });
 
+test('main process resolves the packaged renderer entry from the app.asar root', () => {
+  const mainSource = readWorkspaceFile('src/main/index.ts');
+  const match = mainSource.match(/window\.loadFile\(path\.join\(__dirname,\s*'([^']+)'\)\)/);
+
+  assert.ok(match, 'expected production BrowserWindow.loadFile path in src/main/index.ts');
+
+  const packagedMainDir = '/Applications/Learning Companion.app/Contents/Resources/app.asar/dist-electron/src/main';
+  const resolvedRendererEntry = path.posix.normalize(
+    path.posix.join(packagedMainDir, match[1]),
+  );
+
+  assert.equal(
+    resolvedRendererEntry,
+    '/Applications/Learning Companion.app/Contents/Resources/app.asar/dist/index.html',
+  );
+});
+
 test('packaging wrapper restores better-sqlite3 back to the Node runtime after electron-builder runs', () => {
   const script = readWorkspaceFile('scripts/run-electron-builder.mjs');
 
   assert.match(script, /\['run', 'build'\]/);
+  assert.match(script, /\['run', 'rebuild:native:electron'\]/);
   assert.match(script, /dist\/index\.html/);
   assert.match(script, /rootRelativeAssetPattern/);
   assert.match(script, /\/assets\\\//);
   assert.match(script, /file:\/\/.*\.\/assets\//);
   assert.match(script, /\['exec', 'electron-builder', '--', \.\.\.builderArgs\]/);
   assert.match(script, /\['run', 'rebuild:native:node'\]/);
+  assert.ok(
+    script.indexOf("['run', 'rebuild:native:electron']")
+      < script.indexOf("['exec', 'electron-builder', '--', ...builderArgs]"),
+  );
 });
 
 test('dev wrapper rebuilds better-sqlite3 for Electron before launch and restores Node runtime on exit', () => {

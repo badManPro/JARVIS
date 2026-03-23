@@ -41,19 +41,20 @@ function run(command, args) {
 }
 
 async function main() {
-  let builderAttempted = false;
+  let electronRuntimePrepared = false;
   let builderError = null;
 
   await run(npmCommand, ['run', 'build']);
   validateRendererBuildForFileProtocol();
-  builderAttempted = true;
+  await run(npmCommand, ['run', 'rebuild:native:electron']);
+  electronRuntimePrepared = true;
 
   try {
     await run(npmCommand, ['exec', 'electron-builder', '--', ...builderArgs]);
   } catch (error) {
     builderError = error;
   } finally {
-    if (builderAttempted) {
+    if (electronRuntimePrepared) {
       try {
         await run(npmCommand, ['run', 'rebuild:native:node']);
       } catch (restoreError) {

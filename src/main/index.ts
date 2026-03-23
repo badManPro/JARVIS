@@ -35,7 +35,7 @@ function createWindow() {
     window.loadURL('http://localhost:5173');
     window.webContents.openDevTools({ mode: 'detach' });
   } else {
-    window.loadFile(path.join(__dirname, '../../dist/index.html'));
+    window.loadFile(path.join(__dirname, '../../../dist/index.html'));
   }
 }
 

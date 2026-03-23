@@ -27,6 +27,7 @@
   "build": {
     "appId": "com.learningcompanion.app",
     "productName": "Learning Companion",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
