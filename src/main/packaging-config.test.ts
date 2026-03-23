@@ -123,6 +123,10 @@ test('release workflow builds macOS and Windows artifacts and publishes them to 
   assert.match(workflow, /build-macos:/);
   assert.match(workflow, /build-windows:/);
   assert.match(workflow, /release:/);
+  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/setup-node@v6/);
+  assert.match(workflow, /actions\/upload-artifact@v6/);
+  assert.match(workflow, /actions\/download-artifact@v8/);
   assert.match(workflow, /npm run dist:mac:ci/);
   assert.match(workflow, /npm run dist:win:ci/);
   assert.match(workflow, /GH_REPO:\s*\$\{\{\s*github\.repository\s*\}\}/);
