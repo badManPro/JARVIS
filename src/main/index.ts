@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,8 +14,30 @@ import { AppStorageService } from './services/app-storage-service.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = !app.isPackaged;
+const buildResourcesDir = path.resolve(__dirname, '../../../build');
 
 let storageService: AppStorageService | null = null;
+
+function resolveDevWindowIcon() {
+  if (!isDev || process.platform === 'darwin') {
+    return undefined;
+  }
+
+  const iconFileName = process.platform === 'win32' ? 'icon.ico' : 'app-icon.png';
+  const iconPath = path.join(buildResourcesDir, iconFileName);
+  return fs.existsSync(iconPath) ? iconPath : undefined;
+}
+
+function applyDevAppIcon() {
+  if (!isDev || process.platform !== 'darwin') {
+    return;
+  }
+
+  const dockIconPath = path.join(buildResourcesDir, 'app-icon.png');
+  if (fs.existsSync(dockIconPath)) {
+    app.dock?.setIcon(dockIconPath);
+  }
+}
 
 function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/index.cjs');
@@ -24,6 +47,7 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: '#F8FAFC',
+    icon: resolveDevWindowIcon(),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -86,6 +110,7 @@ function getStorageService() {
 app.whenReady().then(() => {
   getStorageService();
   registerIpcHandlers();
+  applyDevAppIcon();
   createWindow();
 
   app.on('activate', () => {

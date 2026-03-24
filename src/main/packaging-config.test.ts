@@ -13,14 +13,25 @@ type PackageJson = {
     npmRebuild?: boolean;
     directories?: {
       output?: string;
+      buildResources?: string;
     };
     files?: string[];
     asarUnpack?: string[];
     mac?: {
       target?: Array<string | { target: string }>;
+      icon?: string;
     };
     win?: {
       target?: Array<string | { target: string }>;
+      icon?: string;
+    };
+    nsis?: {
+      installerIcon?: string;
+      uninstallerIcon?: string;
+      installerHeaderIcon?: string;
+    };
+    dmg?: {
+      icon?: string;
     };
   };
 };
@@ -90,9 +101,10 @@ test('package.json exposes macOS installer-oriented electron-builder config', ()
   const macTargets = normalizeTargets(builderConfig?.mac?.target);
 
   assert.equal(builderConfig?.appId, 'com.learningcompanion.app');
-  assert.equal(builderConfig?.productName, 'Learning Companion');
+  assert.equal(builderConfig?.productName, 'JARVIS');
   assert.equal(builderConfig?.npmRebuild, false);
   assert.equal(builderConfig?.directories?.output, 'release');
+  assert.equal(builderConfig?.directories?.buildResources, 'build');
   assert.deepEqual(builderConfig?.files, [
     'dist/**/*',
     'dist-electron/**/*',
@@ -103,6 +115,9 @@ test('package.json exposes macOS installer-oriented electron-builder config', ()
     'node_modules/better-sqlite3/**/*',
   ]);
   assert.deepEqual(macTargets, ['dmg', 'zip']);
+  assert.equal(builderConfig?.mac?.icon, 'build/icon.icns');
+  assert.equal(builderConfig?.dmg?.icon, 'build/icon.icns');
+  assert.ok(fs.existsSync(path.resolve(process.cwd(), 'build/icon.icns')));
 });
 
 test('package.json exposes Windows installer-oriented electron-builder config', () => {
@@ -111,6 +126,12 @@ test('package.json exposes Windows installer-oriented electron-builder config', 
   const winTargets = normalizeTargets(builderConfig?.win?.target);
 
   assert.deepEqual(winTargets, ['nsis', 'zip']);
+  assert.equal(builderConfig?.win?.icon, 'build/icon.ico');
+  assert.equal(builderConfig?.nsis?.installerIcon, 'build/installer.ico');
+  assert.equal(builderConfig?.nsis?.uninstallerIcon, 'build/installer.ico');
+  assert.equal(builderConfig?.nsis?.installerHeaderIcon, 'build/installer.ico');
+  assert.ok(fs.existsSync(path.resolve(process.cwd(), 'build/icon.ico')));
+  assert.ok(fs.existsSync(path.resolve(process.cwd(), 'build/installer.ico')));
 });
 
 test('release workflow builds macOS and Windows artifacts and publishes them to GitHub Releases', () => {
@@ -142,6 +163,9 @@ test('main process points to a CommonJS preload build for Electron', () => {
   const mainSource = readWorkspaceFile('src/main/index.ts');
   const compiledPreloadPath = path.resolve(process.cwd(), 'dist-electron/src/preload/index.cjs');
 
+  assert.match(mainSource, /const buildResourcesDir = path\.resolve\(__dirname,\s*'\.\.\/\.\.\/\.\.\/build'\)/);
+  assert.match(mainSource, /icon:\s*resolveDevWindowIcon\(\)/);
+  assert.match(mainSource, /app\.dock\?\.setIcon\(dockIconPath\)/);
   assert.match(mainSource, /preload:\s*preloadPath/);
   assert.match(mainSource, /path\.join\(__dirname,\s*'\.\.\/preload\/index\.cjs'\)/);
   assert.ok(fs.existsSync(compiledPreloadPath));
@@ -157,14 +181,14 @@ test('main process resolves the packaged renderer entry from the app.asar root',
 
   assert.ok(match, 'expected production BrowserWindow.loadFile path in src/main/index.ts');
 
-  const packagedMainDir = '/Applications/Learning Companion.app/Contents/Resources/app.asar/dist-electron/src/main';
+  const packagedMainDir = '/Applications/JARVIS.app/Contents/Resources/app.asar/dist-electron/src/main';
   const resolvedRendererEntry = path.posix.normalize(
     path.posix.join(packagedMainDir, match[1]),
   );
 
   assert.equal(
     resolvedRendererEntry,
-    '/Applications/Learning Companion.app/Contents/Resources/app.asar/dist/index.html',
+    '/Applications/JARVIS.app/Contents/Resources/app.asar/dist/index.html',
   );
 });
 
