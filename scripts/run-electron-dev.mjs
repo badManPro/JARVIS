@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { restoreHiddenBackup, runNodeNativeRebuild } from './run-node-native-rebuild.mjs';
+import { backupCurrentBinary, restoreHiddenBackup, runNodeNativeRebuild } from './run-node-native-rebuild.mjs';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const workspaceRoot = process.cwd();
@@ -106,6 +106,7 @@ async function main() {
   let launchError = null;
   const electronCommand = resolveElectronCommand();
 
+  backupCurrentBinary();
   await run(npmCommand, ['run', 'rebuild:native:electron']);
 
   try {

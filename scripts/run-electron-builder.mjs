@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { backupCurrentBinary, restoreHiddenBackup } from './run-node-native-rebuild.mjs';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const builderArgs = process.argv.slice(2);
@@ -46,6 +47,7 @@ async function main() {
 
   await run(npmCommand, ['run', 'build']);
   validateRendererBuildForFileProtocol();
+  backupCurrentBinary();
   await run(npmCommand, ['run', 'rebuild:native:electron']);
   electronRuntimePrepared = true;
 
@@ -55,15 +57,17 @@ async function main() {
     builderError = error;
   } finally {
     if (electronRuntimePrepared) {
-      try {
-        await run(npmCommand, ['run', 'rebuild:native:node']);
-      } catch (restoreError) {
-        if (!builderError) {
-          throw restoreError;
-        }
+      if (!restoreHiddenBackup()) {
+        try {
+          await run(npmCommand, ['run', 'rebuild:native:node']);
+        } catch (restoreError) {
+          if (!builderError) {
+            throw restoreError;
+          }
 
-        console.error('failed to restore better-sqlite3 back to the Node runtime after electron-builder:');
-        console.error(restoreError);
+          console.error('failed to restore better-sqlite3 back to the Node runtime after electron-builder:');
+          console.error(restoreError);
+        }
       }
     }
   }

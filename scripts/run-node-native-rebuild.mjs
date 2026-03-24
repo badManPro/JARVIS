@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const workspaceRoot = process.cwd();
+const cacheRoot = path.join(os.tmpdir(), 'learning-companion-native-rebuild');
+const backupBinaryPath = path.join(cacheRoot, 'node-runtime-backup', 'better_sqlite3.node');
 const backupCandidates = [
+  backupBinaryPath,
   path.resolve(workspaceRoot, 'node_modules/.ignored_better-sqlite3/build/Release/better_sqlite3.node'),
   path.resolve(workspaceRoot, 'node_modules/.ignored/better-sqlite3/build/Release/better_sqlite3.node'),
 ];
-const cacheRoot = path.join(os.tmpdir(), 'learning-companion-native-rebuild');
 const npmCacheDir = path.join(cacheRoot, 'npm-cache');
 const nodeGypDir = path.join(cacheRoot, 'node-gyp');
 const targetBinaryPath = path.resolve(workspaceRoot, 'node_modules/better-sqlite3/build/Release/better_sqlite3.node');
@@ -53,6 +55,16 @@ export function restoreHiddenBackup() {
   return null;
 }
 
+export function backupCurrentBinary() {
+  if (!fs.existsSync(targetBinaryPath)) {
+    return null;
+  }
+
+  fs.mkdirSync(path.dirname(backupBinaryPath), { recursive: true });
+  fs.copyFileSync(targetBinaryPath, backupBinaryPath);
+  return backupBinaryPath;
+}
+
 export async function runNodeNativeRebuild() {
   fs.mkdirSync(npmCacheDir, { recursive: true });
   fs.mkdirSync(nodeGypDir, { recursive: true });
@@ -67,6 +79,7 @@ export async function runNodeNativeRebuild() {
         npm_config_devdir: nodeGypDir,
       },
     );
+    backupCurrentBinary();
   } catch (error) {
     const restoredFrom = restoreHiddenBackup();
 

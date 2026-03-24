@@ -28,7 +28,7 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
       <aside className="flex w-72 flex-col border-r border-white/60 bg-slate-950 px-5 py-6 text-slate-50">
         <div className="mb-8 space-y-2">
           <Badge className="bg-blue-500/20 text-blue-100">Alpha Skeleton</Badge>
-          <h1 className="text-2xl font-semibold">Learning Companion</h1>
+          <h1 className="text-2xl font-semibold">JARVIS</h1>
           <p className="text-sm text-slate-300">本地优先的学习规划桌面客户端</p>
         </div>
 

@@ -195,14 +195,21 @@ test('main process resolves the packaged renderer entry from the app.asar root',
 test('packaging wrapper restores better-sqlite3 back to the Node runtime after electron-builder runs', () => {
   const script = readWorkspaceFile('scripts/run-electron-builder.mjs');
 
+  assert.match(script, /backupCurrentBinary,\s*restoreHiddenBackup/);
   assert.match(script, /\['run', 'build'\]/);
+  assert.match(script, /backupCurrentBinary\(\)/);
   assert.match(script, /\['run', 'rebuild:native:electron'\]/);
   assert.match(script, /dist\/index\.html/);
   assert.match(script, /rootRelativeAssetPattern/);
   assert.match(script, /\/assets\\\//);
   assert.match(script, /file:\/\/.*\.\/assets\//);
+  assert.match(script, /if \(!restoreHiddenBackup\(\)\)/);
   assert.match(script, /\['exec', 'electron-builder', '--', \.\.\.builderArgs\]/);
   assert.match(script, /\['run', 'rebuild:native:node'\]/);
+  assert.ok(
+    script.indexOf('backupCurrentBinary()')
+      < script.indexOf("['run', 'rebuild:native:electron']"),
+  );
   assert.ok(
     script.indexOf("['run', 'rebuild:native:electron']")
       < script.indexOf("['exec', 'electron-builder', '--', ...builderArgs]"),
@@ -212,6 +219,8 @@ test('packaging wrapper restores better-sqlite3 back to the Node runtime after e
 test('dev wrapper rebuilds better-sqlite3 for Electron before launch and restores Node runtime on exit', () => {
   const script = readWorkspaceFile('scripts/run-electron-dev.mjs');
 
+  assert.match(script, /backupCurrentBinary,\s*restoreHiddenBackup,\s*runNodeNativeRebuild/);
+  assert.match(script, /backupCurrentBinary\(\)/);
   assert.match(script, /\['run', 'rebuild:native:electron'\]/);
   assert.match(script, /\['exec', 'wait-on', '--', 'tcp:5173', 'dist-electron\/src\/main\/index\.js'\]/);
   assert.match(script, /node_modules\/\.ignored\/electron/);
@@ -234,8 +243,14 @@ test('node rebuild wrapper uses workspace-local caches and can restore a hidden 
 
   assert.match(script, /npm_config_cache/);
   assert.match(script, /npm_config_devdir/);
+  assert.match(script, /node-runtime-backup/);
   assert.match(script, /\.ignored_better-sqlite3\/build\/Release\/better_sqlite3\.node/);
   assert.match(script, /\.ignored\/better-sqlite3\/build\/Release\/better_sqlite3\.node/);
+  assert.match(script, /export function backupCurrentBinary\(\)/);
+  assert.ok(
+    script.indexOf('backupBinaryPath')
+      < script.indexOf(".ignored_better-sqlite3/build/Release/better_sqlite3.node"),
+  );
   assert.ok(
     script.indexOf(".ignored_better-sqlite3/build/Release/better_sqlite3.node")
       < script.indexOf(".ignored/better-sqlite3/build/Release/better_sqlite3.node"),
