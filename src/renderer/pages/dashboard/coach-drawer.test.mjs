@@ -24,14 +24,14 @@ const bridgeSource = fs.readFileSync(
   'utf8',
 );
 
-test('coach drawer surfaces action previews and review/apply controls', () => {
+test('coach drawer is reduced to a lightweight change capture entry instead of a review console', () => {
   assert.match(coachDrawerSource, /onPageChange:\s*\(pageId: string\) => void;/);
-  assert.match(coachDrawerSource, /conversation\.actionPreviews/);
-  assert.match(coachDrawerSource, /reviewConversationActionPreview/);
-  assert.match(coachDrawerSource, /applyAcceptedConversationActionPreviews/);
-  assert.match(coachDrawerSource, /接受预览/);
-  assert.match(coachDrawerSource, /暂不采纳/);
-  assert.match(coachDrawerSource, /应用已接受变更/);
+  assert.match(coachDrawerSource, /保存变化|记录变化|提交变化/);
+  assert.doesNotMatch(coachDrawerSource, /conversation\.actionPreviews/);
+  assert.doesNotMatch(coachDrawerSource, /reviewConversationActionPreview/);
+  assert.doesNotMatch(coachDrawerSource, /applyAcceptedConversationActionPreviews/);
+  assert.doesNotMatch(coachDrawerSource, /接受预览/);
+  assert.doesNotMatch(coachDrawerSource, /应用已接受变更/);
 });
 
 test('app shell passes page navigation into the coach drawer', () => {
@@ -50,13 +50,17 @@ test('first-run onboarding uses an explicit generating flow and summary actions'
   assert.match(coachDrawerSource, /确认目标/);
   assert.match(coachDrawerSource, /生成路径/);
   assert.match(coachDrawerSource, /进入学习路径/);
-  assert.match(coachDrawerSource, /直接开始今天第一步/);
+  assert.doesNotMatch(coachDrawerSource, /直接开始今天第一步/);
   assert.match(coachDrawerSource, /当前为模板版路径/);
 });
 
-test('bridge and store expose the completeInitialOnboarding atomic entry', () => {
+test('bridge and store expose onboarding plus daily planning entry points', () => {
   assert.match(bridgeSource, /completeInitialOnboarding:\s*\(payload:/);
+  assert.match(bridgeSource, /generateTodayPlan:\s*\(payload:/);
+  assert.match(bridgeSource, /saveTodayPlanningContext:\s*\(payload:/);
   assert.match(appStoreSource, /completeInitialOnboarding:\s*\(payload:/);
+  assert.match(appStoreSource, /generateTodayPlan:\s*\(payload:/);
+  assert.match(appStoreSource, /saveTodayPlanningContext:\s*\(payload:/);
   assert.match(appStoreSource, /const persistedState = await bridge\.completeInitialOnboarding\(payload\);/);
 });
 

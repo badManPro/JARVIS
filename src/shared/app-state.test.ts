@@ -132,7 +132,7 @@ test('updatePlanTaskStatus records execution metadata and refreshes dashboard/re
   assert.ok(skippedUpdatedAt >= before && skippedUpdatedAt <= after);
   assert.match(skippedState.dashboard.reflectionSummary, /跳过 1 项/);
   assert.match(skippedState.reflection.deviation, /跳过/);
-  assert.match(skippedState.dashboard.priorityAction.title, /继续推进：用 requests 或 fetch 封装一次模型调用/);
+  assert.match(skippedState.dashboard.priorityAction.title, /生成今日计划/);
   assert.equal(
     skippedState.dashboard.riskSignals.some((risk) => risk.title.includes('跳过') && risk.detail.includes('runtime 诊断')),
     true,
@@ -151,7 +151,7 @@ test('updatePlanTaskStatus records execution metadata and refreshes dashboard/re
 
   assert.equal(completedState.reflection.completedTasks, 2);
   assert.match(completedState.reflection.actualDuration, /小时|分钟/);
-  assert.match(completedState.dashboard.todayFocus, /规划本地优先 MVP 的最小功能清单|查看复盘/);
+  assert.match(completedState.dashboard.todayFocus, /生成今日计划/);
   assert.ok(completedState.dashboard.riskSignals.length >= 1);
 });
 
@@ -195,12 +195,27 @@ test('saveReflectionEntry writes structured feedback into the selected reflectio
 });
 
 test('seedState derives a structured home priority action and top risk summary', () => {
-  assert.equal(seedState.dashboard.priorityAction.title, '继续推进：用 requests 或 fetch 封装一次模型调用');
-  assert.equal(seedState.dashboard.priorityAction.duration, '45 分钟');
-  assert.match(seedState.dashboard.priorityAction.reason, /进行中|当前阶段/);
+  assert.equal(seedState.dashboard.priorityAction.title, '生成今日计划');
+  assert.equal(seedState.dashboard.priorityAction.duration, '10 分钟');
+  assert.match(seedState.dashboard.priorityAction.reason, /粗版路径已经准备好|细版执行安排仍未生成/);
   assert.ok(seedState.dashboard.riskSignals.length >= 1);
   assert.equal(seedState.dashboard.riskSignals[0]?.level, 'medium');
   assert.match(seedState.dashboard.riskSignals[0]?.detail ?? '', /临时事务打断|可交付物/);
+});
+
+test('seedState stores weekly rough milestones and keeps today detail empty until user generates it', () => {
+  const activeDraft = seedState.plan.drafts.find((draft) => draft.goalId === seedState.plan.activeGoalId);
+
+  assert.ok(activeDraft);
+  assert.ok((activeDraft.milestones?.length ?? 0) >= 3);
+  assert.match(activeDraft.milestones?.[0]?.title ?? '', /第 1 周|Week 1/);
+  assert.equal(activeDraft.todayPlan, null);
+  assert.deepEqual(activeDraft.todayContext, {
+    availableDuration: '',
+    studyWindow: '',
+    note: '',
+    updatedAt: '',
+  });
 });
 
 test('createEmptyAppState includes the enhanced learner persona profile fields', () => {
@@ -320,6 +335,27 @@ test('syncExecutionDerivedState derives onboarding guidance for a first-run empt
   assert.equal(onboarding.steps.some((step) => step.id === 'goal' && step.status === 'pending'), true);
   assert.equal(onboarding.steps.some((step) => step.id === 'execution' && step.status === 'pending'), true);
   assert.match(emptyLikeState.dashboard.priorityAction.title, /首次设置|补全画像|创建首个目标/);
+});
+
+test('syncExecutionDerivedState asks the user to generate a daily plan when only the rough path exists', () => {
+  const roughOnlyState = syncExecutionDerivedState({
+    ...JSON.parse(JSON.stringify(seedState)),
+    plan: {
+      ...seedState.plan,
+      drafts: seedState.plan.drafts.map((draft, index) => (
+        index === 0
+          ? {
+            ...draft,
+            todayPlan: null,
+          }
+          : draft
+      )),
+    },
+  });
+
+  assert.match(roughOnlyState.dashboard.todayFocus, /生成今日计划/);
+  assert.match(roughOnlyState.dashboard.priorityAction.title, /生成今日计划/);
+  assert.match(roughOnlyState.dashboard.priorityAction.detail, /仅今天有效|学习步骤|资源/);
 });
 
 test('resolveConversationState parses reflection-driven profile suggestions into executable previews', () => {

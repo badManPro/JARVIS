@@ -1,9 +1,11 @@
 import type {
   AppState,
   ApplyConversationActionPreviewsResult,
+  GenerateTodayPlanInput,
   LearningPlanDraft,
   ProviderConfig,
   ProviderId,
+  SaveTodayPlanningContextInput,
   ProviderSecretInput,
   SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
@@ -29,6 +31,8 @@ export type LearningCompanionBridge = {
     saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<AppState>;
     updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<AppState>;
     saveReflectionEntry: (payload: SaveReflectionEntryInput) => Promise<AppState>;
+    saveTodayPlanningContext: (payload: SaveTodayPlanningContextInput) => Promise<AppState>;
+    generateTodayPlan: (payload: GenerateTodayPlanInput) => Promise<AppState>;
     regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<AppState>;
     runProfileExtraction: () => Promise<AppState>;
     generatePlanAdjustmentSuggestions: (payload: { goalId: string }) => Promise<AppState>;

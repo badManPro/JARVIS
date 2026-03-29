@@ -8,6 +8,7 @@ import { aiRequestLogs } from '../db/schema.js';
 const observableCapabilities: ModelCapability[] = [
   'profile_extraction',
   'plan_generation',
+  'daily_plan_generation',
   'plan_adjustment',
   'reflection_summary',
   'chat_general',

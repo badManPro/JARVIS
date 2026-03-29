@@ -205,7 +205,10 @@ export class EntitiesRepository {
           summary: row.summary,
           basis: parseJsonArray<string>(row.basisJson),
           stages,
+          milestones: parseJsonArray<LearningPlanDraft['milestones'][number]>(row.milestonesJson),
           tasks,
+          todayPlan: JSON.parse(row.todayPlanJson) as LearningPlanDraft['todayPlan'],
+          todayContext: JSON.parse(row.todayContextJson) as LearningPlanDraft['todayContext'],
           updatedAt: row.updatedAt.toISOString(),
         } satisfies LearningPlanDraft;
       });
@@ -252,6 +255,7 @@ export class EntitiesRepository {
           summary: row.summary,
           basis: parseJsonArray<string>(row.basisJson),
           stages,
+          milestones: parseJsonArray<LearningPlanSnapshot['milestones'][number]>(row.milestonesJson),
           tasks,
           createdAt: row.createdAt.toISOString(),
         } satisfies LearningPlanSnapshot;
@@ -355,6 +359,9 @@ export class EntitiesRepository {
           title: draft.title,
           summary: draft.summary,
           basisJson: JSON.stringify(draft.basis),
+          milestonesJson: JSON.stringify(draft.milestones),
+          todayPlanJson: JSON.stringify(draft.todayPlan),
+          todayContextJson: JSON.stringify(draft.todayContext),
           updatedAt: now,
         })),
       )
@@ -405,6 +412,7 @@ export class EntitiesRepository {
           title: snapshot.title,
           summary: snapshot.summary,
           basisJson: JSON.stringify(snapshot.basis),
+          milestonesJson: JSON.stringify(snapshot.milestones),
           createdAt: new Date(snapshot.createdAt),
         })),
       )

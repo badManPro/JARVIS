@@ -76,6 +76,8 @@ function registerIpcHandlers() {
   ipcMain.handle('storage:save-learning-plan-draft', async (_event, draft) => getStorageService().saveLearningPlanDraft(draft));
   ipcMain.handle('storage:update-plan-task-status', async (_event, payload) => getStorageService().updatePlanTaskStatus(payload));
   ipcMain.handle('storage:save-reflection-entry', async (_event, payload) => getStorageService().saveReflectionEntry(payload));
+  ipcMain.handle('storage:save-today-planning-context', async (_event, payload) => getStorageService().saveTodayPlanningContext(payload));
+  ipcMain.handle('storage:generate-today-plan', async (_event, payload) => getStorageService().generateTodayPlan(payload));
   ipcMain.handle('storage:regenerate-learning-plan-draft', async (_event, payload) => getStorageService().regenerateLearningPlanDraft(payload.goalId, payload.snapshotDraft));
   ipcMain.handle('storage:run-profile-extraction', async () => getStorageService().runProfileExtraction());
   ipcMain.handle('storage:generate-plan-adjustment-suggestions', async (_event, payload) => getStorageService().generatePlanAdjustmentSuggestions(payload.goalId));

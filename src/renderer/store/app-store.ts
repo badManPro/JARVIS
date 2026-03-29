@@ -4,10 +4,12 @@ import type {
   ApplyConversationActionPreviewsResult,
   ConversationMessage,
   ConversationActionReviewStatus,
+  GenerateTodayPlanInput,
   LearningPlanDraft,
   ProviderConfig,
   ProviderId,
   ProviderSecretInput,
+  SaveTodayPlanningContextInput,
   SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
   UserProfile,
@@ -47,6 +49,8 @@ type AppStore = AppState & {
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<AppState>;
   saveReflectionEntry: (payload: SaveReflectionEntryInput) => Promise<void>;
+  saveTodayPlanningContext: (payload: SaveTodayPlanningContextInput) => Promise<AppState>;
+  generateTodayPlan: (payload: GenerateTodayPlanInput) => Promise<AppState>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
   runProfileExtraction: () => Promise<AppState>;
   generatePlanAdjustmentSuggestions: (payload: { goalId: string }) => Promise<AppState>;
@@ -90,6 +94,7 @@ const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
 const observableCapabilities: AiObservabilitySnapshot['capabilitySummaries'][number]['capability'][] = [
   'profile_extraction',
   'plan_generation',
+  'daily_plan_generation',
   'plan_adjustment',
   'reflection_summary',
   'chat_general',
@@ -398,6 +403,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const persistedState = await bridge.saveReflectionEntry(payload);
     set({ ...persistedState, hydrated: true, hydrationError: null });
+  },
+  saveTodayPlanningContext: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      throw new Error('learningCompanion bridge 不可用，无法保存今日计划上下文。');
+    }
+
+    const persistedState = await bridge.saveTodayPlanningContext(payload);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+    return persistedState;
+  },
+  generateTodayPlan: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      throw new Error('learningCompanion bridge 不可用，无法生成今日计划。');
+    }
+
+    const persistedState = await bridge.generateTodayPlan(payload);
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set({ ...persistedState, ...diagnostics, hydrated: true, hydrationError: null });
+    return persistedState;
   },
   regenerateLearningPlanDraft: async (payload) => {
     const bridge = getBridge();

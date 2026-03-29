@@ -275,6 +275,26 @@ function addEnhancedUserProfileColumns(sqlite: Database.Database) {
   }
 }
 
+function addPlanDraftPlanningColumns(sqlite: Database.Database) {
+  const learningPlanDraftColumns = getTableColumns(sqlite, 'learning_plan_drafts');
+  if (!learningPlanDraftColumns.some((column) => column.name === 'milestones_json')) {
+    sqlite.exec('ALTER TABLE learning_plan_drafts ADD COLUMN milestones_json TEXT NOT NULL DEFAULT \'[]\';');
+  }
+
+  if (!learningPlanDraftColumns.some((column) => column.name === 'today_plan_json')) {
+    sqlite.exec('ALTER TABLE learning_plan_drafts ADD COLUMN today_plan_json TEXT NOT NULL DEFAULT \'null\';');
+  }
+
+  if (!learningPlanDraftColumns.some((column) => column.name === 'today_context_json')) {
+    sqlite.exec('ALTER TABLE learning_plan_drafts ADD COLUMN today_context_json TEXT NOT NULL DEFAULT \'{"availableDuration":"","studyWindow":"","note":"","updatedAt":""}\';');
+  }
+
+  const learningPlanSnapshotColumns = getTableColumns(sqlite, 'learning_plan_snapshots');
+  if (!learningPlanSnapshotColumns.some((column) => column.name === 'milestones_json')) {
+    sqlite.exec('ALTER TABLE learning_plan_snapshots ADD COLUMN milestones_json TEXT NOT NULL DEFAULT \'[]\';');
+  }
+}
+
 const migrations: Migration[] = [
   {
     version: 1,
@@ -296,6 +316,13 @@ const migrations: Migration[] = [
     name: 'add enhanced learner persona columns',
     up: (sqlite) => {
       addEnhancedUserProfileColumns(sqlite);
+    },
+  },
+  {
+    version: 4,
+    name: 'add rough-plan milestones and daily planning columns',
+    up: (sqlite) => {
+      addPlanDraftPlanningColumns(sqlite);
     },
   },
 ];

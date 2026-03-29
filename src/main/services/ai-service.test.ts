@@ -5,6 +5,14 @@ import { seedState } from '../../shared/app-state.js';
 import type { AiPlanGenerationResult, AiProviderAdapter, AiRequest, AiResult } from '../../shared/ai-service.js';
 import { AiService } from './ai-service.js';
 
+function createTestMilestones() {
+  return [
+    { title: '第 1 周：搭好 Python 本地环境', focus: '完成环境与最小脚本', outcome: '可以运行 hello_cli.py', status: 'current' as const },
+    { title: '第 2 周：打通一次模型调用', focus: '完成 API 请求与结果解析', outcome: '返回结构化模型结果', status: 'upcoming' as const },
+    { title: '第 3 周：收束 MVP 范围', focus: '确定本轮最小功能', outcome: '得到可实现的 MVP 清单', status: 'upcoming' as const },
+  ];
+}
+
 function cloneSettings(overrides?: Partial<AppState['settings']>): AppState['settings'] {
   return {
     ...JSON.parse(JSON.stringify(seedState.settings)) as AppState['settings'],
@@ -45,6 +53,7 @@ test('AiService routes plan_generation to the configured provider and forwards r
           summary: '由统一 AI service 生成',
           basis: ['已命中 deepseek route'],
           stages: [{ title: '阶段 1', outcome: '完成最小链路', progress: '未开始' }],
+          milestones: createTestMilestones(),
           tasks: [{ title: '补统一 runtime', duration: '45 分钟', note: '确保 route 能真正命中 provider' }],
         },
       } satisfies AiPlanGenerationResult;

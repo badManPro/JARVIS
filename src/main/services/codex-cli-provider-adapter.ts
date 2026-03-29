@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { AiPlanGenerationResult, AiProfileExtractionResult, AiProviderAdapter, AiProviderRuntimeConfig, AiRequest, AiResult } from '../../shared/ai-service.js';
-import { buildPlanGenerationPrompt, buildProfileExtractionPrompt, buildTextPrompt, extractJsonPayload } from './openai-compatible-provider-adapter.js';
+import type { AiDailyPlanGenerationResult, AiPlanGenerationResult, AiProfileExtractionResult, AiProviderAdapter, AiProviderRuntimeConfig, AiRequest, AiResult } from '../../shared/ai-service.js';
+import { buildDailyPlanGenerationPrompt, buildPlanGenerationPrompt, buildProfileExtractionPrompt, buildTextPrompt, extractJsonPayload } from './openai-compatible-provider-adapter.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +22,8 @@ function buildPrompt(request: AiRequest) {
   switch (request.capability) {
     case 'plan_generation':
       return buildPlanGenerationPrompt(request);
+    case 'daily_plan_generation':
+      return buildDailyPlanGenerationPrompt(request);
     case 'profile_extraction':
       return buildProfileExtractionPrompt(request);
     default:
@@ -175,6 +177,17 @@ export class CodexCliProviderAdapter implements AiProviderAdapter {
         providerLabel: input.provider.label,
         model: input.provider.model,
         draft: parsed,
+      };
+    }
+
+    if (input.request.capability === 'daily_plan_generation') {
+      const parsed = extractJsonPayload(content) as AiDailyPlanGenerationResult['plan'];
+      return {
+        capability: 'daily_plan_generation',
+        providerId: input.provider.id,
+        providerLabel: input.provider.label,
+        model: input.provider.model,
+        plan: parsed,
       };
     }
 

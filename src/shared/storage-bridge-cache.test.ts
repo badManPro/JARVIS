@@ -16,6 +16,8 @@ function createStorageBridge(): LearningCompanionBridge['storage'] {
     saveLearningPlanDraft: async () => { throw new Error('not implemented'); },
     updatePlanTaskStatus: async () => { throw new Error('not implemented'); },
     saveReflectionEntry: async () => { throw new Error('not implemented'); },
+    saveTodayPlanningContext: async () => { throw new Error('not implemented'); },
+    generateTodayPlan: async () => { throw new Error('not implemented'); },
     regenerateLearningPlanDraft: async () => { throw new Error('not implemented'); },
     runProfileExtraction: async () => { throw new Error('not implemented'); },
     generatePlanAdjustmentSuggestions: async () => { throw new Error('not implemented'); },

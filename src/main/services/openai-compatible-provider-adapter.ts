@@ -1,4 +1,4 @@
-import type { AiPlanGenerationResult, AiProfileExtractionResult, AiProviderAdapter, AiProviderRuntimeConfig, AiRequest, AiResult } from '../../shared/ai-service.js';
+import type { AiDailyPlanGenerationResult, AiPlanGenerationResult, AiProfileExtractionResult, AiProviderAdapter, AiProviderRuntimeConfig, AiRequest, AiResult } from '../../shared/ai-service.js';
 
 const reflectionPeriodLabels = {
   daily: '日复盘',
@@ -112,8 +112,9 @@ function formatReflectionContext(
 export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'plan_generation' }>) {
   return [
     '你是一个学习规划助手。请只输出 JSON，不要输出 Markdown。',
-    '输出格式：{"title":"", "summary":"", "basis":[""], "stages":[{"title":"","outcome":"","progress":"未开始"}], "tasks":[{"title":"","duration":"","note":"","status":"todo"}]}',
+    '输出格式：{"title":"", "summary":"", "basis":[""], "stages":[{"title":"","outcome":"","progress":"未开始"}], "milestones":[{"title":"","focus":"","outcome":"","status":"current"}], "tasks":[{"title":"","duration":"","note":"","status":"todo"}]}',
     '要求：中文；basis 2-5 条；stages 2-4 条；tasks 3-6 条；内容具体、可执行。',
+    '额外要求：milestones 固定输出 3 条，按周里程碑组织，title 请直接写成“第 1 周：...”这类形式。',
     '额外要求：学习约束决定任务强度和节奏；年龄阶段、性格与 MBTI 只影响表达方式、拆解粒度、提醒方式，不要基于性别做任何强决策。',
     `目标名称：${request.goal.title}`,
     `目标动机：${request.goal.motivation}`,
@@ -133,6 +134,25 @@ export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capabili
     `压力偏好：${request.profile.stressResponse || '暂无'}`,
     `反馈方式：${request.profile.feedbackPreference || '暂无'}`,
     request.currentDraft ? `当前草案摘要：${request.currentDraft.summary}` : '当前没有既有草案。',
+  ].join('\n');
+}
+
+export function buildDailyPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'daily_plan_generation' }>) {
+  return [
+    '你是一个学习规划助手。请只输出 JSON，不要输出 Markdown。',
+    '输出格式：{"date":"", "status":"ready", "todayGoal":"", "deliverable":"", "estimatedDuration":"", "milestoneRef":"", "steps":[{"title":"","detail":"","duration":""}], "resources":[{"title":"","url":"","reason":""}], "practice":[{"title":"","detail":"","output":""}], "generatedFromContext":{"availableDuration":"","studyWindow":"","note":""}}',
+    '要求：中文；输出必须可直接执行；steps 2-5 条；resources 1-3 条；practice 1-3 条。',
+    '必须显式给出：时间块、学习步骤、资源、练习、今日产出。资源可以为空 URL，但标题和推荐理由必须具体。',
+    `目标名称：${request.goal.title}`,
+    `当前基础：${request.goal.baseline}`,
+    `当前粗版计划：${request.currentDraft.summary}`,
+    `当前周里程碑：${request.currentDraft.milestones.map((milestone) => `${milestone.title}｜${milestone.focus}`).join('；') || '暂无'}`,
+    `长期时间预算：${request.profile.timeBudget}`,
+    `长期学习窗口：${request.profile.bestStudyWindow}`,
+    `仅今天有效的可用时长：${request.todayContext.availableDuration || '未覆盖'}`,
+    `仅今天有效的学习窗口：${request.todayContext.studyWindow || '未覆盖'}`,
+    `今天的额外说明：${request.todayContext.note || '无'}`,
+    `反馈偏好：${request.profile.feedbackPreference || '提醒直接、明确下一步'}`,
   ].join('\n');
 }
 
@@ -163,7 +183,7 @@ export function buildProfileExtractionPrompt(request: Extract<AiRequest, { capab
   ].join('\n');
 }
 
-export function buildTextPrompt(request: Exclude<AiRequest, { capability: 'plan_generation' | 'profile_extraction' }>) {
+export function buildTextPrompt(request: Exclude<AiRequest, { capability: 'plan_generation' | 'daily_plan_generation' | 'profile_extraction' }>) {
   switch (request.capability) {
     case 'plan_adjustment':
       return [
@@ -277,7 +297,7 @@ export class OpenAiCompatibleProviderAdapter implements AiProviderAdapter {
           messages: [
             {
               role: 'system',
-              content: request.capability === 'plan_generation'
+              content: request.capability === 'plan_generation' || request.capability === 'daily_plan_generation'
                 ? '只输出 JSON。'
                 : (request.capability === 'profile_extraction' ? '只输出 suggestions JSON。' : '只输出纯文本。'),
             },
@@ -285,7 +305,9 @@ export class OpenAiCompatibleProviderAdapter implements AiProviderAdapter {
               role: 'user',
               content: request.capability === 'plan_generation'
                 ? buildPlanGenerationPrompt(request)
-                : (request.capability === 'profile_extraction' ? buildProfileExtractionPrompt(request) : buildTextPrompt(request)),
+                : request.capability === 'daily_plan_generation'
+                  ? buildDailyPlanGenerationPrompt(request)
+                  : (request.capability === 'profile_extraction' ? buildProfileExtractionPrompt(request) : buildTextPrompt(request)),
             },
           ],
         }),
@@ -316,6 +338,17 @@ export class OpenAiCompatibleProviderAdapter implements AiProviderAdapter {
           providerLabel: provider.label,
           model: provider.model,
           draft: parsed,
+        };
+      }
+
+      if (request.capability === 'daily_plan_generation') {
+        const parsed = extractJsonPayload(content) as AiDailyPlanGenerationResult['plan'];
+        return {
+          capability: 'daily_plan_generation',
+          providerId: provider.id,
+          providerLabel: provider.label,
+          model: provider.model,
+          plan: parsed,
         };
       }
 

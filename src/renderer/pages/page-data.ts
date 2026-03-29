@@ -12,13 +12,13 @@ export const pages: PageDefinition[] = [
   {
     id: 'today',
     title: '今日',
-    description: '只看现在该做什么。',
+    description: '生成并执行今天的详细计划。',
     icon: Sparkles,
   },
   {
     id: 'path',
     title: '学习路径',
-    description: '当前主目标、阶段和最近任务。',
+    description: '查看粗版路径、周里程碑和关键节点。',
     icon: Layers3,
   },
   {

@@ -1,16 +1,19 @@
 import type {
   AppState,
   ApplyConversationActionPreviewsResult,
+  GenerateTodayPlanInput,
   LearningPlanDraft,
   ProviderConfig,
   ProviderId,
   ProviderSecretInput,
+  SaveTodayPlanningContextInput,
   SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
   UserProfile,
 } from '../../shared/app-state.js';
 import type {
   AiObservabilitySnapshot,
+  AiDailyPlanGenerationResult,
   AiPlanGenerationResult,
   AiProfileExtractionResult,
   AiProviderHealthCheckResponse,
@@ -26,9 +29,10 @@ import {
   normalizeUserProfile,
   resolveConversationState,
   saveReflectionEntry as applyReflectionEntrySave,
-  seedState,
+  saveTodayPlanningContext as applyTodayPlanningContextSave,
   syncExecutionDerivedState,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
+  ROUGH_PLAN_STALE_TAG,
 } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import type { CompleteInitialOnboardingPayload, CompleteInitialOnboardingResult, InitialOnboardingSummary } from '../../shared/onboarding.js';
@@ -47,6 +51,7 @@ import type { AiRuntimeService } from './ai-service.js';
 const capabilityRouteKeyMap = {
   profile_extraction: 'profileExtraction',
   plan_generation: 'planGeneration',
+  daily_plan_generation: 'planGeneration',
   plan_adjustment: 'planAdjustment',
   reflection_summary: 'reflectionSummary',
   chat_general: 'generalChat',
@@ -198,6 +203,7 @@ export class AppStorageService {
           outcome: stage.outcome,
           progress: stage.progress ?? '未开始',
         })),
+        milestones: result.draft.milestones,
         tasks: result.draft.tasks.map((task, index) => ({
           id: `${baseDraft.id}-ai-task-${index + 1}`,
           title: task.title,
@@ -220,6 +226,10 @@ export class AppStorageService {
         drafts: ensuredPlanState.drafts.some((draft) => draft.goalId === goalId)
           ? ensuredPlanState.drafts.map((draft) => (draft.goalId === goalId ? nextDraft : draft))
           : [...ensuredPlanState.drafts, nextDraft],
+      },
+      conversation: {
+        ...snapshot.conversation,
+        tags: snapshot.conversation.tags.filter((tag) => tag !== ROUGH_PLAN_STALE_TAG),
       },
     }, routedProvider.providerId, planSource === 'ai' ? 'ready' : 'warning')).state);
 
@@ -340,6 +350,80 @@ export class AppStorageService {
     return this.loadAppState();
   }
 
+  saveTodayPlanningContext(input: SaveTodayPlanningContextInput) {
+    const snapshot = this.loadAppState();
+    const nextState = this.sanitizeState(this.prepareState(applyTodayPlanningContextSave(snapshot, input)).state);
+
+    this.persistStateAtomically(nextState);
+    return this.loadAppState();
+  }
+
+  async generateTodayPlan(input: GenerateTodayPlanInput) {
+    const snapshot = this.loadAppState();
+    const goal = snapshot.goals.find((item) => item.id === input.goalId);
+    const draft = snapshot.plan.drafts.find((item) => item.goalId === input.goalId);
+    if (!goal || !draft) {
+      throw new Error('目标对应的粗版计划不存在，无法生成今日计划。');
+    }
+
+    const routedProvider = this.describeRoutedProvider(snapshot.settings, 'daily_plan_generation');
+    let nextPlan = this.buildFallbackTodayPlan(goal, draft, snapshot.profile);
+
+    try {
+      const result = await this.executeLoggedCapabilityRequest(snapshot, {
+        capability: 'daily_plan_generation',
+        goal,
+        profile: snapshot.profile,
+        currentDraft: draft,
+        todayContext: draft.todayContext,
+      }, (value) => {
+        if (value.capability !== 'daily_plan_generation') {
+          throw new Error('今日计划生成返回了意外结果。');
+        }
+        return value;
+      });
+
+      nextPlan = this.normalizeTodayPlanResult(result, draft, goal, snapshot.profile);
+      const nextState = this.sanitizeState(this.prepareState(this.withProviderHealthStatus({
+        ...snapshot,
+        plan: {
+          ...snapshot.plan,
+          drafts: snapshot.plan.drafts.map((item) => (
+            item.goalId === input.goalId
+              ? {
+                ...item,
+                todayPlan: nextPlan,
+                updatedAt: new Date().toISOString(),
+              }
+              : item
+          )),
+        },
+      }, routedProvider.providerId, 'ready')).state);
+
+      this.persistStateAtomically(nextState);
+      return this.loadAppState();
+    } catch (error) {
+      const nextState = this.sanitizeState(this.prepareState(this.withProviderHealthStatus({
+        ...snapshot,
+        plan: {
+          ...snapshot.plan,
+          drafts: snapshot.plan.drafts.map((item) => (
+            item.goalId === input.goalId
+              ? {
+                ...item,
+                todayPlan: nextPlan,
+                updatedAt: new Date().toISOString(),
+              }
+              : item
+          )),
+        },
+      }, routedProvider.providerId, 'warning')).state);
+
+      this.persistStateAtomically(nextState);
+      return this.loadAppState();
+    }
+  }
+
   async runProfileExtraction() {
     const snapshot = this.loadAppState();
     const providerId = snapshot.settings.routing.profileExtraction;
@@ -418,6 +502,7 @@ export class AppStorageService {
         outcome: stage.outcome,
         progress: stage.progress ?? '未开始',
       })),
+      milestones: result.draft.milestones,
       tasks: result.draft.tasks.map((task, index) => ({
         id: `${previousDraft.id}-ai-task-${index + 1}`,
         title: task.title,
@@ -433,6 +518,10 @@ export class AppStorageService {
         ...snapshot.plan,
         drafts: snapshot.plan.drafts.map((item) => (item.id === previousDraft.id ? regeneratedDraft : item)),
         snapshots: [archivedSnapshot, ...snapshot.plan.snapshots],
+      },
+      conversation: {
+        ...snapshot.conversation,
+        tags: snapshot.conversation.tags.filter((tag) => tag !== ROUGH_PLAN_STALE_TAG),
       },
     }, providerId, 'ready')).state);
 
@@ -917,6 +1006,88 @@ export class AppStorageService {
     }
   }
 
+  private buildFallbackTodayPlan(
+    goal: LearningGoalInput & { id?: string } | AppState['goals'][number],
+    draft: LearningPlanDraft,
+    profile: UserProfile,
+  ): NonNullable<LearningPlanDraft['todayPlan']> {
+    const firstMilestone = draft.milestones[0];
+    const firstTask = draft.tasks[0];
+
+    return {
+      date: new Date().toISOString().slice(0, 10),
+      status: 'ready' as const,
+      todayGoal: firstTask?.title || `围绕「${goal.title}」完成今天的最小闭环`,
+      deliverable: '完成一个能证明今天已推进的最小成果',
+      estimatedDuration: draft.todayContext.availableDuration || firstTask?.duration || profile.timeBudget || '30 分钟',
+      milestoneRef: firstMilestone?.title || '本周里程碑',
+      steps: [
+        {
+          title: '先确认今天的最小目标',
+          detail: firstTask?.note || '先把今天要交付什么写清楚，再开始执行。',
+          duration: '5 分钟',
+        },
+        {
+          title: firstTask?.title || '完成今天的基础练习',
+          detail: '按最小闭环推进，不额外扩展范围。',
+          duration: firstTask?.duration || draft.todayContext.availableDuration || '20 分钟',
+        },
+      ],
+      resources: [
+        {
+          title: '使用当前最熟悉的一份入门资料',
+          url: '',
+          reason: 'AI 不可用时，先沿用你最容易开始的资料，避免今天停在准备阶段。',
+        },
+      ],
+      practice: [
+        {
+          title: '完成一个最小练习',
+          detail: '把今天的学习内容转成一个真实动作或脚本。',
+          output: '保留一份可运行结果或文字记录',
+        },
+      ],
+      generatedFromContext: {
+        availableDuration: draft.todayContext.availableDuration || '',
+        studyWindow: draft.todayContext.studyWindow || profile.bestStudyWindow || '',
+        note: draft.todayContext.note || '',
+      },
+    };
+  }
+
+  private normalizeTodayPlanResult(
+    result: AiDailyPlanGenerationResult,
+    fallbackDraft: LearningPlanDraft,
+    goal: AppState['goals'][number],
+    profile: UserProfile,
+  ): NonNullable<LearningPlanDraft['todayPlan']> {
+    return {
+      ...this.buildFallbackTodayPlan(goal, fallbackDraft, profile),
+      ...result.plan,
+      status: result.plan.status === 'stale' ? 'stale' : 'ready',
+      steps: result.plan.steps.map((step) => ({
+        title: step.title.trim(),
+        detail: step.detail.trim(),
+        duration: step.duration.trim(),
+      })),
+      resources: result.plan.resources.map((resource) => ({
+        title: resource.title.trim(),
+        url: resource.url.trim(),
+        reason: resource.reason.trim(),
+      })),
+      practice: result.plan.practice.map((item) => ({
+        title: item.title.trim(),
+        detail: item.detail.trim(),
+        output: item.output.trim(),
+      })),
+      generatedFromContext: {
+        availableDuration: result.plan.generatedFromContext.availableDuration.trim(),
+        studyWindow: result.plan.generatedFromContext.studyWindow.trim(),
+        note: result.plan.generatedFromContext.note.trim(),
+      },
+    };
+  }
+
   private normalizeLearningPlanDraft(draft: LearningPlanDraft, fallback: LearningPlanDraft): LearningPlanDraft {
     return {
       ...fallback,
@@ -931,6 +1102,14 @@ export class AppStorageService {
           progress: stage.progress.trim() || '未开始',
         }))
         .filter((stage) => stage.title || stage.outcome),
+      milestones: draft.milestones
+        .map((milestone) => ({
+          title: milestone.title.trim(),
+          focus: milestone.focus.trim(),
+          outcome: milestone.outcome.trim(),
+          status: milestone.status,
+        }))
+        .filter((milestone) => milestone.title || milestone.focus || milestone.outcome),
       tasks: draft.tasks
         .map((task, index) => ({
           ...task,
@@ -943,6 +1122,42 @@ export class AppStorageService {
           statusUpdatedAt: task.statusUpdatedAt,
         }))
         .filter((task) => task.title || task.note),
+      todayPlan: draft.todayPlan
+        ? {
+          ...draft.todayPlan,
+          date: draft.todayPlan.date.trim(),
+          todayGoal: draft.todayPlan.todayGoal.trim(),
+          deliverable: draft.todayPlan.deliverable.trim(),
+          estimatedDuration: draft.todayPlan.estimatedDuration.trim(),
+          milestoneRef: draft.todayPlan.milestoneRef.trim(),
+          steps: draft.todayPlan.steps.map((step) => ({
+            title: step.title.trim(),
+            detail: step.detail.trim(),
+            duration: step.duration.trim(),
+          })).filter((step) => step.title || step.detail),
+          resources: draft.todayPlan.resources.map((resource) => ({
+            title: resource.title.trim(),
+            url: resource.url.trim(),
+            reason: resource.reason.trim(),
+          })).filter((resource) => resource.title || resource.url),
+          practice: draft.todayPlan.practice.map((item) => ({
+            title: item.title.trim(),
+            detail: item.detail.trim(),
+            output: item.output.trim(),
+          })).filter((item) => item.title || item.detail || item.output),
+          generatedFromContext: {
+            availableDuration: draft.todayPlan.generatedFromContext.availableDuration.trim(),
+            studyWindow: draft.todayPlan.generatedFromContext.studyWindow.trim(),
+            note: draft.todayPlan.generatedFromContext.note.trim(),
+          },
+        }
+        : null,
+      todayContext: {
+        availableDuration: draft.todayContext.availableDuration.trim(),
+        studyWindow: draft.todayContext.studyWindow.trim(),
+        note: draft.todayContext.note.trim(),
+        updatedAt: draft.todayContext.updatedAt.trim(),
+      },
       updatedAt: new Date().toISOString(),
     };
   }
@@ -958,6 +1173,12 @@ export class AppStorageService {
         title: stage.title.trim(),
         outcome: stage.outcome.trim(),
         progress: stage.progress.trim() || '未开始',
+      })),
+      milestones: draft.milestones.map((milestone) => ({
+        title: milestone.title.trim(),
+        focus: milestone.focus.trim(),
+        outcome: milestone.outcome.trim(),
+        status: milestone.status,
       })),
       tasks: draft.tasks.map((task, index) => ({
         ...task,

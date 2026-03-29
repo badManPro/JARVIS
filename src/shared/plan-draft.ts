@@ -1,10 +1,12 @@
 import type {
   LearningGoal,
   LearningPlanDraft,
+  LearningPlanMilestone,
   LearningPlanSnapshot,
   LearningPlanState,
   UserProfile,
 } from './app-state.js';
+import { createEmptyTodayPlanningContext } from './app-state.js';
 
 type PlanDraftMode = 'initial' | 'regenerated';
 
@@ -14,6 +16,31 @@ export function buildDraftId(goalId: string) {
 
 function buildTaskId(goalId: string, index: number) {
   return `${goalId}-task-${index + 1}`;
+}
+
+function buildMilestones(goal: LearningGoal, profile: UserProfile): LearningPlanMilestone[] {
+  const windowHint = profile.bestStudyWindow || '你最容易稳定投入的学习窗口';
+
+  return [
+    {
+      title: '第 1 周：搭好基础环境并确认起点',
+      focus: `围绕「${goal.title}」先完成环境、工具或基础概念的最小闭环`,
+      outcome: `能在 ${windowHint} 内完成一次低阻力启动，并明确当前短板`,
+      status: 'current',
+    },
+    {
+      title: '第 2 周：完成一次关键链路练习',
+      focus: '把最核心的技术链路完整走通一次，避免长期停留在准备阶段',
+      outcome: '形成 1 个可运行、可验证的小成果',
+      status: 'upcoming',
+    },
+    {
+      title: '第 3 周：收束本轮最小成果',
+      focus: `围绕「${goal.successMetric}」收敛最小可交付物范围`,
+      outcome: '得到下一阶段可以持续推进的明确主线',
+      status: 'upcoming',
+    },
+  ];
 }
 
 export function createPlanDraft(goal: LearningGoal, profile: UserProfile, mode: PlanDraftMode = 'initial'): LearningPlanDraft {
@@ -47,11 +74,14 @@ export function createPlanDraft(goal: LearningGoal, profile: UserProfile, mode: 
       { title: '阶段 2：稳定推进', outcome: `围绕 ${goal.cycle} 周期保持稳定任务节奏`, progress: '未开始' },
       { title: '阶段 3：验证达成', outcome: `用“${goal.successMetric}”检验目标结果`, progress: '未开始' },
     ],
+    milestones: buildMilestones(goal, profile),
     tasks: [
-      { id: buildTaskId(goal.id, 0), title: `拆解「${goal.title}」的最小行动`, duration: '20 分钟', status: 'todo', note: '把目标变成一周内可以直接开始的动作。' },
-      { id: buildTaskId(goal.id, 1), title: '安排本周第一次执行窗口', duration: '10 分钟', status: 'todo', note: `优先利用 ${profile.bestStudyWindow}。` },
-      { id: buildTaskId(goal.id, 2), title: '完成一次真实练习并记录反馈', duration: '30-45 分钟', status: 'todo', note: '先形成执行闭环，再考虑进一步精细化。' },
+      { id: buildTaskId(goal.id, 0), title: '安装并验证本地学习环境', duration: '20 分钟', status: 'todo', note: '先把工具和运行方式确认好，避免一开始卡在环境问题。' },
+      { id: buildTaskId(goal.id, 1), title: '完成 2 个最基础概念练习', duration: '30 分钟', status: 'todo', note: `优先选择能在 ${profile.bestStudyWindow || '当前学习窗口'} 内完成的小练习。` },
+      { id: buildTaskId(goal.id, 2), title: '记录一版本周最小成果目标', duration: '15 分钟', status: 'todo', note: '写清楚这周要交付什么，避免只学不落地。' },
     ],
+    todayPlan: null,
+    todayContext: createEmptyTodayPlanningContext(),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -69,6 +99,9 @@ export function ensurePlanDrafts(goals: LearningGoal[], planState: LearningPlanS
       ...existingDraft,
       goalId: goal.id,
       title: nextTitle,
+      milestones: existingDraft.milestones?.length ? existingDraft.milestones : buildMilestones(goal, profile),
+      todayPlan: existingDraft.todayPlan ?? null,
+      todayContext: existingDraft.todayContext ?? createEmptyTodayPlanningContext(),
     };
   });
 
@@ -105,6 +138,7 @@ export function createPlanSnapshot(draft: LearningPlanDraft, version: number, cr
     summary: draft.summary,
     basis: [...draft.basis],
     stages: draft.stages.map((stage) => ({ ...stage })),
+    milestones: draft.milestones.map((milestone) => ({ ...milestone })),
     tasks: draft.tasks.map((task) => ({ ...task })),
     createdAt,
   };

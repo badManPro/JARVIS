@@ -90,3 +90,51 @@ test('OpenAiCompatibleProviderAdapter includes reflection context in plan adjust
   assert.match(prompt, /当前阶段的主要偏差来自临时事务打断/);
   assert.match(prompt, /把每次任务压缩到 30-45 分钟/);
 });
+
+test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan generation requests', async () => {
+  let requestBody: { messages?: Array<{ content?: string }> } = {};
+  const adapter = new OpenAiCompatibleProviderAdapter({
+    fetchFn: async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: '{"date":"2026-03-29","status":"ready","todayGoal":"完成 Python 虚拟环境和 print/input 语法入门","deliverable":"一个可运行的 hello_cli.py","estimatedDuration":"30 分钟","milestoneRef":"第 1 周：搭好 Python 本地环境","steps":[{"title":"安装并验证 Python 环境","detail":"安装 Python 3.12 并验证 python3 --version","duration":"10 分钟"}],"resources":[{"title":"Python 官方教程","url":"https://docs.python.org/3/tutorial/index.html","reason":"先看官方最小入门"}],"practice":[{"title":"完成 2 个基础输入输出练习","detail":"练习 print、input、变量拼接","output":"提交 1 个可运行脚本"}],"generatedFromContext":{"availableDuration":"今天 30 分钟","studyWindow":"今晚 20:30 - 21:00","note":"今天只想先完成环境和最基础语法"}}',
+              },
+            },
+          ],
+        }),
+      } as unknown as Response;
+    },
+  });
+
+  const result = await adapter.execute({
+    provider: createProvider(),
+    request: {
+      capability: 'daily_plan_generation',
+      goal: seedState.goals[0],
+      profile: seedState.profile,
+      currentDraft: seedState.plan.drafts[0],
+      todayContext: {
+        availableDuration: '今天 30 分钟',
+        studyWindow: '今晚 20:30 - 21:00',
+        note: '今天只想先完成环境和最基础语法',
+        updatedAt: '2026-03-29T10:00:00.000Z',
+      },
+    },
+  });
+
+  const prompt = requestBody.messages?.[1]?.content ?? '';
+  assert.equal(result.capability, 'daily_plan_generation');
+  assert.match(prompt, /时间块/);
+  assert.match(prompt, /学习步骤/);
+  assert.match(prompt, /资源/);
+  assert.match(prompt, /练习/);
+  assert.match(prompt, /今日产出/);
+  assert.match(prompt, /今天 30 分钟/);
+  assert.equal(result.plan.todayGoal, '完成 Python 虚拟环境和 print/input 语法入门');
+  assert.equal(result.plan.resources[0]?.title, 'Python 官方教程');
+});

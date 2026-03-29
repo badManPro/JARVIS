@@ -50,6 +50,9 @@ export const learningPlanDrafts = sqliteTable('learning_plan_drafts', {
   title: text('title').notNull(),
   summary: text('summary').notNull(),
   basisJson: text('basis_json').notNull(),
+  milestonesJson: text('milestones_json').notNull(),
+  todayPlanJson: text('today_plan_json').notNull(),
+  todayContextJson: text('today_context_json').notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -85,6 +88,7 @@ export const learningPlanSnapshots = sqliteTable('learning_plan_snapshots', {
   title: text('title').notNull(),
   summary: text('summary').notNull(),
   basisJson: text('basis_json').notNull(),
+  milestonesJson: text('milestones_json').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 

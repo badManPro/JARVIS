@@ -6,6 +6,7 @@ import { OpenAiCompatibleProviderAdapter } from './openai-compatible-provider-ad
 const capabilityRouteKeyMap = {
   profile_extraction: 'profileExtraction',
   plan_generation: 'planGeneration',
+  daily_plan_generation: 'planGeneration',
   plan_adjustment: 'planAdjustment',
   reflection_summary: 'reflectionSummary',
   chat_general: 'generalChat',

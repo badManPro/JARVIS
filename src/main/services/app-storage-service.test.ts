@@ -15,6 +15,14 @@ import { ProviderSecretRepository } from '../repositories/provider-secret-reposi
 import { SettingsRepository } from '../repositories/settings-repository.js';
 import { AppStorageService } from './app-storage-service.js';
 
+function createTestMilestones() {
+  return [
+    { title: '第 1 周：搭好 Python 本地环境', focus: '完成环境与最小脚本', outcome: '可以运行 hello_cli.py', status: 'current' as const },
+    { title: '第 2 周：打通一次模型调用', focus: '完成 API 请求与结果解析', outcome: '返回结构化模型结果', status: 'upcoming' as const },
+    { title: '第 3 周：收束 MVP 范围', focus: '确定本轮最小功能', outcome: '得到可实现的 MVP 清单', status: 'upcoming' as const },
+  ];
+}
+
 function cloneState(overrides?: Partial<AppState>): AppState {
   return {
     ...JSON.parse(JSON.stringify(seedState)) as AppState,
@@ -26,6 +34,7 @@ function createRuntimeSummary(settings: AppState['settings']): AiRuntimeSummaryI
   const routes: Array<AiRuntimeSummaryItem['capability']> = [
     'profile_extraction',
     'plan_generation',
+    'daily_plan_generation',
     'plan_adjustment',
     'reflection_summary',
     'chat_general',
@@ -34,6 +43,7 @@ function createRuntimeSummary(settings: AppState['settings']): AiRuntimeSummaryI
   const routeKeyByCapability = {
     profile_extraction: 'profileExtraction',
     plan_generation: 'planGeneration',
+    daily_plan_generation: 'planGeneration',
     plan_adjustment: 'planAdjustment',
     reflection_summary: 'reflectionSummary',
     chat_general: 'generalChat',
@@ -676,6 +686,7 @@ test('regenerateLearningPlanDraft archives the current draft and replaces it wit
             { title: '阶段 1', outcome: '梳理能力边界', progress: '未开始' },
             { title: '阶段 2', outcome: '接入主进程入口', progress: '未开始' },
           ],
+          milestones: createTestMilestones(),
           tasks: [
             { title: '补 capability bridge', duration: '30 分钟', note: '先打通 bridge', status: 'todo' },
             { title: '验证 AI 输出落库', duration: '45 分钟', note: '覆盖草案和快照', status: 'todo' },
@@ -737,6 +748,7 @@ test('completeInitialOnboarding persists AI-generated goal, profile, and plan su
             { title: '阶段 1', outcome: '明确 MVP 范围', progress: '未开始' },
             { title: '阶段 2', outcome: '完成一次端到端实现', progress: '未开始' },
           ],
+          milestones: createTestMilestones(),
           tasks: [
             { title: '列出 MVP 功能清单', duration: '25 分钟', note: '先收束到可演示功能。', status: 'todo' },
             { title: '补 Python 调用链路', duration: '45 分钟', note: '打通最小闭环。', status: 'todo' },
@@ -763,6 +775,9 @@ test('completeInitialOnboarding persists AI-generated goal, profile, and plan su
   assert.equal(activeGoal?.baseline, payload.baseline);
   assert.equal(activeDraft?.title, 'AI 生成的 Python + AI 路径');
   assert.equal(activeDraft?.tasks[0]?.title, '列出 MVP 功能清单');
+  assert.equal(activeDraft?.milestones.length, 3);
+  assert.match(activeDraft?.milestones[0]?.title ?? '', /第 1 周/);
+  assert.equal(activeDraft?.todayPlan, null);
   assert.equal(result.summary.goalTitle, payload.goalTitle);
   assert.equal(result.summary.firstTaskTitle, '列出 MVP 功能清单');
   assert.equal(result.summary.personaHighlights.some((item) => item.includes(payload.timeBudget)), true);
@@ -801,11 +816,107 @@ test('completeInitialOnboarding falls back to a template draft when AI plan gene
   assert.match(result.fallbackReason ?? '', /缺少 Secret/);
   assert.ok(activeDraft);
   assert.equal(activeDraft.title, 'Python + AI 应用开发 · 首版计划草案');
+  assert.ok(activeDraft.milestones.length >= 3);
+  assert.match(activeDraft.milestones[0]?.title ?? '', /第 1 周/);
+  assert.equal(activeDraft.todayPlan, null);
   assert.equal(activeDraft.tasks.length, 3);
   assert.equal(
     result.state.settings.providers.find((provider) => provider.id === 'deepseek')?.healthStatus,
     'warning',
   );
+});
+
+test('saveTodayPlanningContext stores daily-only overrides without mutating the long-term profile and marks the current daily plan stale', () => {
+  const { service } = createHarness();
+  const initialState = service.initialize();
+
+  const seededDraft = {
+    ...initialState.plan.drafts[0],
+    todayPlan: {
+      date: '2026-03-29',
+      status: 'ready' as const,
+      todayGoal: '完成 Python 环境安装',
+      deliverable: '跑通 hello_cli.py',
+      estimatedDuration: '45 分钟',
+      milestoneRef: '第 1 周：搭好 Python 本地环境',
+      steps: [{ title: '安装 Python', detail: '确认 python3 --version', duration: '10 分钟' }],
+      resources: [{ title: 'Python 官网', url: 'https://www.python.org/', reason: '下载 Python' }],
+      practice: [{ title: '写 hello_cli.py', detail: '完成输入输出最小脚本', output: '可运行脚本' }],
+      generatedFromContext: {
+        availableDuration: initialState.profile.timeBudget,
+        studyWindow: initialState.profile.bestStudyWindow,
+        note: '',
+      },
+    },
+  };
+
+  service.saveLearningPlanDraft(seededDraft);
+  const nextState = service.saveTodayPlanningContext({
+    goalId: initialState.plan.activeGoalId,
+    availableDuration: '今天 30 分钟',
+    studyWindow: '今晚 20:30 - 21:00',
+    note: '今天只先完成环境安装',
+  });
+
+  const activeDraft = nextState.plan.drafts.find((draft) => draft.goalId === nextState.plan.activeGoalId);
+  assert.ok(activeDraft);
+  assert.equal(activeDraft?.todayContext.availableDuration, '今天 30 分钟');
+  assert.equal(activeDraft?.todayContext.studyWindow, '今晚 20:30 - 21:00');
+  assert.equal(activeDraft?.todayContext.note, '今天只先完成环境安装');
+  assert.equal(activeDraft?.todayPlan?.status, 'stale');
+  assert.equal(nextState.profile.timeBudget, seedState.profile.timeBudget);
+  assert.equal(nextState.profile.bestStudyWindow, seedState.profile.bestStudyWindow);
+});
+
+test('generateTodayPlan stores a structured daily plan under the active rough draft', async () => {
+  const executeCalls: AiRequest[] = [];
+  const { service } = createHarness({
+    aiExecute: async (_settings, request) => {
+      executeCalls.push(request);
+      return {
+        capability: 'daily_plan_generation',
+        providerId: 'deepseek',
+        providerLabel: 'DeepSeek',
+        model: 'deepseek-chat',
+        plan: {
+          date: '2026-03-29',
+          status: 'ready',
+          todayGoal: '完成 Python 环境安装与最小语法热身',
+          deliverable: '一个可运行的 hello_cli.py',
+          estimatedDuration: '30 分钟',
+          milestoneRef: '第 1 周：搭好 Python 本地环境',
+          steps: [{ title: '安装并验证 Python', detail: '确认 python3 --version', duration: '10 分钟' }],
+          resources: [{ title: 'Python 官方教程', url: 'https://docs.python.org/3/tutorial/index.html', reason: '先看官方最小入门' }],
+          practice: [{ title: '完成 2 个输入输出练习', detail: '练习 print、input、变量', output: '可运行脚本' }],
+          generatedFromContext: {
+            availableDuration: '今天 30 分钟',
+            studyWindow: '今晚 20:30 - 21:00',
+            note: '今天先完成最小闭环',
+          },
+        },
+      };
+    },
+  });
+
+  const initialState = service.initialize();
+  service.saveTodayPlanningContext({
+    goalId: initialState.plan.activeGoalId,
+    availableDuration: '今天 30 分钟',
+    studyWindow: '今晚 20:30 - 21:00',
+    note: '今天先完成最小闭环',
+  });
+
+  const nextState = await service.generateTodayPlan({
+    goalId: initialState.plan.activeGoalId,
+  });
+
+  const activeDraft = nextState.plan.drafts.find((draft) => draft.goalId === nextState.plan.activeGoalId);
+  assert.equal(executeCalls.length, 1);
+  assert.equal(executeCalls[0]?.capability, 'daily_plan_generation');
+  assert.equal(activeDraft?.todayPlan?.status, 'ready');
+  assert.equal(activeDraft?.todayPlan?.todayGoal, '完成 Python 环境安装与最小语法热身');
+  assert.equal(activeDraft?.todayPlan?.resources[0]?.title, 'Python 官方教程');
+  assert.equal(activeDraft?.todayPlan?.generatedFromContext.availableDuration, '今天 30 分钟');
 });
 
 test('completeInitialOnboarding rolls back profile, goal, and plan writes when persistence fails', async () => {
@@ -837,6 +948,7 @@ test('completeInitialOnboarding rolls back profile, goal, and plan writes when p
         summary: '验证首次建档失败时不会留下半成品。',
         basis: ['失败回滚测试'],
         stages: [{ title: '阶段 1', outcome: '验证失败回滚', progress: '未开始' }],
+        milestones: createTestMilestones(),
         tasks: [{ title: '检查回滚', duration: '20 分钟', note: '确认没有脏状态', status: 'todo' }],
       },
     }),
@@ -871,6 +983,7 @@ test('regenerateLearningPlanDraft rolls back archived snapshot and draft replace
         summary: '如果事务缺失，这版草案会留下半完成状态。',
         basis: ['验证事务回滚'],
         stages: [{ title: '阶段 1', outcome: '验证回滚', progress: '未开始' }],
+        milestones: createTestMilestones(),
         tasks: [{ title: '检查回滚', duration: '20 分钟', note: '确认旧草案仍保留', status: 'todo' }],
       },
     }),
@@ -1204,6 +1317,7 @@ test('regenerateLearningPlanDraft marks the routed provider as ready after a suc
         summary: 'Provider 调用成功后回写 ready。',
         basis: ['健康状态应更新'],
         stages: [{ title: '阶段 1', outcome: '验证回写', progress: '未开始' }],
+        milestones: createTestMilestones(),
         tasks: [{ title: '执行一次成功调用', duration: '20 分钟', note: '检查 healthStatus', status: 'todo' }],
       },
     }),
@@ -1227,6 +1341,7 @@ test('regenerateLearningPlanDraft records a success request log in observability
         summary: '验证成功日志会写入 observability。',
         basis: ['记录 capability 调用元数据'],
         stages: [{ title: '阶段 1', outcome: '写入 success 日志', progress: '未开始' }],
+        milestones: createTestMilestones(),
         tasks: [{ title: '查看 observability', duration: '15 分钟', note: '检查最近请求列表', status: 'todo' }],
       },
     }),
@@ -1296,6 +1411,6 @@ test('getAiObservability returns zeroed summary before any capability request ru
   assert.equal(snapshot.successCount, 0);
   assert.equal(snapshot.failureCount, 0);
   assert.equal(snapshot.recentRequests.length, 0);
-  assert.equal(snapshot.capabilitySummaries.length, 5);
+  assert.equal(snapshot.capabilitySummaries.length, 6);
   assert.equal(snapshot.capabilitySummaries.every((item) => item.totalRequests === 0), true);
 });

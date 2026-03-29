@@ -19,7 +19,7 @@ function createTempDbFile() {
 test('createDatabase sets the latest schema version for a fresh database', () => {
   const { sqlite } = createDatabase(':memory:');
 
-  assert.equal(getSchemaVersion(sqlite), 3);
+  assert.equal(getSchemaVersion(sqlite), 4);
 
   sqlite.close();
 });
@@ -56,10 +56,11 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
 
   const migrated = createDatabase(dbFilePath).sqlite;
   const planTaskColumns = migrated.prepare('PRAGMA table_info(plan_tasks)').all() as Array<{ name: string }>;
+  const learningPlanDraftColumns = migrated.prepare('PRAGMA table_info(learning_plan_drafts)').all() as Array<{ name: string }>;
   const learningPlanColumns = migrated.prepare('PRAGMA table_info(learning_plans)').all() as Array<{ name: string }>;
   const userProfileColumns = migrated.prepare('PRAGMA table_info(user_profiles)').all() as Array<{ name: string }>;
 
-  assert.equal(getSchemaVersion(migrated), 3);
+  assert.equal(getSchemaVersion(migrated), 4);
   assert.deepEqual(
     planTaskColumns.map((column) => column.name).sort(),
     [
@@ -72,6 +73,20 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
       'status_note',
       'status_updated_at',
       'title',
+      'updated_at',
+    ].sort(),
+  );
+  assert.deepEqual(
+    learningPlanDraftColumns.map((column) => column.name).sort(),
+    [
+      'basis_json',
+      'goal_id',
+      'id',
+      'milestones_json',
+      'summary',
+      'title',
+      'today_context_json',
+      'today_plan_json',
       'updated_at',
     ].sort(),
   );

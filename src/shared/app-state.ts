@@ -6,6 +6,7 @@ export type HealthStatus = 'unknown' | 'ready' | 'warning';
 export type ModelCapability =
   | 'profile_extraction'
   | 'plan_generation'
+  | 'daily_plan_generation'
   | 'plan_adjustment'
   | 'reflection_summary'
   | 'chat_general';
@@ -74,6 +75,59 @@ export type LearningPlanStage = {
   progress: string;
 };
 
+export type LearningPlanMilestoneStatus = 'current' | 'upcoming' | 'completed';
+
+export type LearningPlanMilestone = {
+  title: string;
+  focus: string;
+  outcome: string;
+  status: LearningPlanMilestoneStatus;
+};
+
+export type TodayPlanningContext = {
+  availableDuration: string;
+  studyWindow: string;
+  note: string;
+  updatedAt: string;
+};
+
+export type GeneratedTodayPlanContext = {
+  availableDuration: string;
+  studyWindow: string;
+  note: string;
+};
+
+export type TodayPlanStep = {
+  title: string;
+  detail: string;
+  duration: string;
+};
+
+export type TodayPlanResource = {
+  title: string;
+  url: string;
+  reason: string;
+};
+
+export type TodayPlanPractice = {
+  title: string;
+  detail: string;
+  output: string;
+};
+
+export type TodayPlan = {
+  date: string;
+  status: 'ready' | 'stale';
+  todayGoal: string;
+  deliverable: string;
+  estimatedDuration: string;
+  milestoneRef: string;
+  steps: TodayPlanStep[];
+  resources: TodayPlanResource[];
+  practice: TodayPlanPractice[];
+  generatedFromContext: GeneratedTodayPlanContext;
+};
+
 export type LearningPlanDraft = {
   id: string;
   goalId: string;
@@ -81,7 +135,10 @@ export type LearningPlanDraft = {
   summary: string;
   basis: string[];
   stages: LearningPlanStage[];
+  milestones: LearningPlanMilestone[];
   tasks: PlanTask[];
+  todayPlan: TodayPlan | null;
+  todayContext: TodayPlanningContext;
   updatedAt?: string;
 };
 
@@ -97,6 +154,7 @@ export type LearningPlanSnapshot = {
   summary: string;
   basis: string[];
   stages: LearningPlanStage[];
+  milestones: LearningPlanMilestone[];
   tasks: PlanTask[];
   createdAt: string;
 };
@@ -220,6 +278,17 @@ export type UpdatePlanTaskStatusInput = {
   statusNote?: string;
 };
 
+export type SaveTodayPlanningContextInput = {
+  goalId: string;
+  availableDuration: string;
+  studyWindow: string;
+  note: string;
+};
+
+export type GenerateTodayPlanInput = {
+  goalId: string;
+};
+
 export type DashboardPriorityActionKind = 'continue' | 'start' | 'review';
 export type DashboardRiskLevel = 'high' | 'medium' | 'low';
 export type DashboardOnboardingStepStatus = 'complete' | 'current' | 'pending';
@@ -335,6 +404,15 @@ export function createEmptyUserProfile(): UserProfile {
   };
 }
 
+export function createEmptyTodayPlanningContext(): TodayPlanningContext {
+  return {
+    availableDuration: '',
+    studyWindow: '',
+    note: '',
+    updatedAt: '',
+  };
+}
+
 export function normalizeUserProfile(profile?: Partial<UserProfile> | null): UserProfile {
   const fallback = createEmptyUserProfile();
 
@@ -370,11 +448,11 @@ const reflectionPeriodLabels = {
 } satisfies Record<ReflectionPeriod, string>;
 
 const defaultProviderConfigs: ProviderConfig[] = [
-  { id: 'openai', label: 'OpenAI / GPT', enabled: true, endpoint: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', authMode: 'apiKey', capabilityTags: ['profile_extraction', 'plan_generation', 'chat_general'], healthStatus: 'ready', keyPreview: '未配置', hasSecret: false },
-  { id: 'codex', label: 'OpenAI / Codex', enabled: false, endpoint: '', model: 'gpt-5.2-codex', authMode: 'none', capabilityTags: ['profile_extraction', 'plan_generation', 'plan_adjustment', 'reflection_summary', 'chat_general'], healthStatus: 'unknown', keyPreview: '无需 Secret', hasSecret: false },
+  { id: 'openai', label: 'OpenAI / GPT', enabled: true, endpoint: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', authMode: 'apiKey', capabilityTags: ['profile_extraction', 'plan_generation', 'daily_plan_generation', 'chat_general'], healthStatus: 'ready', keyPreview: '未配置', hasSecret: false },
+  { id: 'codex', label: 'OpenAI / Codex', enabled: false, endpoint: '', model: 'gpt-5.2-codex', authMode: 'none', capabilityTags: ['profile_extraction', 'plan_generation', 'daily_plan_generation', 'plan_adjustment', 'reflection_summary', 'chat_general'], healthStatus: 'unknown', keyPreview: '无需 Secret', hasSecret: false },
   { id: 'glm', label: 'Zhipu / GLM', enabled: false, endpoint: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.5', authMode: 'apiKey', capabilityTags: ['plan_adjustment', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
   { id: 'kimi', label: 'Moonshot / Kimi', enabled: false, endpoint: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k', authMode: 'apiKey', capabilityTags: ['chat_general', 'reflection_summary'], healthStatus: 'unknown', keyPreview: '未配置', hasSecret: false },
-  { id: 'deepseek', label: 'DeepSeek', enabled: false, endpoint: 'https://api.deepseek.com', model: 'deepseek-chat', authMode: 'apiKey', capabilityTags: ['plan_generation', 'plan_adjustment'], healthStatus: 'warning', keyPreview: '未配置', hasSecret: false },
+  { id: 'deepseek', label: 'DeepSeek', enabled: false, endpoint: 'https://api.deepseek.com', model: 'deepseek-chat', authMode: 'apiKey', capabilityTags: ['plan_generation', 'daily_plan_generation', 'plan_adjustment'], healthStatus: 'warning', keyPreview: '未配置', hasSecret: false },
 ];
 
 const defaultRouting = {
@@ -497,6 +575,94 @@ function normalizePlanTask(task: PlanTask): PlanTask {
     status: normalizeTaskStatus(task.status),
     statusNote: task.statusNote?.trim() ?? '',
     statusUpdatedAt: task.statusUpdatedAt,
+  };
+}
+
+function normalizeMilestoneStatus(status?: string): LearningPlanMilestoneStatus {
+  switch (status) {
+    case 'current':
+    case 'upcoming':
+    case 'completed':
+      return status;
+    default:
+      return 'upcoming';
+  }
+}
+
+function normalizeLearningPlanMilestone(milestone: LearningPlanMilestone): LearningPlanMilestone {
+  return {
+    title: milestone.title.trim(),
+    focus: milestone.focus.trim(),
+    outcome: milestone.outcome.trim(),
+    status: normalizeMilestoneStatus(milestone.status),
+  };
+}
+
+function normalizeTodayPlanningContext(context?: Partial<TodayPlanningContext> | null): TodayPlanningContext {
+  const fallback = createEmptyTodayPlanningContext();
+
+  return {
+    ...fallback,
+    ...context,
+    availableDuration: context?.availableDuration?.trim() ?? fallback.availableDuration,
+    studyWindow: context?.studyWindow?.trim() ?? fallback.studyWindow,
+    note: context?.note?.trim() ?? fallback.note,
+    updatedAt: context?.updatedAt?.trim() ?? fallback.updatedAt,
+  };
+}
+
+function normalizeGeneratedTodayPlanContext(context?: Partial<GeneratedTodayPlanContext> | null): GeneratedTodayPlanContext {
+  return {
+    availableDuration: context?.availableDuration?.trim() ?? '',
+    studyWindow: context?.studyWindow?.trim() ?? '',
+    note: context?.note?.trim() ?? '',
+  };
+}
+
+function normalizeTodayPlanStatus(status?: string): TodayPlan['status'] {
+  switch (status) {
+    case 'ready':
+    case 'stale':
+      return status;
+    default:
+      return 'ready';
+  }
+}
+
+function normalizeTodayPlan(plan?: Partial<TodayPlan> | null): TodayPlan | null {
+  if (!plan) {
+    return null;
+  }
+
+  return {
+    date: plan.date?.trim() ?? '',
+    status: normalizeTodayPlanStatus(plan.status),
+    todayGoal: plan.todayGoal?.trim() ?? '',
+    deliverable: plan.deliverable?.trim() ?? '',
+    estimatedDuration: plan.estimatedDuration?.trim() ?? '',
+    milestoneRef: plan.milestoneRef?.trim() ?? '',
+    steps: Array.isArray(plan.steps)
+      ? plan.steps.map((step) => ({
+        title: step.title.trim(),
+        detail: step.detail.trim(),
+        duration: step.duration.trim(),
+      })).filter((step) => step.title || step.detail)
+      : [],
+    resources: Array.isArray(plan.resources)
+      ? plan.resources.map((resource) => ({
+        title: resource.title.trim(),
+        url: resource.url.trim(),
+        reason: resource.reason.trim(),
+      })).filter((resource) => resource.title || resource.url)
+      : [],
+    practice: Array.isArray(plan.practice)
+      ? plan.practice.map((item) => ({
+        title: item.title.trim(),
+        detail: item.detail.trim(),
+        output: item.output.trim(),
+      })).filter((item) => item.title || item.detail || item.output)
+      : [],
+    generatedFromContext: normalizeGeneratedTodayPlanContext(plan.generatedFromContext),
   };
 }
 
@@ -804,13 +970,94 @@ function buildReflectionEntry(period: ReflectionPeriod, tasks: PlanTask[], manua
   };
 }
 
+function getCalendarDate(now: Date) {
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function getTodayPlanState(draft: LearningPlanDraft | null, now: Date) {
+  if (!draft?.todayPlan) {
+    return {
+      status: 'missing' as const,
+      plan: null,
+    };
+  }
+
+  if (draft.todayPlan.status === 'stale') {
+    return {
+      status: 'stale' as const,
+      plan: draft.todayPlan,
+    };
+  }
+
+  if (draft.todayPlan.date !== getCalendarDate(now)) {
+    return {
+      status: 'missing' as const,
+      plan: draft.todayPlan,
+    };
+  }
+
+  return {
+    status: 'ready' as const,
+    plan: draft.todayPlan,
+  };
+}
+
 function buildPriorityAction(
+  draft: LearningPlanDraft | null,
   focusTask: PlanTask | null,
   stageTitle: string,
   summary: ReturnType<typeof buildTaskStatusSummary>,
   defaultReflectionEntry: ReflectionEntry,
   onboarding: DashboardOnboardingState,
+  conversationTags: string[],
+  now: Date,
 ): DashboardPriorityAction {
+  const todayPlanState = getTodayPlanState(draft, now);
+
+  if (conversationTags.includes(ROUGH_PLAN_STALE_TAG)) {
+    return {
+      kind: 'review',
+      title: '重新生成粗版计划',
+      detail: '最近的目标方向发生变化，当前周里程碑与关键节点需要重新整理。',
+      reason: '先更新长期粗版路径，再生成今天的细化安排，避免今天的动作建立在过期主线上。',
+      duration: '10 分钟',
+    };
+  }
+
+  if (!onboarding.active && todayPlanState.status === 'stale') {
+    return {
+      kind: 'review',
+      title: '重新生成今日计划',
+      detail: '仅今天有效的时间块或节奏已变化，旧的学习步骤、资源和练习建议已过期。',
+      reason: '先按当天上下文重排，再开始执行，可以减少计划与现实的落差。',
+      duration: draft?.todayContext.availableDuration || todayPlanState.plan?.estimatedDuration || '10 分钟',
+    };
+  }
+
+  if (!onboarding.active && todayPlanState.status === 'missing') {
+    return {
+      kind: 'start',
+      title: '生成今日计划',
+      detail: '先根据仅今天有效的时间块，生成学习步骤、资源、练习和今日产出。',
+      reason: '粗版路径已经准备好，但今天的细版执行安排仍未生成。',
+      duration: draft?.todayContext.availableDuration || '10 分钟',
+    };
+  }
+
+  if (!onboarding.active && todayPlanState.status === 'ready' && todayPlanState.plan) {
+    return {
+      kind: 'start',
+      title: `开始今日计划：${todayPlanState.plan.todayGoal}`,
+      detail: todayPlanState.plan.deliverable || todayPlanState.plan.steps[0]?.detail || `当前阶段：${stageTitle}`,
+      reason: '今天的详细计划已经准备好，先按当前时间块推进最小可交付成果。',
+      duration: todayPlanState.plan.estimatedDuration || '30 分钟',
+    };
+  }
+
   if (focusTask) {
     const isInProgress = focusTask.status === 'in_progress';
     return {
@@ -1077,7 +1324,7 @@ function buildExecutionDerivedState(state: AppState) {
   });
   const defaultReflectionEntry = reflectionEntries.find((entry) => entry.period === DEFAULT_REFLECTION_PERIOD) ?? reflectionEntries[0] ?? createEmptyReflectionEntry(DEFAULT_REFLECTION_PERIOD);
   const onboarding = buildDashboardOnboarding(state, activeDraft, recentTaskExecutions);
-  const priorityAction = buildPriorityAction(focusTask, stageTitle, summary, defaultReflectionEntry, onboarding);
+  const priorityAction = buildPriorityAction(activeDraft, focusTask, stageTitle, summary, defaultReflectionEntry, onboarding, state.conversation.tags, now);
   const riskSignals = buildDashboardRiskSignals(summary, reflectionEntries, priorityAction, onboarding);
   const alerts = riskSignals.map((signal) => `${signal.title}：${signal.detail}`);
   const nextActions = onboarding.active && !summary.total
@@ -1190,7 +1437,18 @@ function cloneLearningPlanDraft(draft: LearningPlanDraft): LearningPlanDraft {
     ...draft,
     basis: [...draft.basis],
     stages: draft.stages.map((stage) => ({ ...stage })),
+    milestones: draft.milestones.map((milestone) => ({ ...milestone })),
     tasks: draft.tasks.map((task) => ({ ...task })),
+    todayPlan: draft.todayPlan
+      ? {
+        ...draft.todayPlan,
+        steps: draft.todayPlan.steps.map((step) => ({ ...step })),
+        resources: draft.todayPlan.resources.map((resource) => ({ ...resource })),
+        practice: draft.todayPlan.practice.map((item) => ({ ...item })),
+        generatedFromContext: { ...draft.todayPlan.generatedFromContext },
+      }
+      : null,
+    todayContext: { ...draft.todayContext },
   };
 }
 
@@ -1990,6 +2248,79 @@ export function resolveConversationState(
   };
 }
 
+export const ROUGH_PLAN_STALE_TAG = 'rough-plan-stale';
+
+function extractTemporaryAvailableDuration(content: string) {
+  const explicit = content.match(/(?:今天|今日|今晚|本周|只剩|只有|减半到?|压缩到?)\s*(\d+\s*(?:分钟|小时))/);
+  if (explicit?.[1]) {
+    return explicit[1].replace(/\s+/g, ' ').trim();
+  }
+
+  const general = content.match(/(\d+\s*(?:分钟|小时))/);
+  return general?.[1]?.replace(/\s+/g, ' ').trim() ?? null;
+}
+
+function inferChangeImpact(content: string) {
+  const roughPlanStale = /(目标|方向|主题|想学|改学|换成|主线)/.test(content);
+  const todayPlanStale = roughPlanStale || /(时间|时长|分钟|小时|窗口|早上|上午|晚间|晚上|节奏|今天|今日|今晚)/.test(content);
+
+  return {
+    roughPlanStale,
+    todayPlanStale,
+  };
+}
+
+function applyConversationChangeImpact(state: AppState, content: string) {
+  const impact = inferChangeImpact(content);
+  if (!impact.roughPlanStale && !impact.todayPlanStale) {
+    return state;
+  }
+
+  const changedAt = new Date().toISOString();
+  const nextDrafts = state.plan.drafts.map((draft) => {
+    if (draft.goalId !== state.plan.activeGoalId) {
+      return cloneLearningPlanDraft(draft);
+    }
+
+    const nextTodayContext = normalizeTodayPlanningContext({
+      ...draft.todayContext,
+      availableDuration: extractTemporaryAvailableDuration(content) ?? draft.todayContext.availableDuration,
+      studyWindow: extractStudyWindow(content) ?? draft.todayContext.studyWindow,
+      note: content,
+      updatedAt: changedAt,
+    });
+
+    return cloneLearningPlanDraft({
+      ...draft,
+      todayPlan: impact.todayPlanStale && draft.todayPlan
+        ? {
+          ...draft.todayPlan,
+          status: 'stale',
+        }
+        : draft.todayPlan,
+      todayContext: nextTodayContext,
+      updatedAt: changedAt,
+    });
+  });
+
+  const nextTags = dedupeStrings([
+    ...state.conversation.tags,
+    ...(impact.roughPlanStale ? [ROUGH_PLAN_STALE_TAG] : []),
+  ]);
+
+  return {
+    ...state,
+    plan: {
+      ...state.plan,
+      drafts: nextDrafts,
+    },
+    conversation: {
+      ...state.conversation,
+      tags: nextTags,
+    },
+  };
+}
+
 export function updateConversationActionPreviewReview(
   conversation: AppState['conversation'],
   payload: {
@@ -2028,17 +2359,20 @@ export function appendConversationMessage(
     return state;
   }
 
+  const stateWithImpact = payload.role === 'user'
+    ? applyConversationChangeImpact(state, content)
+    : state;
   const nextConversation = resolveConversationState({
-    profile: state.profile,
-    goals: state.goals,
-    plan: state.plan,
-    settings: state.settings,
+    profile: stateWithImpact.profile,
+    goals: stateWithImpact.goals,
+    plan: stateWithImpact.plan,
+    settings: stateWithImpact.settings,
     conversation: {
-      ...state.conversation,
+      ...stateWithImpact.conversation,
       messages: [
-        ...state.conversation.messages,
+        ...stateWithImpact.conversation.messages,
         {
-          id: payload.id?.trim() || `message-${Date.now()}-${state.conversation.messages.length + 1}`,
+          id: payload.id?.trim() || `message-${Date.now()}-${stateWithImpact.conversation.messages.length + 1}`,
           role: payload.role,
           content,
         },
@@ -2047,7 +2381,7 @@ export function appendConversationMessage(
   });
 
   return {
-    ...state,
+    ...stateWithImpact,
     conversation: nextConversation,
   };
 }
@@ -2062,6 +2396,7 @@ export function applyAcceptedConversationActionPreviews(state: AppState): ApplyC
       ...snapshot,
       basis: [...snapshot.basis],
       stages: snapshot.stages.map((stage) => ({ ...stage })),
+      milestones: snapshot.milestones.map((milestone) => ({ ...milestone })),
       tasks: snapshot.tasks.map((task) => ({ ...task })),
     })),
   };
@@ -2166,6 +2501,47 @@ export function syncExecutionDerivedState(state: AppState): AppState {
     dashboard: derived.dashboard,
     reflection: derived.reflection,
   };
+}
+
+export function saveTodayPlanningContext(state: AppState, input: SaveTodayPlanningContextInput): AppState {
+  const changedAt = new Date().toISOString();
+  let matchedDraft = false;
+
+  const nextDrafts = state.plan.drafts.map((draft) => {
+    if (draft.goalId !== input.goalId) {
+      return cloneLearningPlanDraft(draft);
+    }
+
+    matchedDraft = true;
+    return cloneLearningPlanDraft({
+      ...draft,
+      todayContext: normalizeTodayPlanningContext({
+        availableDuration: input.availableDuration,
+        studyWindow: input.studyWindow,
+        note: input.note,
+        updatedAt: changedAt,
+      }),
+      todayPlan: draft.todayPlan
+        ? {
+          ...draft.todayPlan,
+          status: 'stale',
+        }
+        : null,
+      updatedAt: changedAt,
+    });
+  });
+
+  if (!matchedDraft) {
+    throw new Error('计划草案不存在，无法保存今日上下文。');
+  }
+
+  return syncExecutionDerivedState({
+    ...state,
+    plan: {
+      ...state.plan,
+      drafts: nextDrafts,
+    },
+  });
 }
 
 export function updatePlanTaskStatus(state: AppState, input: UpdatePlanTaskStatusInput): AppState {
@@ -2326,6 +2702,11 @@ const baseSeedState: AppState = {
           { title: '阶段 2：AI 调用链路', outcome: '掌握 prompt、API 调用、结果解析与错误处理', progress: '未开始' },
           { title: '阶段 3：做出 MVP', outcome: '完成一个本地优先的学习工具 MVP', progress: '未开始' },
         ],
+        milestones: [
+          { title: '第 1 周：搭好 Python 本地环境', focus: '完成安装、虚拟环境、基础输入输出脚本', outcome: '能独立跑通 hello_cli.py 和 2 个小练习', status: 'current' },
+          { title: '第 2 周：打通一次模型调用', focus: '完成请求封装、异常处理和结果解析', outcome: '能稳定调用 1 个模型并打印结构化结果', status: 'upcoming' },
+          { title: '第 3 周：收束 MVP 最小功能清单', focus: '确定主流程、输入输出和最小价值点', outcome: '得到 1 版可实现的本地优先 AI 工具范围', status: 'upcoming' },
+        ],
         tasks: [
           {
             id: 'task-python-ai-1',
@@ -2347,6 +2728,8 @@ const baseSeedState: AppState = {
           },
           { id: 'task-python-ai-3', title: '规划本地优先 MVP 的最小功能清单', duration: '30 分钟', status: 'todo', note: '只保留真正能验证学习价值的功能。' },
         ],
+        todayPlan: null,
+        todayContext: createEmptyTodayPlanningContext(),
       },
       {
         id: 'plan-goal-writing',
@@ -2358,6 +2741,11 @@ const baseSeedState: AppState = {
           { title: '阶段 1：固定写作触发器', outcome: '明确每周什么时候写、写什么、写到什么程度', progress: '进行中' },
           { title: '阶段 2：建立复盘模板', outcome: '沉淀输入 / 决策 / 踩坑 / 下一步四段式模板', progress: '未开始' },
           { title: '阶段 3：连续输出', outcome: '连续 4 周完成结构化复盘', progress: '未开始' },
+        ],
+        milestones: [
+          { title: '第 1 周：固定复盘触发器', focus: '确定每周复盘时间和触发条件', outcome: '每周有固定的复盘启动点', status: 'current' },
+          { title: '第 2 周：沉淀复盘模板', focus: '形成输入 / 决策 / 踩坑 / 下一步四段式', outcome: '模板可直接套用到真实项目', status: 'upcoming' },
+          { title: '第 3 周：连续输出首轮复盘', focus: '用真实开发迭代完成连续写作', outcome: '至少完成 1 篇结构化复盘', status: 'upcoming' },
         ],
         tasks: [
           {
@@ -2372,6 +2760,8 @@ const baseSeedState: AppState = {
           { id: 'task-writing-2', title: '把最近一次开发迭代改写成复盘', duration: '35 分钟', status: 'todo', note: '优先写真实发生过的决策与取舍。' },
           { id: 'task-writing-3', title: '设定每周固定复盘时段', duration: '10 分钟', status: 'todo', note: '建议绑定到周末较完整的学习窗口。' },
         ],
+        todayPlan: null,
+        todayContext: createEmptyTodayPlanningContext(),
       },
     ],
     snapshots: [],

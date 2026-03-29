@@ -17,12 +17,16 @@ test('today page opens a reflection sheet after task completion, delay, or skip'
   assert.match(todayPageSource, /ReflectionSheet/);
   assert.match(todayPageSource, /status === 'done' \|\| status === 'delayed' \|\| status === 'skipped'/);
   assert.match(todayPageSource, /period="daily"/);
+  assert.match(todayPageSource, /生成今日计划|重新生成今日计划/);
+  assert.match(todayPageSource, /仅今天有效/);
+  assert.match(todayPageSource, /今日产出/);
+  assert.match(todayPageSource, /resources|practice|steps/);
 });
 
 test('path page keeps the first screen focused on current stage and moves basis into progressive disclosure', () => {
   const reflectionSheetSource = fs.readFileSync(reflectionSheetPath, 'utf8');
   assert.match(reflectionSheetSource, /saveReflectionEntry/);
-  assert.match(pathPageSource, /SectionTitle>当前阶段</);
+  assert.match(pathPageSource, /周里程碑|本周里程碑/);
   assert.match(pathPageSource, /ReflectionSheet/);
   assert.match(pathPageSource, /period="stage"/);
   assert.doesNotMatch(pathPageSource, /<SectionTitle>路径依据<\/SectionTitle>/);

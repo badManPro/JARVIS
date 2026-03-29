@@ -1,4 +1,4 @@
-import type { AppState, LearningGoal, LearningPlanDraft, LearningPlanState, ModelCapability, ProviderConfig, ProviderId, UserProfile } from './app-state.js';
+import type { AppState, GeneratedTodayPlanContext, LearningGoal, LearningPlanDraft, LearningPlanMilestone, LearningPlanState, ModelCapability, ProviderConfig, ProviderId, TodayPlan, UserProfile } from './app-state.js';
 
 export type AiRuntimeSummaryItem = {
   capability: ModelCapability;
@@ -43,6 +43,14 @@ export type AiPlanGenerationRequest = {
   currentDraft?: LearningPlanDraft | null;
 };
 
+export type AiDailyPlanGenerationRequest = {
+  capability: 'daily_plan_generation';
+  goal: LearningGoal;
+  profile: UserProfile;
+  currentDraft: LearningPlanDraft;
+  todayContext: LearningPlanDraft['todayContext'];
+};
+
 export type AiProfileExtractionRequest = {
   capability: 'profile_extraction';
   conversation: AppState['conversation'];
@@ -75,6 +83,7 @@ export type AiChatGeneralRequest = {
 
 export type AiRequest =
   | AiPlanGenerationRequest
+  | AiDailyPlanGenerationRequest
   | AiProfileExtractionRequest
   | AiPlanAdjustmentRequest
   | AiReflectionSummaryRequest
@@ -94,12 +103,23 @@ export type AiPlanGenerationResult = {
       outcome: string;
       progress?: string;
     }>;
+    milestones: LearningPlanMilestone[];
     tasks: Array<{
       title: string;
       duration: string;
       note: string;
       status?: LearningPlanDraft['tasks'][number]['status'];
     }>;
+  };
+};
+
+export type AiDailyPlanGenerationResult = {
+  capability: 'daily_plan_generation';
+  providerId: ProviderId;
+  providerLabel: string;
+  model: string;
+  plan: TodayPlan & {
+    generatedFromContext: GeneratedTodayPlanContext;
   };
 };
 
@@ -121,6 +141,7 @@ export type AiTextResult = {
 
 export type AiResult =
   | AiPlanGenerationResult
+  | AiDailyPlanGenerationResult
   | AiProfileExtractionResult
   | AiTextResult;
 
