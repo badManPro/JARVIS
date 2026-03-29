@@ -29,15 +29,15 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
   const nextOnboardingStep = dashboard.onboarding.steps.find((step) => step.status !== 'complete');
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,_#f7f3ec_0%,_#eef2f5_100%)]">
+    <div className="relative h-screen overflow-hidden bg-[linear-gradient(180deg,_#f7f3ec_0%,_#eef2f5_100%)]">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[4%] top-[5%] h-64 w-64 rounded-full bg-[#ffd8bc]/55 blur-3xl" />
         <div className="absolute right-[10%] top-[16%] h-72 w-72 rounded-full bg-[#dce7f5]/70 blur-3xl" />
         <div className="absolute bottom-[6%] left-[22%] h-80 w-80 rounded-full bg-white/55 blur-3xl" />
       </div>
 
-      <div className="relative flex min-h-screen flex-col gap-4 p-4 lg:flex-row lg:gap-6 lg:p-6">
-        <aside className="neo-panel flex w-full shrink-0 flex-col gap-4 p-5 lg:min-h-[calc(100vh-3rem)] lg:w-[19.5rem] lg:max-w-[19.5rem]">
+      <div className="relative flex h-full flex-col gap-4 p-4 lg:flex-row lg:gap-6 lg:p-6 overflow-y-auto lg:min-h-0 lg:overflow-hidden">
+        <aside className="neo-panel flex w-full shrink-0 flex-col gap-4 p-5 lg:h-full lg:min-h-0 lg:w-[19.5rem] lg:max-w-[19.5rem] lg:overflow-y-auto">
           <div>
             <Badge className="bg-white/85 text-slate-700">Learning Cockpit</Badge>
             <div className="mt-4">
@@ -110,7 +110,7 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
           </Card>
         </aside>
 
-        <main className="min-w-0 flex-1">
+        <main className="min-w-0 flex-1 lg:min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
           <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-sm font-medium uppercase tracking-[0.18em] text-slate-500">{activePage.title}</div>
@@ -132,7 +132,7 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
         </main>
       </div>
 
-      <CoachDrawer open={coachOpen} onClose={() => setCoachOpen(false)} />
+      <CoachDrawer open={coachOpen} onClose={() => setCoachOpen(false)} onPageChange={onPageChange} />
     </div>
   );
 }

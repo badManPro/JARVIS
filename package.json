@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "本地优先的学习规划桌面客户端",
+  "author": "badManPro",
   "main": "dist-electron/src/main/index.js",
   "type": "module",
   "scripts": {

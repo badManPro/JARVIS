@@ -1,29 +1,30 @@
 # RELEASE READINESS
 
 ## 当前判断
-- 日期：2026-03-22
-- 当前阶段：`Phase 6 / Task 4` 已完成
-- 当前状态：项目已经具备一套可重复执行的自动预检命令、关键业务闭环的集成级自动验证、可生成 macOS arm64 `.app` / `.zip` / `.dmg` 与 Windows x64 `.exe` / `.zip` 的 packaging pipeline，以及通过 GitHub Actions 自动上传双平台产物到 GitHub Releases 的发布工作流；DMG 内容和 macOS app 签名结构也已完成基础检查
-- 尚未完成：正式发布元数据（`author` / app icon / DMG branding）、macOS Developer ID 签名与 notarization、Windows 代码签名/分发信任收口，以及 Release Candidate 级人工回归仍未完成，因此暂不能把当前状态视为“正式可分发发布版”
+- 日期：2026-03-29
+- 当前阶段：`Release Candidate` 自动预检已完成，最终人工回归待执行
+- 当前状态：项目已经具备一套可重复执行的自动预检命令、关键业务闭环的集成级自动验证、可生成 macOS arm64 `JARVIS.app` / `.zip` / `.dmg` 与 Windows x64 `.exe` / `.zip` 的 packaging pipeline，以及通过 GitHub Actions 自动上传双平台产物到 GitHub Releases 的发布工作流；本轮已重新验证目录包、installer 产物和 macOS app 签名结构
+- 尚未完成：正式发布级品牌收口（最终 app icon / DMG branding）、macOS Developer ID 签名与 notarization、Windows 代码签名/分发信任收口，以及面向 2026-03-29 四页驾驶舱信息架构的最终人工回归，因此暂不能把当前状态视为“正式可分发发布版”
 
 ## 最新预检结果
 - `npm run lint`：PASS
 - `npm run build`：PASS
-- `node --test dist-electron/src/**/*.test.js`：PASS（54/54）
-- `npm run build:main && node --test dist-electron/src/main/packaging-config.test.js`：PASS
+- `node --test dist-electron/src/**/*.test.js`：PASS（64/64）
+- `node --test src/renderer/pages/page-data.test.mjs`：PASS
+- `node --test dist-electron/src/main/packaging-config.test.js`：PASS
 - `npm run rebuild:native:electron`：PASS（成功将 `better-sqlite3` 切到 Electron ABI）
 - `npm run rebuild:native:node`：PASS（当前受限网络下 `npm rebuild` 下载 Node headers 失败时，wrapper 会回退到隐藏备份并恢复 Node ABI）
 - 关键链路集成验证：PASS（建议审核落库闭环、执行/复盘反馈回流闭环）
 - 首次启动与空状态自动验证：PASS（空数据库首启返回真实空状态，dashboard 派生 onboarding checklist）
-- `npm run package`：PASS（生成 `release/mac-arm64/Learning Companion.app`）
-- `npm run dist`：PASS（生成 `release/Learning Companion-0.1.0-arm64.dmg` 与 `release/Learning Companion-0.1.0-arm64-mac.zip`，并在结束后自动恢复 `better-sqlite3` 的 Node ABI）
-- `npm run dist:mac`：PASS（重新生成 macOS arm64 `dmg/zip`）
-- `npm run dist:win`：PASS（在 macOS 环境下完成 Windows x64 交叉打包，生成 `release/Learning Companion Setup 0.1.0.exe` 与 `release/Learning Companion-0.1.0-win.zip`）
+- `npm run package`：PASS（2026-03-29 重新生成 `release/mac-arm64/JARVIS.app`）
+- `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/JARVIS.app"`：PASS
+- `npm run dist`：PASS（2026-03-29 重新生成 `release/JARVIS-0.1.0-arm64.dmg` 与 `release/JARVIS-0.1.0-arm64-mac.zip`，并更新 `release/latest-mac.yml`）
+- `npm run dist:win`：PASS（2026-03-29 重新生成 `release/JARVIS Setup 0.1.0.exe` 与 `release/JARVIS-0.1.0-win.zip`，且不再出现 `author is missed` warning）
 - `.github/workflows/release.yml`：PASS（支持 `v*` tag 和手动触发，构建 macOS/Windows 产物并上传到 GitHub Releases）
-- DMG 挂载内容检查：PASS（包含 `Learning Companion.app` 与 `/Applications` 快捷方式）
-- `codesign --verify --deep --strict --verbose=2 "release/mac-arm64/Learning Companion.app"`：PASS
-- `spctl -a -vv -t open "release/mac-arm64/Learning Companion.app"`：返回 `internal error in Code Signing subsystem`，当前只可视为 ad-hoc 签名环境下的观察结果，不能替代正式 Gatekeeper 验收
-- 人工手测：`M1` 到 `M8` 已实际执行并记录；其中 `M5` 仍保留“任务重排入口未暴露”的已知 UI 限制说明
+- 观察项：`electron-builder` 在依赖收集阶段仍会打印大量 `npm error extraneous` stderr，但命令最终退出码为 0，不构成本轮打包阻塞
+- 观察项：本轮未重新执行 DMG 挂载内容检查和 `spctl`；如要作为最终 release gate，需要按 `P2` 单独复跑
+- 观察项：`release/latest.yml` 当前写出的 Windows 路径为 `JARVIS-Setup-0.1.0.exe`，而目录中的实际文件名是 `JARVIS Setup 0.1.0.exe`；正式发布前需要验证 updater 元数据与上传资产名是否一致
+- 人工手测：2026-03-22 的 `M1` 到 `M8` 记录只可视为历史基线；由于 2026-03-29 已完成四页驾驶舱、全局教练抽屉和上下文复盘重构，仍需重新执行一轮 Release Candidate 级人工回归
 
 ## 首次启动与空状态检查
 
@@ -50,8 +51,10 @@
 | 类型检查 | `npm run lint` | 验证 TypeScript 主进程 / 渲染进程在当前代码树下无静态错误 | 命令退出码为 0 |
 | 生产构建 | `npm run build` | 同时构建 renderer 与 Electron main/preload 输出 | 命令退出码为 0，生成最新 `dist/` 与 `dist-electron/` |
 | 编译后全量测试 | `node --test dist-electron/src/**/*.test.js` | 对编译产物执行当前 Node 测试集，避免只验证源码层 | 所有测试通过 |
+| 导航基线测试 | `node --test src/renderer/pages/page-data.test.mjs` | 确认四页导航信息架构没有回退到旧七页结构 | 测试通过 |
 | Native ABI 往返检查 | `npm run rebuild:native:electron` + `npm run rebuild:native:node` | 验证开发态启动前会切到 Electron ABI，结束后仍能恢复到 Node ABI | 两条命令都成功；受限网络下允许由隐藏备份完成恢复 |
-| Unpacked app smoke check | `npm run package` | 生成可直接检查目录结构的 macOS app 产物 | 命令退出码为 0，生成 `release/mac-arm64/Learning Companion.app` |
+| Packaging config 测试 | `node --test dist-electron/src/main/packaging-config.test.js` | 验证 package scripts、builder 配置、release workflow 和 packaged entry 仍一致 | 测试通过 |
+| Unpacked app smoke check | `npm run package` | 生成可直接检查目录结构的 macOS app 产物 | 命令退出码为 0，生成 `release/mac-arm64/JARVIS.app` |
 | Installer build | `npm run dist` | 生成用于安装分发的 ZIP / DMG 产物 | 命令退出码为 0，生成 `release/*.zip` 与 `release/*.dmg` |
 
 ## 打包与安装检查
@@ -59,7 +62,7 @@
 ### P1. 目录包 smoke check
 步骤：
 1. 运行 `npm run package`
-2. 确认生成 `release/mac-arm64/Learning Companion.app`
+2. 确认生成 `release/mac-arm64/JARVIS.app`
 3. 对 `.app` 执行 `codesign --verify --deep --strict --verbose=2`
 
 预期结果：
@@ -69,8 +72,8 @@
 ### P2. Installer 内容检查
 步骤：
 1. 运行 `npm run dist`
-2. 挂载 `release/Learning Companion-0.1.0-arm64.dmg`
-3. 确认挂载卷内包含 `Learning Companion.app`
+2. 挂载 `release/JARVIS-0.1.0-arm64.dmg`
+3. 确认挂载卷内包含 `JARVIS.app`
 4. 确认挂载卷内包含指向 `/Applications` 的快捷方式
 
 预期结果：
@@ -79,189 +82,205 @@
 
 ### P3. 已知安装限制
 当前检查中观测到的限制：
-- `package.json` 仍缺少 `author`，builder 会给出 warning
-- 当前未配置自定义应用图标，仍使用默认 Electron icon
 - macOS 目前只能做 ad-hoc 签名，builder 会跳过 notarization
 - `spctl` 结果不能被视为正式发布级 Gatekeeper 验收
+- Windows `latest.yml` 与本地 `.exe` 资产命名仍需做一致性确认
 
 ## 手测路径
 
-### M1. 启动与回填
+说明：
+- 以下 `M1` 到 `M8` 是面向 2026-03-29 当前信息架构的 Release Candidate 手测脚本
+- 当前状态：全部 `pending`
+- 执行完成后，需要在每一项下补 `状态 / 执行日期 / 证据 / 备注`
+- 若涉及画像建议或路径调整建议，前置需要在“设置”页完成 Codex 连接，或准备可用的 routed provider
+
+### M1. 首次启动与四页导航基线
 前置条件：
-- 已执行 `npm install`
-- 本地可运行 `npm run dev`
-- 若刚执行过 `npm run dist` / `npm run package` 或其他 Electron ABI rebuild，允许首次启动前花一点时间重建 `better-sqlite3`
+- 准备一份空数据库或隔离的全新用户目录
+- 可运行 `npm run dev` 或已生成的 `JARVIS.app`
 
 步骤：
-1. 运行 `npm run dev`
-2. 确认 Electron 窗口可正常打开，不出现白屏或 preload/IPC 报错
-3. 关闭应用后重新打开
-4. 确认上一次保存的 profile / goals / plan / settings / reflection 数据仍能回填
+1. 启动应用
+2. 确认侧栏只出现 `今日 / 学习路径 / 学习档案 / 设置`
+3. 确认不存在旧的 `首页 / 学习计划 / 目标 / 对话 / 复盘` 一级导航入口
+4. 确认首屏处于 onboarding 状态，且能看到全局教练入口 CTA
+5. 确认设置入口可达，但默认层没有暴露 runtime / provider 技术细节
 
 预期结果：
-- 应用可启动
-- 本地 SQLite 会继续承接既有状态
-- 重启后不会丢失结构化数据
+- 首启直接进入四页驾驶舱结构
+- 用户不需要理解旧信息架构即可开始建档
+- 全局教练入口与设置分层都可见
 
 记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：两次 `npm run dev` 启动都成功拉起 renderer / main / Electron；用户确认窗口正常显示，完整退出后重新打开仍可看到既有 profile / goals / plan / settings / reflection 数据回填
-- 证据：`VITE v6.4.1 ready`、`Found 0 errors. Watching for file changes.`、`✔ Rebuild Complete`，以及用户在 2026-03-22 的 GUI 确认
-- 备注：当前仅见 DevTools `Autofill.enable/setAddresses` 警告，未见 preload/IPC 级错误
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：优先记录首屏截图和侧栏导航结构
 
-### M2. 设置页与启动页
+### M2. 教练抽屉首启建档
+前置条件：
+- `M1` 通过，应用仍处于首启建档状态
+
+步骤：
+1. 打开全局教练抽屉
+2. 填写主目标、当前水平、时间预算
+3. 选填增强画像字段：年龄阶段、MBTI、性格关键词、反馈偏好等
+4. 点击“生成第一版路径”
+5. 关闭抽屉后依次检查“今日 / 学习路径 / 学习档案”
+
+预期结果：
+- 建档后不出现报错
+- “今日”出现当前第一步任务或明确主动作
+- “学习路径”出现当前主目标、当前阶段和最近任务
+- “学习档案”能看到刚填写的增强画像字段
+
+记录：
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：记录用于建档的目标标题和至少一个增强画像字段
+
+### M3. 教练建议审批闭环
+前置条件：
+- 已完成 `M2`
+- Codex 或等价 AI route 已可用
+
+步骤：
+1. 在任意页面打开全局教练抽屉
+2. 输入一条变化说明，例如时间预算下降或节奏偏好变化
+3. 分别触发一次“生成画像建议”或“生成路径调整”
+4. 在抽屉中确认能看到 `actionPreviews` 的标题、summary、changes、reviewStatus、status
+5. 接受至少一条建议，拒绝至少一条建议
+6. 点击“应用已接受变更”
+7. 检查抽屉结果提示、页面跳转和相关页面的数据变化
+
+预期结果：
+- 建议不会直接写入数据，必须先审核
+- 抽屉内可完成 accept / reject / apply 闭环
+- apply 后显示“已写回画像 / 目标 / 路径”类结果文案
+- 如影响主路径，页面会优先跳到“今日”或“学习路径”
+
+记录：
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：至少记录一条被应用的建议类型和一条被拒绝的建议类型
+
+### M4. 今日主动作与日复盘
+前置条件：
+- 当前路径里至少存在一个任务
+
+步骤：
+1. 进入“今日”
+2. 对当前任务执行一次“开始”
+3. 再执行一次“完成”或“延后”或“跳过”
+4. 确认状态变化后立即弹出日复盘 sheet
+5. 填写偏差说明、难度匹配、时间匹配和后续动作
+6. 保存后检查“当前节奏”和风险提醒是否更新
+
+预期结果：
+- 今日页始终只聚焦一个主动作
+- 任务状态变化后无需跳到独立复盘页
+- 日复盘能保存并回流到 dashboard 摘要
+
+记录：
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：记录使用的是 `done / delayed / skipped` 中哪一种入口
+
+### M5. 学习路径渐进披露与阶段复盘
+前置条件：
+- 已完成 `M2`
+
+步骤：
+1. 进入“学习路径”
+2. 确认首屏只聚焦当前主目标、当前阶段和最近任务
+3. 检查“路径依据”没有直接铺满首屏
+4. 展开“高级内容：完整路径依据与历史快照”
+5. 点击“阶段复盘”，填写并保存一条阶段复盘
+6. 如存在多目标，切换一次主目标并确认页面随之更新
+
+预期结果：
+- 默认路径页满足渐进披露，不回到旧计划工作台
+- 高级内容只在展开层可见
+- 阶段复盘可以在路径上下文内完成
+
+记录：
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：若本轮没有多目标，可把主目标切换子步骤标记为 `n/a`
+
+### M6. 学习档案编辑与回填
+前置条件：
+- 已完成 `M2`
+
+步骤：
+1. 进入“学习档案”
+2. 展开编辑
+3. 修改至少一项基础字段和一项增强画像字段，例如时间预算、学习窗口、MBTI、压力偏好
+4. 保存后切换到其他页面再返回
+5. 完整退出应用并重新打开，再次检查
+
+预期结果：
+- 编辑结果立即生效
+- 切页和重启后都能回填
+- 画像页仍保持“学习背景 / 人物特征 / 系统如何使用”的当前结构
+
+记录：
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：记录至少两个被修改的字段名
+
+### M7. 设置分层、启动页与运行时反馈
 前置条件：
 - 应用已启动
 
 步骤：
-1. 进入“设置”页
-2. 修改主题和启动页
-3. 保存设置
-4. 重启应用
+1. 进入“设置”
+2. 确认默认首屏只看到主题、启动页和 Codex 卡片
+3. 修改主题和启动页并保存
+4. 完整退出并重启，确认落到设置后的启动页
+5. 展开“高级设置”
+6. 检查是否能访问 route 概览、AI runtime、observability 和 Provider 编辑
+7. 执行一次连接检查或 provider 健康检查，并观察反馈
 
 预期结果：
-- 设置保存成功并给出明确反馈
-- 应用按保存后的启动页落到对应页面
-- runtime 摘要和路由配置仍能正常展示
+- 默认设置页保持最小化
+- 高级设置仍保留技术能力触达
+- 启动页设置可持久化
+- 连接检查或健康检查结果会反馈到 UI
 
 记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：修复 preload bridge 后，用户在 GUI 中将主题改为“浅色”、启动页改为“学习计划”并保存；完整退出再重启后，用户确认该项“已通过”，设置页显示“本地存储状态：已从 SQLite 加载”；直接查询本地 `app_settings` 表后，真实值为 `theme=浅色`、`start_page=学习计划`
-- 证据：用户 2026-03-22 的 GUI 确认；`sqlite3 "$HOME/Library/Application Support/learning-companion/learning-companion.sqlite" "select id, theme, start_page, updated_at from app_settings;"`
-- 备注：本项通过覆盖“设置持久化 + 启动页回填 + 设置页反馈”；`settings.theme` 当前仍未接入 renderer 样式系统，不能把本条记录等同于完整主题视觉验收
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：记录保存后的启动页值和一次 runtime/health 反馈结果
 
-### M3. 用户画像编辑
-步骤：
-1. 进入“用户画像”页
-2. 修改学习窗口、时间预算、节奏偏好或阻力因素
-3. 保存后切换到其他页面，再返回
-4. 重启应用后再次检查
-
-预期结果：
-- 修改立即生效
-- 页面切换和重启后都能回填
-- 画像内容仍能影响计划和建议上下文
-
-记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：用户完成了画像字段编辑、页面切换回看与完整重启回看，并确认 `M3` “验证通过”
-- 证据：用户在 2026-03-22 的 GUI 手测确认
-- 备注：本次会话未单独记录具体修改字段，当前结论基于用户对“切页后仍在 + 重启后仍在”的口头确认
-
-### M4. 目标生命周期
-步骤：
-1. 进入“目标”页
-2. 创建一个新目标并保存
-3. 将其设为当前主目标
-4. 编辑目标内容并保存
-5. 删除该目标，观察确认弹窗和后续状态
-
-预期结果：
-- 新目标保存成功并出现在列表中
-- 当前主目标切换立即反映到计划页
-- 删除目标时会同步清理关联草案与快照
-- 若删除的是当前主目标，应用会自动选择下一个可用目标或进入空状态
-
-记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：用户先完成了新目标创建并确认保存成功，随后继续完成“设为当前主目标 → 计划页跟随切换 → 编辑目标并保存 → 删除目标并清理关联状态”的整条链路，并确认这些子步骤“全部通过”
-- 证据：用户在 2026-03-22 的 GUI 手测确认
-- 备注：本次会话未单独记录新目标名称或编辑内容，当前结论基于用户对列表展示、主目标切换、删除确认与后续状态收敛的口头确认
-
-### M5. 学习计划编辑与版本链路
+### M8. 打包产物启动与安装后行为
 前置条件：
-- 至少存在一个目标
+- 已完成 `npm run package`，如需 installer 验收则已完成 `npm run dist`
+- 可访问 `release/mac-arm64/JARVIS.app`，或可挂载 `release/JARVIS-0.1.0-arm64.dmg`
 
 步骤：
-1. 进入“学习计划”页
-2. 编辑阶段或任务内容并保存
-3. 重排任务顺序后再次保存
-4. 查看版本快照对比
-5. 触发“重新生成计划”，确认旧草案会先归档
+1. 直接启动 `release/mac-arm64/JARVIS.app`
+2. 确认应用窗口可打开，不出现白屏、资源缺失或 preload/IPC 错误
+3. 如执行 installer 验收，挂载 DMG 并确认其中包含 `JARVIS.app` 与 `/Applications` 快捷方式
+4. 用打包产物修改一项轻量数据，例如启动页或画像字段
+5. 完整退出打包产物并重新打开，确认数据回填
 
 预期结果：
-- 手动编辑和任务重排可持久化
-- 快照对比可查看差异
-- 重生成后当前草案被替换，旧版本进入历史快照
+- 打包产物可启动
+- 安装介质内容正确
+- 打包产物和开发态使用同一份本地数据目录时，不会造成数据丢失或明显异常
 
 记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：用户确认本轮将 `M5` 记为完成并继续下一步；已实际覆盖学习计划编辑、保存、版本快照对比与重新生成归档路径
-- 证据：用户在 2026-03-22 的 GUI 手测确认
-- 备注：当前计划页未暴露任务重排的前端入口，因此“重排任务顺序”子步骤未独立执行；本次记录按用户接受的范围完成，保留为已知 UI 缺口
-
-### M6. 执行状态与复盘
-前置条件：
-- 当前计划里存在任务
-
-步骤：
-1. 在“学习计划”页对任务执行开始 / 完成 / 跳过 / 延后
-2. 返回“首页”检查今日优先动作和风险提醒是否变化
-3. 进入“复盘”页填写日 / 周 / 阶段复盘
-4. 保存后再次检查首页与建议区
-
-预期结果：
-- 任务状态、备注和更新时间可保存
-- 首页聚焦卡和风险卡会响应执行信号
-- 复盘输入会被独立持久化，并刷新建议上下文
-
-记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：用户完成了任务状态流转、首页回看与复盘保存，并确认 `M6` “验证通过”
-- 证据：用户在 2026-03-22 的 GUI 手测确认
-- 备注：本次会话未单独记录具体任务名、首页卡片文案和复盘内容，当前结论基于用户对“执行状态保存 + 首页响应 + 复盘刷新”三条链路均通过的口头确认
-
-### M7. 对话建议与 action preview 审核
-前置条件：
-- 已有目标、计划和画像数据
-
-步骤：
-1. 进入“对话”页
-2. 触发画像提取或计划调整建议
-3. 检查 suggestions 与 action previews 是否出现
-4. 接受一部分预览并应用，拒绝另一部分
-5. 重启应用后复查审核轨迹
-
-预期结果：
-- 建议不会直接写库，必须先经过预览审核
-- 已接受的预览可回写结构化实体
-- source label、reviewedAt、appliedAt 等审计字段会保留
-
-记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：补齐对话输入入口后，用户完成了“发送当前对话 → 提取建议 → 接受/拒绝部分预览并应用 → 重启后复查审核轨迹”的整条链路，并明确要求将本项“标记通过”
-- 证据：用户在 2026-03-22 的 GUI 手测确认；对应修复见 [page-content.tsx](/Users/casper/Documents/project/JARVIS/src/renderer/pages/page-content.tsx)、[app-store.ts](/Users/casper/Documents/project/JARVIS/src/renderer/store/app-store.ts)、[app-state.ts](/Users/casper/Documents/project/JARVIS/src/shared/app-state.ts)
-- 备注：当前输入入口采用“本地追加一条对话消息，再触发建议提取”的最小实现，满足现有 `M7` 手测路径，不等同于完整实时聊天产品形态
-
-### M8. AI runtime 与错误反馈
-前置条件：
-- 至少配置一个可用 Provider；如无可用 secret，则验证错误提示路径
-
-步骤：
-1. 在“设置”页保存 provider 配置与 secret
-2. 执行 provider 健康检查
-3. 触发一次真实 capability 调用
-4. 观察 runtime 摘要和 observability 列表
-5. 移除 secret 或禁用 provider，再重复一次 capability 调用
-
-预期结果：
-- 健康检查结果可见
-- capability 调用会更新最近状态和请求列表
-- 缺少 secret、provider 不可用或路由异常时，用户能看到可理解的错误反馈
-
-记录：
-- 状态：pass
-- 执行日期：2026-03-22
-- 实际结果：用户完成了 Provider 配置、健康检查、一次真实 capability 调用、runtime 摘要 / observability 回看，以及禁用或切回不可用 Provider 后的错误反馈确认，并口头确认“这个也通过”
-- 证据：用户在 2026-03-22 的 GUI 手测确认
-- 备注：本次会话未逐条记录具体 Provider、健康检查返回文案和请求日志明细，当前结论基于用户对“健康检查 + capability 调用 + 可观测性更新 + 错误反馈”整条链路通过的口头确认
+- 状态：pending
+- 执行日期：待填
+- 证据：待填
+- 备注：若本轮只做 `.app` smoke check，DMG 挂载子步骤可单独标记 `partial`
 
 ## Go / No-Go 判断
 
@@ -273,15 +292,15 @@
 ### 当前明确不能宣称的事情
 - 不能宣称“已完成正式 macOS 签名 / notarization”
 - 不能宣称“已通过无系统警告的 Gatekeeper 安装验收”
-- 不能宣称“已完成 Release Candidate 级最终人工回归”
+- 不能宣称“已完成 2026-03-29 四页驾驶舱版本的 Release Candidate 级最终人工回归”
 
 ## 剩余发布缺口
-- `package.json` 仍缺少 `author`
-- 仓库还没有正式发布用的 app icon / DMG branding 资源
 - 还没有 Developer ID 签名、notarization 和 Gatekeeper 放行记录
+- Windows updater 元数据和最终上传资产名还没有做一致性验收
+- DMG 挂载内容检查与 `spctl` 还没有针对最新 `JARVIS-*` macOS 产物重新执行
 - 学习计划页仍未暴露任务重排 UI，`M5` 本轮按用户接受范围记录通过
-- 仍未完成 Release Candidate 级人工首启走查、安装后数据目录行为核验与演示路径确认
+- 仍未完成面向四页驾驶舱 / 全局教练抽屉 / 上下文复盘的 Release Candidate 级人工首启走查、安装后数据目录行为核验与演示路径确认
 
 这些缺口留给后续任务处理：
 1. `Release Candidate`：最终回归与演示准备
-2. 发布元数据与签名收口：补 `author` / app icon / Developer ID / notarization
+2. 发布元数据与签名收口：补 Developer ID / notarization，并确认 Windows updater 资产命名策略

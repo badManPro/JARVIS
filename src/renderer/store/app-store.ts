@@ -20,6 +20,7 @@ import {
   createEmptyAppState,
   resolveConversationState,
   saveReflectionEntry as applyReflectionEntrySave,
+  syncExecutionDerivedState,
   updateConversationActionPreviewReview,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
 } from '@shared/app-state';
@@ -42,7 +43,7 @@ type AppStore = AppState & {
   removeLearningGoal: (goalId: string) => Promise<void>;
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
-  updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<void>;
+  updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<AppState>;
   saveReflectionEntry: (payload: SaveReflectionEntryInput) => Promise<void>;
   regenerateLearningPlanDraft: (payload: { goalId: string; snapshotDraft?: LearningPlanDraft | null }) => Promise<void>;
   runProfileExtraction: () => Promise<AppState>;
@@ -55,6 +56,7 @@ type AppStore = AppState & {
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
   clearProviderSecret: (providerId: ProviderId) => Promise<void>;
   runProviderHealthCheck: (providerId: ProviderId) => Promise<AiProviderHealthCheckResult>;
+  refreshAdvancedSettingsData: () => Promise<void>;
   refreshCodexAuthStatus: () => Promise<void>;
   startCodexLogin: () => Promise<void>;
   startCodexDeviceLogin: () => Promise<void>;
@@ -295,17 +297,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
   updatePlanTaskStatus: async (payload) => {
     const bridge = getBridge();
     if (!bridge) {
+      const nextState = applyPlanTaskStatusUpdate(extractAppState(get()), payload);
       set((state) => ({
         ...state,
-        ...applyPlanTaskStatusUpdate(extractAppState(state), payload),
+        ...nextState,
         hydrated: true,
         hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
       }));
-      return;
+      return nextState;
     }
 
     const persistedState = await bridge.updatePlanTaskStatus(payload);
     set({ ...persistedState, hydrated: true, hydrationError: null });
+    return persistedState;
   },
   saveReflectionEntry: async (payload) => {
     const bridge = getBridge();
@@ -430,16 +434,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
   applyAcceptedConversationActionPreviews: async () => {
     const bridge = getBridge();
     const currentState = get();
+    const hydrationError = bridge ? null : 'learningCompanion bridge 不可用，未写入本地数据库。';
 
-    if (!bridge) {
-      const result = applyAcceptedConversationActionPreviews(extractAppState(currentState));
-      set({ ...result.state, hydrated: true, hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。' });
-      return result;
-    }
-
-    const result = await bridge.applyAcceptedConversationActionPreviews();
-    set({ ...result.state, hydrated: true, hydrationError: null });
-    return result;
+    const result = bridge
+      ? await bridge.applyAcceptedConversationActionPreviews()
+      : applyAcceptedConversationActionPreviews(extractAppState(currentState));
+    const nextState = syncExecutionDerivedState(result.state);
+    const nextResult = {
+      ...result,
+      state: nextState,
+    };
+    set({ ...nextState, hydrated: true, hydrationError });
+    return nextResult;
   },
   refreshProviderConfigs: async () => {
     const bridge = getBridge();
@@ -487,6 +493,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
     ]);
     set((state) => ({ ...mergeProviders(state, response.providers), aiRuntimeSummary: response.aiRuntimeSummary, aiObservability, hydrated: true, hydrationError: null }));
     return response.result;
+  },
+  refreshAdvancedSettingsData: async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+
+    const [providers, diagnostics] = await Promise.all([
+      bridge.listProviderConfigs(),
+      loadRuntimeDiagnostics(bridge),
+    ]);
+    set((state) => ({ ...mergeProviders(state, providers), ...diagnostics, hydrated: true, hydrationError: null }));
   },
   refreshCodexAuthStatus: async () => {
     const bridge = getBridge();
