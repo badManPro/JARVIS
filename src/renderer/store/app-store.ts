@@ -13,6 +13,7 @@ import type {
   UserProfile,
 } from '@shared/app-state';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
+import type { CodexAuthStatus } from '@shared/codex-auth';
 import {
   applyAcceptedConversationActionPreviews,
   appendConversationMessage as applyConversationMessageAppend,
@@ -22,12 +23,14 @@ import {
   updateConversationActionPreviewReview,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
 } from '@shared/app-state';
+import { createDefaultCodexAuthStatus } from '@shared/codex-auth';
 import type { LearningGoalInput } from '@shared/goal';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
 import { getCachedStorageBridge } from '@shared/storage-bridge-cache';
 
 type AppStore = AppState & {
+  codexAuth: CodexAuthStatus;
   aiRuntimeSummary: AiRuntimeSummaryItem[];
   aiObservability: AiObservabilitySnapshot;
   hydrated: boolean;
@@ -52,6 +55,10 @@ type AppStore = AppState & {
   saveProviderSecret: (payload: ProviderSecretInput) => Promise<void>;
   clearProviderSecret: (providerId: ProviderId) => Promise<void>;
   runProviderHealthCheck: (providerId: ProviderId) => Promise<AiProviderHealthCheckResult>;
+  refreshCodexAuthStatus: () => Promise<void>;
+  startCodexLogin: () => Promise<void>;
+  startCodexDeviceLogin: () => Promise<void>;
+  logoutCodex: () => Promise<void>;
   refreshAiRuntimeSummary: () => Promise<void>;
   refreshAiObservability: () => Promise<void>;
 };
@@ -100,12 +107,14 @@ function createEmptyAiObservability(): AiObservabilitySnapshot {
 }
 
 async function loadRuntimeDiagnostics(bridge: NonNullable<ReturnType<typeof getBridge>>) {
-  const [aiRuntimeSummary, aiObservability] = await Promise.all([
+  const [aiRuntimeSummary, aiObservability, codexAuth] = await Promise.all([
     bridge.getAiRuntimeSummary(),
     bridge.getAiObservability(),
+    bridge.getCodexAuthStatus(),
   ]);
 
   return {
+    codexAuth,
     aiRuntimeSummary,
     aiObservability,
   };
@@ -125,6 +134,7 @@ function extractAppState(state: AppStore): AppState {
 
 export const useAppStore = create<AppStore>((set, get) => ({
   ...createEmptyAppState(),
+  codexAuth: createDefaultCodexAuthStatus(),
   aiRuntimeSummary: [],
   aiObservability: createEmptyAiObservability(),
   hydrated: false,
@@ -478,12 +488,52 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set((state) => ({ ...mergeProviders(state, response.providers), aiRuntimeSummary: response.aiRuntimeSummary, aiObservability, hydrated: true, hydrationError: null }));
     return response.result;
   },
+  refreshCodexAuthStatus: async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+
+    const codexAuth = await bridge.getCodexAuthStatus();
+    set((state) => ({ ...state, codexAuth, hydrated: true, hydrationError: null }));
+  },
+  startCodexLogin: async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+
+    const [, diagnostics] = await Promise.all([
+      bridge.startCodexLogin(),
+      loadRuntimeDiagnostics(bridge),
+    ]);
+    set((state) => ({ ...state, ...diagnostics, hydrated: true, hydrationError: null }));
+  },
+  startCodexDeviceLogin: async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+
+    const [, diagnostics] = await Promise.all([
+      bridge.startCodexDeviceLogin(),
+      loadRuntimeDiagnostics(bridge),
+    ]);
+    set((state) => ({ ...state, ...diagnostics, hydrated: true, hydrationError: null }));
+  },
+  logoutCodex: async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+
+    const [, diagnostics] = await Promise.all([
+      bridge.logoutCodex(),
+      loadRuntimeDiagnostics(bridge),
+    ]);
+    set((state) => ({ ...state, ...diagnostics, hydrated: true, hydrationError: null }));
+  },
   refreshAiRuntimeSummary: async () => {
     const bridge = getBridge();
     if (!bridge) return;
 
-    const aiRuntimeSummary = await bridge.getAiRuntimeSummary();
-    set((state) => ({ ...state, aiRuntimeSummary, hydrated: true, hydrationError: null }));
+    const [aiRuntimeSummary, codexAuth] = await Promise.all([
+      bridge.getAiRuntimeSummary(),
+      bridge.getCodexAuthStatus(),
+    ]);
+    set((state) => ({ ...state, aiRuntimeSummary, codexAuth, hydrated: true, hydrationError: null }));
   },
   refreshAiObservability: async () => {
     const bridge = getBridge();

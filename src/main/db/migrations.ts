@@ -243,6 +243,38 @@ function addPlanTaskStatusColumns(sqlite: Database.Database) {
   }
 }
 
+function addEnhancedUserProfileColumns(sqlite: Database.Database) {
+  const userProfileColumns = getTableColumns(sqlite, 'user_profiles');
+
+  if (!userProfileColumns.some((column) => column.name === 'age_bracket')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN age_bracket TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'gender')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN gender TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'personality_traits_json')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN personality_traits_json TEXT NOT NULL DEFAULT \'[]\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'mbti')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN mbti TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'motivation_style')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN motivation_style TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'stress_response')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN stress_response TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'feedback_preference')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN feedback_preference TEXT NOT NULL DEFAULT \'\';');
+  }
+}
+
 const migrations: Migration[] = [
   {
     version: 1,
@@ -257,6 +289,13 @@ const migrations: Migration[] = [
     name: 'add task execution audit columns',
     up: (sqlite) => {
       addPlanTaskStatusColumns(sqlite);
+    },
+  },
+  {
+    version: 3,
+    name: 'add enhanced learner persona columns',
+    up: (sqlite) => {
+      addEnhancedUserProfileColumns(sqlite);
     },
   },
 ];

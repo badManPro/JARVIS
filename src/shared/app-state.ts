@@ -38,6 +38,13 @@ export type UserProfile = {
   blockers: string[];
   bestStudyWindow: string;
   planImpact: string[];
+  ageBracket: string;
+  gender: string;
+  personalityTraits: string[];
+  mbti: string;
+  motivationStyle: string;
+  stressResponse: string;
+  feedbackPreference: string;
 };
 
 export type LearningGoal = {
@@ -216,7 +223,7 @@ export type UpdatePlanTaskStatusInput = {
 export type DashboardPriorityActionKind = 'continue' | 'start' | 'review';
 export type DashboardRiskLevel = 'high' | 'medium' | 'low';
 export type DashboardOnboardingStepStatus = 'complete' | 'current' | 'pending';
-export type DashboardOnboardingPage = 'profile' | 'goals' | 'plans' | 'settings';
+export type DashboardOnboardingPage = 'today' | 'path' | 'profile' | 'settings';
 
 export type DashboardPriorityAction = {
   kind: DashboardPriorityActionKind;
@@ -308,6 +315,50 @@ export type AppState = {
   };
 };
 
+export function createEmptyUserProfile(): UserProfile {
+  return {
+    name: '',
+    identity: '',
+    timeBudget: '',
+    pacePreference: '',
+    strengths: [],
+    blockers: [],
+    bestStudyWindow: '',
+    planImpact: [],
+    ageBracket: '',
+    gender: '',
+    personalityTraits: [],
+    mbti: '',
+    motivationStyle: '',
+    stressResponse: '',
+    feedbackPreference: '',
+  };
+}
+
+export function normalizeUserProfile(profile?: Partial<UserProfile> | null): UserProfile {
+  const fallback = createEmptyUserProfile();
+
+  return {
+    ...fallback,
+    ...profile,
+    name: profile?.name?.trim() ?? fallback.name,
+    identity: profile?.identity?.trim() ?? fallback.identity,
+    timeBudget: profile?.timeBudget?.trim() ?? fallback.timeBudget,
+    pacePreference: profile?.pacePreference?.trim() ?? fallback.pacePreference,
+    strengths: Array.isArray(profile?.strengths) ? profile.strengths.map((item) => item.trim()).filter(Boolean) : fallback.strengths,
+    blockers: Array.isArray(profile?.blockers) ? profile.blockers.map((item) => item.trim()).filter(Boolean) : fallback.blockers,
+    bestStudyWindow: profile?.bestStudyWindow?.trim() ?? fallback.bestStudyWindow,
+    planImpact: Array.isArray(profile?.planImpact) ? profile.planImpact.map((item) => item.trim()).filter(Boolean) : fallback.planImpact,
+    ageBracket: profile?.ageBracket?.trim() ?? fallback.ageBracket,
+    gender: profile?.gender?.trim() ?? fallback.gender,
+    personalityTraits: Array.isArray(profile?.personalityTraits) ? profile.personalityTraits.map((item) => item.trim()).filter(Boolean) : fallback.personalityTraits,
+    mbti: profile?.mbti?.trim() ?? fallback.mbti,
+    motivationStyle: profile?.motivationStyle?.trim() ?? fallback.motivationStyle,
+    stressResponse: profile?.stressResponse?.trim() ?? fallback.stressResponse,
+    feedbackPreference: profile?.feedbackPreference?.trim() ?? fallback.feedbackPreference,
+  };
+}
+
 const EMPTY_RELATED_GOAL_LABEL = '暂未设置目标';
 const EMPTY_RELATED_PLAN_LABEL = '暂无计划草案';
 const DEFAULT_REFLECTION_PERIOD: ReflectionPeriod = 'stage';
@@ -352,7 +403,7 @@ function cloneProviderConfigs(providers: ProviderConfig[]) {
 function createDefaultSettings(): AppState['settings'] {
   return {
     theme: '跟随系统',
-    startPage: '首页',
+    startPage: '今日',
     providers: cloneProviderConfigs(defaultProviderConfigs),
     routing: {
       ...defaultRouting,
@@ -362,20 +413,20 @@ function createDefaultSettings(): AppState['settings'] {
 
 function createDashboardSkeleton(): AppState['dashboard'] {
   return {
-    todayFocus: '完成首次设置',
+    todayFocus: '开始对话建档',
     stage: '首次启动引导',
-    duration: '10 分钟',
+    duration: '3 分钟',
     weeklyCompletion: 0,
     streakDays: 0,
     alerts: [],
-    quickActions: ['完善用户画像', '创建首个目标', '配置 AI Provider（可选）'],
-    reflectionSummary: '当前还是首次启动空状态。先补齐基础输入，再开始第一项任务。',
+    quickActions: ['开始对话建档', '查看学习路径', '连接 Codex（可选）'],
+    reflectionSummary: '当前还是首次启动空状态。先通过对话完成基础建档，再开始第一项任务。',
     priorityAction: {
       kind: 'start',
-      title: '完成首次设置：完善用户画像',
-      detail: '先补全你的当前基础、时间预算和最佳学习窗口，后续目标与计划才有稳定约束。',
-      reason: '当前仍是空状态，先让系统知道你是谁、何时能学、想往哪里走。',
-      duration: '10 分钟',
+      title: '开始对话建档',
+      detail: '先告诉系统你想学什么、现在什么水平、每周能投入多少，再生成第一版学习路径。',
+      reason: '首次体验不应该要求你先理解页面结构，先产出第一步更重要。',
+      duration: '3 分钟',
     },
     riskSignals: [],
     onboarding: {
@@ -391,16 +442,7 @@ function createDashboardSkeleton(): AppState['dashboard'] {
 
 export function createEmptyAppState(): AppState {
   const baseState: AppState = {
-    profile: {
-      name: '',
-      identity: '',
-      timeBudget: '',
-      pacePreference: '',
-      strengths: [],
-      blockers: [],
-      bestStudyWindow: '',
-      planImpact: [],
-    },
+    profile: createEmptyUserProfile(),
     dashboard: createDashboardSkeleton(),
     goals: [],
     plan: {
@@ -930,8 +972,7 @@ function buildDashboardRiskSignals(
 function isProfileReady(profile: UserProfile) {
   return Boolean(
     profile.identity.trim()
-    && profile.timeBudget.trim()
-    && profile.bestStudyWindow.trim(),
+    && profile.timeBudget.trim(),
   );
 }
 
@@ -953,34 +994,34 @@ function buildDashboardOnboarding(
   const rawSteps: Array<Omit<DashboardOnboardingStep, 'status'> & { status: 'complete' | 'pending' }> = [
     {
       id: 'profile',
-      title: '补全画像基础',
-      detail: '先写清当前基础、时间预算和最佳学习窗口，后续目标与计划才有可信约束。',
-      actionLabel: '完善用户画像',
-      pageId: 'profile',
+      title: '完成第一段建档',
+      detail: '先通过对话说清想学什么、当前基础和时间预算，系统才能直接产出第一版路径。',
+      actionLabel: '开始对话建档',
+      pageId: 'today',
       status: profileReady ? 'complete' : 'pending',
     },
     {
       id: 'goal',
-      title: '创建首个目标',
-      detail: '把“想学什么”定义成一个具体目标，系统才能开始为你规划。',
-      actionLabel: '创建首个目标',
-      pageId: 'goals',
+      title: '确认主目标',
+      detail: '系统生成第一版目标后，只需要确认主线是否正确，不再要求你手工拆多层结构。',
+      actionLabel: '查看学习路径',
+      pageId: 'path',
       status: hasGoals ? 'complete' : 'pending',
     },
     {
       id: 'plan',
-      title: '生成首版计划草案',
-      detail: '保存目标后，计划页会自动拥有首版草案；先确认它是否足够可执行。',
-      actionLabel: '查看首版计划',
-      pageId: 'plans',
+      title: '确认第一版路径',
+      detail: '学习路径默认只展示当前阶段和最近几项任务，先确认第一步是否现实可做。',
+      actionLabel: '查看当前路径',
+      pageId: 'path',
       status: hasPlan ? 'complete' : 'pending',
     },
     {
       id: 'execution',
-      title: '记录第一次执行',
-      detail: '在计划页标记一次开始、完成、延后或跳过，让首页和复盘开始消费真实信号。',
-      actionLabel: '开始第一次任务',
-      pageId: 'plans',
+      title: '开始今天第一步',
+      detail: '记录一次真实执行后，今日页和后续复盘才会开始消费真实节奏信号。',
+      actionLabel: '开始今日任务',
+      pageId: 'today',
       status: hasExecution ? 'complete' : 'pending',
     },
   ];
@@ -1011,8 +1052,8 @@ function buildDashboardOnboarding(
     optionalAction: providerConfigured
       ? undefined
       : {
-        label: '配置 AI Provider',
-        detail: '可选：接入至少一个 Provider，启用真实画像提取、计划生成和运行时健康检查。',
+        label: '连接 Codex',
+        detail: '可选：复用本机 Codex 登录，启用真实画像提取、计划生成和调整建议。',
         pageId: 'settings',
       },
   };
@@ -1213,6 +1254,40 @@ function extractProfileBlocker(content: string) {
 
 function extractProfilePlanImpact(content: string) {
   return extractProfileDirectValue(content, ['计划影响说明', '计划影响'], ['补充为', '调整为', '改为']);
+}
+
+function extractAgeBracket(content: string) {
+  return extractProfileDirectValue(content, ['年龄阶段', '年龄'], ['补充为', '调整为', '改为', '设为']);
+}
+
+function extractGender(content: string) {
+  return extractProfileDirectValue(content, ['性别'], ['补充为', '调整为', '改为', '设为']);
+}
+
+function extractMbti(content: string) {
+  const directValue = extractProfileDirectValue(content, ['MBTI', 'mbti'], ['补充为', '调整为', '改为', '设为']);
+  if (directValue) {
+    return directValue.toUpperCase();
+  }
+
+  const match = content.match(/\b([EI][NS][FT][JP])\b/i);
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
+function extractPersonalityTrait(content: string) {
+  return extractProfileDirectValue(content, ['性格关键词', '性格特征', '性格'], ['补充为', '调整为', '改为']);
+}
+
+function extractMotivationStyle(content: string) {
+  return extractProfileDirectValue(content, ['激励方式', '动力方式', 'motivationStyle'], ['补充为', '调整为', '改为', '设为']);
+}
+
+function extractStressResponse(content: string) {
+  return extractProfileDirectValue(content, ['压力反应', '压力偏好', 'stressResponse'], ['补充为', '调整为', '改为', '设为']);
+}
+
+function extractFeedbackPreference(content: string) {
+  return extractProfileDirectValue(content, ['反馈偏好', '提醒方式', 'feedbackPreference'], ['补充为', '调整为', '改为', '设为']);
 }
 
 function extractGoalPriority(content: string): LearningGoal['priority'] | null {
@@ -1445,7 +1520,7 @@ function buildProfileAdjustmentPreview({
   content: string;
   profile: UserProfile;
 }): ConversationActionPreview | null {
-  if (!/(画像|时间窗口|学习窗口|时间预算|节奏|偏好|阻力|阻碍|计划影响)/.test(content)) {
+  if (!/(画像|时间窗口|学习窗口|时间预算|节奏|偏好|阻力|阻碍|计划影响|年龄|性别|性格|MBTI|反馈|提醒|激励|压力)/i.test(content)) {
     return null;
   }
 
@@ -1454,6 +1529,13 @@ function buildProfileAdjustmentPreview({
   const nextPacePreference = extractPacePreference(content);
   const nextBlocker = extractProfileBlocker(content);
   const explicitPlanImpact = extractProfilePlanImpact(content);
+  const nextAgeBracket = extractAgeBracket(content);
+  const nextGender = extractGender(content);
+  const nextMbti = extractMbti(content);
+  const nextPersonalityTrait = extractPersonalityTrait(content);
+  const nextMotivationStyle = extractMotivationStyle(content);
+  const nextStressResponse = extractStressResponse(content);
+  const nextFeedbackPreference = extractFeedbackPreference(content);
   const nextPlanImpact = dedupeStrings([
     ...profile.planImpact,
     ...(explicitPlanImpact ? [explicitPlanImpact] : []),
@@ -1461,14 +1543,21 @@ function buildProfileAdjustmentPreview({
       ? [`对话确认：后续计划优先围绕${nextBestStudyWindow}安排执行窗口。`]
       : []),
   ]);
-  const nextProfile: UserProfile = {
+  const nextProfile: UserProfile = normalizeUserProfile({
     ...profile,
     timeBudget: nextTimeBudget ?? profile.timeBudget,
     pacePreference: nextPacePreference ?? profile.pacePreference,
     bestStudyWindow: nextBestStudyWindow ?? profile.bestStudyWindow,
     blockers: nextBlocker ? dedupeStrings([...profile.blockers, nextBlocker]) : [...profile.blockers],
     planImpact: nextPlanImpact,
-  };
+    ageBracket: nextAgeBracket ?? profile.ageBracket,
+    gender: nextGender ?? profile.gender,
+    personalityTraits: nextPersonalityTrait ? dedupeStrings([...profile.personalityTraits, nextPersonalityTrait]) : [...profile.personalityTraits],
+    mbti: nextMbti ?? profile.mbti,
+    motivationStyle: nextMotivationStyle ?? profile.motivationStyle,
+    stressResponse: nextStressResponse ?? profile.stressResponse,
+    feedbackPreference: nextFeedbackPreference ?? profile.feedbackPreference,
+  });
 
   if (
     nextProfile.timeBudget === profile.timeBudget
@@ -1476,6 +1565,13 @@ function buildProfileAdjustmentPreview({
     && nextProfile.bestStudyWindow === profile.bestStudyWindow
     && JSON.stringify(nextProfile.blockers) === JSON.stringify(profile.blockers)
     && JSON.stringify(nextProfile.planImpact) === JSON.stringify(profile.planImpact)
+    && nextProfile.ageBracket === profile.ageBracket
+    && nextProfile.gender === profile.gender
+    && JSON.stringify(nextProfile.personalityTraits) === JSON.stringify(profile.personalityTraits)
+    && nextProfile.mbti === profile.mbti
+    && nextProfile.motivationStyle === profile.motivationStyle
+    && nextProfile.stressResponse === profile.stressResponse
+    && nextProfile.feedbackPreference === profile.feedbackPreference
   ) {
     return null;
   }
@@ -1520,6 +1616,48 @@ function buildProfileAdjustmentPreview({
         label: '计划影响说明',
         before: profile.planImpact[profile.planImpact.length - 1] ?? '暂无额外说明',
         after: nextProfile.planImpact[nextProfile.planImpact.length - 1] ?? '暂无额外说明',
+      },
+      {
+        field: 'profile.ageBracket',
+        label: '年龄阶段',
+        before: profile.ageBracket || '未填写',
+        after: nextProfile.ageBracket || '未填写',
+      },
+      {
+        field: 'profile.gender',
+        label: '性别',
+        before: profile.gender || '未填写',
+        after: nextProfile.gender || '未填写',
+      },
+      {
+        field: 'profile.personalityTraits',
+        label: '性格关键词',
+        before: profile.personalityTraits[profile.personalityTraits.length - 1] ?? '暂无',
+        after: nextProfile.personalityTraits[nextProfile.personalityTraits.length - 1] ?? '暂无',
+      },
+      {
+        field: 'profile.mbti',
+        label: 'MBTI',
+        before: profile.mbti || '未填写',
+        after: nextProfile.mbti || '未填写',
+      },
+      {
+        field: 'profile.motivationStyle',
+        label: '激励方式',
+        before: profile.motivationStyle || '未填写',
+        after: nextProfile.motivationStyle || '未填写',
+      },
+      {
+        field: 'profile.stressResponse',
+        label: '压力偏好',
+        before: profile.stressResponse || '未填写',
+        after: nextProfile.stressResponse || '未填写',
+      },
+      {
+        field: 'profile.feedbackPreference',
+        label: '反馈方式',
+        before: profile.feedbackPreference || '未填写',
+        after: nextProfile.feedbackPreference || '未填写',
       },
     ].filter((change) => change.before !== change.after),
     execution: {
@@ -1946,12 +2084,13 @@ export function applyAcceptedConversationActionPreviews(state: AppState): ApplyC
 
     switch (execution.type) {
       case 'profile_update':
-        nextProfile = {
+        nextProfile = normalizeUserProfile({
           ...execution.nextProfile,
           strengths: [...execution.nextProfile.strengths],
           blockers: [...execution.nextProfile.blockers],
           planImpact: [...execution.nextProfile.planImpact],
-        };
+          personalityTraits: [...execution.nextProfile.personalityTraits],
+        });
         appliedActionIds.push(preview.id);
         break;
       case 'goal_update': {
@@ -2117,6 +2256,13 @@ const baseSeedState: AppState = {
     blockers: ['容易被临时事务打断', '计划过重时会拖延', '需要明确反馈闭环'],
     bestStudyWindow: '工作日晚间 21:00 - 22:00',
     planImpact: ['当前计划控制为低摩擦日任务', '阶段一优先补基础与建立连续感', '任务粒度保持 30-45 分钟可完成'],
+    ageBracket: '25-34 岁',
+    gender: '',
+    personalityTraits: ['项目驱动', '需要明确反馈', '偏好小步推进'],
+    mbti: 'INTJ',
+    motivationStyle: '更适合看到明确里程碑与可交付结果',
+    stressResponse: '连续被打断时更适合先做低阻力任务恢复节奏',
+    feedbackPreference: '希望提醒直接、简短，并明确下一步动作',
   },
   dashboard: {
     todayFocus: '完成目标级计划草案切换，让不同学习主线真正拥有自己的计划内容',

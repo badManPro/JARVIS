@@ -259,3 +259,48 @@ test('AiService allows a codex provider without a stored secret', async () => {
   assert.equal(result.providerId, 'codex');
   assert.equal(result.text, 'Codex 输出');
 });
+
+test('AiService blocks codex when the login state is disconnected', () => {
+  const settings = cloneSettings({
+    providers: seedState.settings.providers.map((provider) => (
+      provider.id === 'codex'
+        ? {
+          ...provider,
+          enabled: true,
+          authMode: 'none',
+          capabilityTags: ['chat_general'],
+        }
+        : { ...provider, enabled: false }
+    )),
+    routing: {
+      ...seedState.settings.routing,
+      generalChat: 'codex',
+    },
+  });
+
+  const service = new AiService({
+    getSecret: () => null,
+    getProviderLoginState: (providerId) => (
+      providerId === 'codex'
+        ? { connected: false, blockedReason: 'Codex 尚未连接，请先完成浏览器登录。' }
+        : null
+    ),
+    adapters: [{
+      name: 'unused-codex-adapter',
+      supports: () => true,
+      checkHealth: async () => ({
+        ok: true,
+        message: 'unused',
+      }),
+      execute: async () => ({ capability: 'chat_general', providerId: 'codex', providerLabel: 'OpenAI / Codex', model: 'gpt-5.2-codex', text: 'unused' }) satisfies AiResult,
+    }],
+  });
+
+  const summary = service.getRuntimeSummary(settings);
+  const generalChat = summary.find((item) => item.capability === 'chat_general');
+
+  assert.ok(generalChat);
+  assert.equal(generalChat.providerId, 'codex');
+  assert.equal(generalChat.ready, false);
+  assert.equal(generalChat.blockedReason, 'Codex 尚未连接，请先完成浏览器登录。');
+});

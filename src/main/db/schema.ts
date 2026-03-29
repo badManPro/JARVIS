@@ -16,6 +16,13 @@ export const userProfiles = sqliteTable('user_profiles', {
   blockersJson: text('blockers_json').notNull(),
   bestStudyWindow: text('best_study_window').notNull(),
   planImpactJson: text('plan_impact_json').notNull(),
+  ageBracket: text('age_bracket').notNull(),
+  gender: text('gender').notNull(),
+  personalityTraitsJson: text('personality_traits_json').notNull(),
+  mbti: text('mbti').notNull(),
+  motivationStyle: text('motivation_style').notNull(),
+  stressResponse: text('stress_response').notNull(),
+  feedbackPreference: text('feedback_preference').notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 

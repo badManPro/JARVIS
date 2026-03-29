@@ -26,6 +26,10 @@ const learningCompanion: LearningCompanionBridge = {
     runProviderHealthCheck: (providerId) => ipcRenderer.invoke('storage:run-provider-health-check', providerId),
     getAiRuntimeSummary: () => ipcRenderer.invoke('storage:get-ai-runtime-summary'),
     getAiObservability: () => ipcRenderer.invoke('storage:get-ai-observability'),
+    getCodexAuthStatus: () => ipcRenderer.invoke('storage:get-codex-auth-status'),
+    startCodexLogin: () => ipcRenderer.invoke('storage:start-codex-login'),
+    startCodexDeviceLogin: () => ipcRenderer.invoke('storage:start-codex-device-login'),
+    logoutCodex: () => ipcRenderer.invoke('storage:logout-codex'),
   },
 };
 

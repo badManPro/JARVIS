@@ -21,6 +21,7 @@ export type AiRuntimeService = {
 
 type AiServiceOptions = {
   getSecret: (providerId: ProviderId) => string | null;
+  getProviderLoginState?: (providerId: ProviderId) => { connected: boolean; blockedReason?: string } | null;
   adapters?: AiProviderAdapter[];
 };
 
@@ -80,6 +81,17 @@ export class AiService implements AiRuntimeService {
         providerLabel: provider.label,
         healthStatus: 'warning',
         message: 'Provider 未启用，暂无法执行健康检查。',
+        checkedAt,
+      } satisfies AiProviderHealthCheckResult;
+    }
+
+    const loginState = this.options.getProviderLoginState?.(provider.id);
+    if (loginState && !loginState.connected) {
+      return {
+        providerId: provider.id,
+        providerLabel: provider.label,
+        healthStatus: 'warning',
+        message: loginState.blockedReason ?? `${provider.label} 当前未连接。`,
         checkedAt,
       } satisfies AiProviderHealthCheckResult;
     }
@@ -181,6 +193,11 @@ export class AiService implements AiRuntimeService {
 
     if (provider.authMode !== 'none' && !this.options.getSecret(provider.id)?.trim()) {
       return this.blocked(provider, '缺少 Secret');
+    }
+
+    const loginState = this.options.getProviderLoginState?.(provider.id);
+    if (loginState && !loginState.connected) {
+      return this.blocked(provider, loginState.blockedReason ?? `${provider.label} 当前未连接`);
     }
 
     return {

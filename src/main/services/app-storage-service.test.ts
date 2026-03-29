@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { AppState } from '../../shared/app-state.js';
 import { seedState, updateConversationActionPreviewReview } from '../../shared/app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
+import { createDefaultCodexAuthStatus } from '../../shared/codex-auth.js';
 import { createPlanSnapshot } from '../../shared/plan-draft.js';
 import { createDatabase } from '../db/client.js';
 import { appSnapshots } from '../db/schema.js';
@@ -73,8 +74,9 @@ function createHarness(options: {
   bootstrapSeedState?: boolean;
   aiExecute?: (settings: AppState['settings'], request: AiRequest) => Promise<AiResult>;
   aiCheckHealth?: (settings: AppState['settings'], providerId: AppState['settings']['providers'][number]['id']) => Promise<AiProviderHealthCheckResult>;
+  codexAuthState?: ReturnType<typeof createDefaultCodexAuthStatus>;
 } = {}) {
-  const { snapshotState, bootstrapSeedState = true, aiExecute, aiCheckHealth } = options;
+  const { snapshotState, bootstrapSeedState = true, aiExecute, aiCheckHealth, codexAuthState } = options;
   const { db } = createDatabase(':memory:');
   const appStateRepository = new AppStateRepository(db);
   const entitiesRepository = new EntitiesRepository(db);
@@ -103,6 +105,30 @@ function createHarness(options: {
       })),
       execute: aiExecute ?? (async () => {
         throw new Error('execute is not used in this test');
+      }),
+    },
+    {
+      getCachedStatus: () => codexAuthState ?? createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+      }),
+      getStatus: async () => codexAuthState ?? createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+      }),
+      startBrowserLogin: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+        loginMode: 'browser',
+      }),
+      startDeviceLogin: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+        loginMode: 'device-auth',
+      }),
+      logout: async () => createDefaultCodexAuthStatus({
+        state: 'disconnected',
+        message: 'Codex 已断开连接。',
       }),
     },
   );
@@ -185,6 +211,30 @@ function createPersistenceFailureHarness(options: {
     providerSecretRepository,
     new AiRequestLogRepository(db),
     aiService,
+    {
+      getCachedStatus: () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+      }),
+      getStatus: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+      }),
+      startBrowserLogin: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+        loginMode: 'browser',
+      }),
+      startDeviceLogin: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+        loginMode: 'device-auth',
+      }),
+      logout: async () => createDefaultCodexAuthStatus({
+        state: 'disconnected',
+        message: 'Codex 已断开连接。',
+      }),
+    },
   );
   bootstrapService.initialize();
 
@@ -196,6 +246,30 @@ function createPersistenceFailureHarness(options: {
     new ProviderSecretRepository(db),
     new AiRequestLogRepository(db),
     aiService,
+    {
+      getCachedStatus: () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+      }),
+      getStatus: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+      }),
+      startBrowserLogin: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+        loginMode: 'browser',
+      }),
+      startDeviceLogin: async () => createDefaultCodexAuthStatus({
+        state: 'connected',
+        message: 'Codex 已连接。',
+        loginMode: 'device-auth',
+      }),
+      logout: async () => createDefaultCodexAuthStatus({
+        state: 'disconnected',
+        message: 'Codex 已断开连接。',
+      }),
+    },
   );
 
   return {
@@ -787,11 +861,11 @@ test('generatePlanAdjustmentSuggestions consumes the latest task execution and r
   assert.equal(nextState.conversation.actionPreviews.some((preview) => preview.title === '计划调整预览'), true);
 });
 
-test('getAiRuntimeSummary reflects structured route changes and secret readiness', () => {
+test('getAiRuntimeSummary reflects structured route changes and secret readiness', async () => {
   const { service } = createHarness();
   service.initialize();
 
-  const initialSummary = service.getAiRuntimeSummary();
+  const initialSummary = await service.getAiRuntimeSummary();
   const initialPlanGeneration = initialSummary.find((item) => item.capability === 'plan_generation');
   assert.ok(initialPlanGeneration);
   assert.equal(initialPlanGeneration.providerId, 'deepseek');
@@ -811,7 +885,7 @@ test('getAiRuntimeSummary reflects structured route changes and secret readiness
     secret: 'sk-deepseek',
   });
 
-  const readySummary = service.getAiRuntimeSummary();
+  const readySummary = await service.getAiRuntimeSummary();
   const readyPlanGeneration = readySummary.find((item) => item.capability === 'plan_generation');
   assert.ok(readyPlanGeneration);
   assert.equal(readyPlanGeneration.providerId, 'deepseek');
@@ -829,7 +903,7 @@ test('getAiRuntimeSummary reflects structured route changes and secret readiness
     },
   });
 
-  const reroutedSummary = service.getAiRuntimeSummary();
+  const reroutedSummary = await service.getAiRuntimeSummary();
   const reroutedPlanGeneration = reroutedSummary.find((item) => item.capability === 'plan_generation');
   assert.ok(reroutedPlanGeneration);
   assert.equal(reroutedPlanGeneration.providerId, 'openai');

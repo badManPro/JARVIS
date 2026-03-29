@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   appendConversationMessage,
+  createEmptyAppState,
   applyAcceptedConversationActionPreviews,
   resolveConversationState,
   saveReflectionEntry,
@@ -202,6 +203,28 @@ test('seedState derives a structured home priority action and top risk summary',
   assert.match(seedState.dashboard.riskSignals[0]?.detail ?? '', /临时事务打断|可交付物/);
 });
 
+test('createEmptyAppState includes the enhanced learner persona profile fields', () => {
+  const state = createEmptyAppState();
+
+  assert.deepEqual(state.profile, {
+    name: '',
+    identity: '',
+    timeBudget: '',
+    pacePreference: '',
+    strengths: [],
+    blockers: [],
+    bestStudyWindow: '',
+    planImpact: [],
+    ageBracket: '',
+    gender: '',
+    personalityTraits: [],
+    mbti: '',
+    motivationStyle: '',
+    stressResponse: '',
+    feedbackPreference: '',
+  });
+});
+
 test('syncExecutionDerivedState derives onboarding guidance for a first-run empty state', () => {
   const emptyLikeState = syncExecutionDerivedState({
     ...JSON.parse(JSON.stringify(seedState)),
@@ -214,6 +237,13 @@ test('syncExecutionDerivedState derives onboarding guidance for a first-run empt
       blockers: [],
       bestStudyWindow: '',
       planImpact: [],
+      ageBracket: '',
+      gender: '',
+      personalityTraits: [],
+      mbti: '',
+      motivationStyle: '',
+      stressResponse: '',
+      feedbackPreference: '',
     },
     goals: [],
     plan: {

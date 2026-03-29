@@ -26,6 +26,10 @@ function createStorageBridge(): LearningCompanionBridge['storage'] {
     runProviderHealthCheck: async () => { throw new Error('not implemented'); },
     getAiRuntimeSummary: async () => { throw new Error('not implemented'); },
     getAiObservability: async () => { throw new Error('not implemented'); },
+    getCodexAuthStatus: async () => { throw new Error('not implemented'); },
+    startCodexLogin: async () => { throw new Error('not implemented'); },
+    startCodexDeviceLogin: async () => { throw new Error('not implemented'); },
+    logoutCodex: async () => { throw new Error('not implemented'); },
   };
 }
 

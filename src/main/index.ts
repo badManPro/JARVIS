@@ -10,6 +10,7 @@ import { ProviderSecretRepository } from './repositories/provider-secret-reposit
 import { SettingsRepository } from './repositories/settings-repository.js';
 import { AiService } from './services/ai-service.js';
 import { AppStorageService } from './services/app-storage-service.js';
+import { CodexCliAuthService } from './services/codex-cli-auth-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,6 +86,10 @@ function registerIpcHandlers() {
   ipcMain.handle('storage:run-provider-health-check', async (_event, providerId) => getStorageService().runProviderHealthCheck(providerId));
   ipcMain.handle('storage:get-ai-runtime-summary', async () => getStorageService().getAiRuntimeSummary());
   ipcMain.handle('storage:get-ai-observability', async () => getStorageService().getAiObservability());
+  ipcMain.handle('storage:get-codex-auth-status', async () => getStorageService().getCodexAuthStatus());
+  ipcMain.handle('storage:start-codex-login', async () => getStorageService().startCodexLogin());
+  ipcMain.handle('storage:start-codex-device-login', async () => getStorageService().startCodexDeviceLogin());
+  ipcMain.handle('storage:logout-codex', async () => getStorageService().logoutCodex());
 }
 
 function getStorageService() {
@@ -93,6 +98,7 @@ function getStorageService() {
   const dbFilePath = path.join(app.getPath('userData'), 'learning-companion.sqlite');
   const { db } = createDatabase(dbFilePath);
   const providerSecretRepository = new ProviderSecretRepository(db);
+  const codexCliAuthService = new CodexCliAuthService();
   storageService = new AppStorageService(
     new AppStateRepository(db),
     new EntitiesRepository(db),
@@ -101,7 +107,19 @@ function getStorageService() {
     new AiRequestLogRepository(db),
     new AiService({
       getSecret: (providerId) => providerSecretRepository.get(providerId)?.secret ?? null,
+      getProviderLoginState: (providerId) => {
+        if (providerId !== 'codex') {
+          return null;
+        }
+
+        const status = codexCliAuthService.getCachedStatus();
+        return {
+          connected: status.state === 'connected',
+          blockedReason: status.state === 'connected' ? undefined : status.message,
+        };
+      },
     }),
+    codexCliAuthService,
   );
   storageService.initialize();
   return storageService;

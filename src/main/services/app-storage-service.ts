@@ -19,9 +19,11 @@ import type {
   AiRuntimeSummaryItem,
   AiTextResult,
 } from '../../shared/ai-service.js';
+import type { CodexAuthStatus } from '../../shared/codex-auth.js';
 import {
   applyAcceptedConversationActionPreviews,
   createEmptyAppState,
+  normalizeUserProfile,
   resolveConversationState,
   saveReflectionEntry as applyReflectionEntrySave,
   seedState,
@@ -37,6 +39,7 @@ import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
 import { ProviderSecretRepository } from '../repositories/provider-secret-repository.js';
 import { SettingsRepository } from '../repositories/settings-repository.js';
+import type { CodexAuthRuntimeService } from './codex-cli-auth-service.js';
 import { normalizeAppStateConsistency, type AppStateConsistencyIssue } from './state-consistency.js';
 import type { AiRuntimeService } from './ai-service.js';
 
@@ -56,6 +59,7 @@ export class AppStorageService {
     private readonly providerSecretRepository: ProviderSecretRepository,
     private readonly aiRequestLogRepository: AiRequestLogRepository,
     private readonly aiService: AiRuntimeService,
+    private readonly codexCliAuthService: CodexAuthRuntimeService,
   ) {}
 
   initialize() {
@@ -110,7 +114,7 @@ export class AppStorageService {
 
   loadUserProfile() {
     const profile = this.entitiesRepository.loadUserProfile();
-    if (profile) return profile;
+    if (profile) return normalizeUserProfile(profile);
 
     const snapshot = this.loadAppState();
     this.entitiesRepository.saveUserProfile(snapshot.profile);
@@ -121,7 +125,7 @@ export class AppStorageService {
     const snapshot = this.loadAppState();
     const nextState = this.sanitizeState(this.prepareState({
       ...snapshot,
-      profile,
+      profile: normalizeUserProfile(profile),
     }).state);
 
     this.persistStateAtomically(nextState);
@@ -444,8 +448,36 @@ export class AppStorageService {
     return this.listProviderConfigs();
   }
 
-  getAiRuntimeSummary(): AiRuntimeSummaryItem[] {
-    return this.aiService.getRuntimeSummary(this.loadAppState().settings);
+  async getCodexAuthStatus() {
+    const snapshot = this.loadAppState();
+    return (await this.refreshCodexAuthStatus(snapshot)).status;
+  }
+
+  async startCodexLogin() {
+    const snapshot = this.loadAppState();
+    const status = await this.codexCliAuthService.startBrowserLogin();
+    this.syncCodexProviderHealth(snapshot, status);
+    return status;
+  }
+
+  async startCodexDeviceLogin() {
+    const snapshot = this.loadAppState();
+    const status = await this.codexCliAuthService.startDeviceLogin();
+    this.syncCodexProviderHealth(snapshot, status);
+    return status;
+  }
+
+  async logoutCodex() {
+    const snapshot = this.loadAppState();
+    const status = await this.codexCliAuthService.logout();
+    this.syncCodexProviderHealth(snapshot, status);
+    return status;
+  }
+
+  async getAiRuntimeSummary(): Promise<AiRuntimeSummaryItem[]> {
+    const snapshot = this.loadAppState();
+    const nextState = (await this.refreshCodexAuthStatus(snapshot)).state;
+    return this.aiService.getRuntimeSummary(nextState.settings);
   }
 
   getAiObservability(): AiObservabilitySnapshot {
@@ -453,7 +485,9 @@ export class AppStorageService {
   }
 
   async runProviderHealthCheck(providerId: ProviderId): Promise<AiProviderHealthCheckResponse> {
-    const snapshot = this.loadAppState();
+    const snapshot = providerId === 'codex'
+      ? (await this.refreshCodexAuthStatus(this.loadAppState())).state
+      : this.loadAppState();
     const result = await this.aiService.checkProviderHealth(snapshot.settings, providerId);
     const nextState = this.persistProviderHealthStatus(snapshot, providerId, result.healthStatus);
 
@@ -512,7 +546,11 @@ export class AppStorageService {
   }
 
   private prepareState(state: AppState) {
-    const normalized = normalizeAppStateConsistency(state);
+    const normalizedState = {
+      ...state,
+      profile: normalizeUserProfile(state.profile),
+    } satisfies AppState;
+    const normalized = normalizeAppStateConsistency(normalizedState);
     return {
       ...normalized,
       state: syncExecutionDerivedState(this.withResolvedConversationState(normalized.state)),
@@ -663,9 +701,12 @@ export class AppStorageService {
     validate: (result: AiResult) => T,
   ): Promise<T> {
     const startedAt = new Date();
+    const preparedSnapshot = this.describeRoutedProvider(snapshot.settings, request.capability).providerId === 'codex'
+      ? (await this.refreshCodexAuthStatus(snapshot)).state
+      : snapshot;
 
     try {
-      const result = validate(await this.aiService.execute(snapshot.settings, request));
+      const result = validate(await this.aiService.execute(preparedSnapshot.settings, request));
       const finishedAt = new Date();
       this.aiRequestLogRepository.record({
         capability: request.capability,
@@ -680,7 +721,7 @@ export class AppStorageService {
       return result;
     } catch (error) {
       const finishedAt = new Date();
-      const routedProvider = this.describeRoutedProvider(snapshot.settings, request.capability);
+      const routedProvider = this.describeRoutedProvider(preparedSnapshot.settings, request.capability);
       this.aiRequestLogRepository.record({
         capability: request.capability,
         providerId: routedProvider.providerId,
@@ -731,6 +772,44 @@ export class AppStorageService {
       providerLabel: provider?.label ?? providerId,
       model: provider?.model ?? 'unknown',
     };
+  }
+
+  private async refreshCodexAuthStatus(snapshot: AppState) {
+    const status = await this.codexCliAuthService.getStatus();
+    return {
+      status,
+      state: this.syncCodexProviderHealth(snapshot, status),
+    };
+  }
+
+  private syncCodexProviderHealth(state: AppState, status: CodexAuthStatus) {
+    if (!state.settings.providers.some((provider) => provider.id === 'codex')) {
+      return state;
+    }
+
+    const nextHealthStatus = this.mapCodexAuthStatusToHealthStatus(status);
+    const currentHealthStatus = state.settings.providers.find((provider) => provider.id === 'codex')?.healthStatus;
+    if (currentHealthStatus === nextHealthStatus) {
+      return state;
+    }
+
+    const nextState = this.sanitizeState(this.withProviderHealthStatus(state, 'codex', nextHealthStatus));
+    this.persistStateAtomically(nextState);
+    return this.loadAppState();
+  }
+
+  private mapCodexAuthStatusToHealthStatus(status: CodexAuthStatus): ProviderConfig['healthStatus'] {
+    switch (status.state) {
+      case 'connected':
+        return 'ready';
+      case 'connecting':
+        return 'unknown';
+      case 'disconnected':
+      case 'expired':
+      case 'unavailable':
+      default:
+        return 'warning';
+    }
   }
 
   private normalizeLearningPlanDraft(draft: LearningPlanDraft, fallback: LearningPlanDraft): LearningPlanDraft {

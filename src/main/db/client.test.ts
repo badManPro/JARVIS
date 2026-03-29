@@ -19,7 +19,7 @@ function createTempDbFile() {
 test('createDatabase sets the latest schema version for a fresh database', () => {
   const { sqlite } = createDatabase(':memory:');
 
-  assert.equal(getSchemaVersion(sqlite), 2);
+  assert.equal(getSchemaVersion(sqlite), 3);
 
   sqlite.close();
 });
@@ -57,8 +57,9 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
   const migrated = createDatabase(dbFilePath).sqlite;
   const planTaskColumns = migrated.prepare('PRAGMA table_info(plan_tasks)').all() as Array<{ name: string }>;
   const learningPlanColumns = migrated.prepare('PRAGMA table_info(learning_plans)').all() as Array<{ name: string }>;
+  const userProfileColumns = migrated.prepare('PRAGMA table_info(user_profiles)').all() as Array<{ name: string }>;
 
-  assert.equal(getSchemaVersion(migrated), 2);
+  assert.equal(getSchemaVersion(migrated), 3);
   assert.deepEqual(
     planTaskColumns.map((column) => column.name).sort(),
     [
@@ -77,6 +78,28 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
   assert.deepEqual(
     learningPlanColumns.map((column) => column.name),
     ['id', 'active_goal_id', 'updated_at'],
+  );
+  assert.deepEqual(
+    userProfileColumns.map((column) => column.name).sort(),
+    [
+      'age_bracket',
+      'best_study_window',
+      'blockers_json',
+      'feedback_preference',
+      'gender',
+      'id',
+      'identity',
+      'mbti',
+      'motivation_style',
+      'name',
+      'pace_preference',
+      'personality_traits_json',
+      'plan_impact_json',
+      'stress_response',
+      'strengths_json',
+      'time_budget',
+      'updated_at',
+    ].sort(),
   );
 
   migrated.close();

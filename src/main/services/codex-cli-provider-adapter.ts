@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -30,8 +30,8 @@ function buildPrompt(request: AiRequest) {
 }
 
 function describeCodexFailure(message: string) {
-  if (/auth\.json|codex login|login required|not logged in/i.test(message)) {
-    return '未检测到可复用的 Codex 登录态，请先在当前机器执行 codex login。';
+  if (/codex login|login required|not logged in|sign in/i.test(message)) {
+    return '未检测到可复用的 Codex 登录态，请先完成 Codex 浏览器登录。';
   }
 
   if (/ENOENT|not found/i.test(message)) {
@@ -46,20 +46,10 @@ function describeCodexFailure(message: string) {
 }
 
 async function invokeWithCodexCli(input: CodexInvocationInput, timeoutMs: number) {
-  const sourceHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), '.codex');
-  const authSource = path.join(sourceHome, 'auth.json');
-  const configSource = path.join(sourceHome, 'config.toml');
-  const tempHome = await mkdtemp(path.join(os.tmpdir(), 'learning-companion-codex-'));
-  const outputPath = path.join(tempHome, 'output.txt');
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'learning-companion-codex-'));
+  const outputPath = path.join(tempDir, 'output.txt');
 
   try {
-    await copyFile(authSource, path.join(tempHome, 'auth.json'));
-    try {
-      await copyFile(configSource, path.join(tempHome, 'config.toml'));
-    } catch {
-      // Config is optional; auth.json is sufficient for login reuse.
-    }
-
     const args = [
       'exec',
       '--skip-git-repo-check',
@@ -69,8 +59,6 @@ async function invokeWithCodexCli(input: CodexInvocationInput, timeoutMs: number
       'read-only',
       '-c',
       'model_provider="openai"',
-      '-C',
-      tempHome,
       '-o',
       outputPath,
     ];
@@ -82,10 +70,7 @@ async function invokeWithCodexCli(input: CodexInvocationInput, timeoutMs: number
     args.push(input.prompt);
 
     await execFileAsync('codex', args, {
-      env: {
-        ...process.env,
-        CODEX_HOME: tempHome,
-      },
+      env: process.env,
       timeout: timeoutMs,
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -111,7 +96,7 @@ async function invokeWithCodexCli(input: CodexInvocationInput, timeoutMs: number
 
     throw new Error(describeCodexFailure(parts.join('\n')));
   } finally {
-    await rm(tempHome, { recursive: true, force: true });
+    await rm(tempDir, { recursive: true, force: true });
   }
 }
 

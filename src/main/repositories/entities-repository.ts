@@ -1,5 +1,6 @@
 import { asc, eq } from 'drizzle-orm';
 import type { LearningGoal, LearningPlanDraft, LearningPlanSnapshot, LearningPlanStage, LearningPlanState, PlanTask, ReflectionEntry, UserProfile } from '../../shared/app-state.js';
+import { normalizeUserProfile } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import { learningGoals, learningPlanDrafts, learningPlans, learningPlanSnapshots, reflectionEntries, planSnapshotStages, planSnapshotTasks, planStages, planTasks, userProfiles } from '../db/schema.js';
 import type { LearningCompanionDatabase } from '../db/client.js';
@@ -18,7 +19,7 @@ export class EntitiesRepository {
     const row = this.db.select().from(userProfiles).where(eq(userProfiles.id, PROFILE_ID)).get();
     if (!row) return null;
 
-    return {
+    return normalizeUserProfile({
       name: row.name,
       identity: row.identity,
       timeBudget: row.timeBudget,
@@ -27,36 +28,58 @@ export class EntitiesRepository {
       blockers: parseJsonArray<string>(row.blockersJson),
       bestStudyWindow: row.bestStudyWindow,
       planImpact: parseJsonArray<string>(row.planImpactJson),
-    };
+      ageBracket: row.ageBracket,
+      gender: row.gender,
+      personalityTraits: parseJsonArray<string>(row.personalityTraitsJson),
+      mbti: row.mbti,
+      motivationStyle: row.motivationStyle,
+      stressResponse: row.stressResponse,
+      feedbackPreference: row.feedbackPreference,
+    });
   }
 
   saveUserProfile(profile: UserProfile) {
     const now = new Date();
+    const normalizedProfile = normalizeUserProfile(profile);
     this.db
       .insert(userProfiles)
       .values({
         id: PROFILE_ID,
-        name: profile.name,
-        identity: profile.identity,
-        timeBudget: profile.timeBudget,
-        pacePreference: profile.pacePreference,
-        strengthsJson: JSON.stringify(profile.strengths),
-        blockersJson: JSON.stringify(profile.blockers),
-        bestStudyWindow: profile.bestStudyWindow,
-        planImpactJson: JSON.stringify(profile.planImpact),
+        name: normalizedProfile.name,
+        identity: normalizedProfile.identity,
+        timeBudget: normalizedProfile.timeBudget,
+        pacePreference: normalizedProfile.pacePreference,
+        strengthsJson: JSON.stringify(normalizedProfile.strengths),
+        blockersJson: JSON.stringify(normalizedProfile.blockers),
+        bestStudyWindow: normalizedProfile.bestStudyWindow,
+        planImpactJson: JSON.stringify(normalizedProfile.planImpact),
+        ageBracket: normalizedProfile.ageBracket,
+        gender: normalizedProfile.gender,
+        personalityTraitsJson: JSON.stringify(normalizedProfile.personalityTraits),
+        mbti: normalizedProfile.mbti,
+        motivationStyle: normalizedProfile.motivationStyle,
+        stressResponse: normalizedProfile.stressResponse,
+        feedbackPreference: normalizedProfile.feedbackPreference,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: userProfiles.id,
         set: {
-          name: profile.name,
-          identity: profile.identity,
-          timeBudget: profile.timeBudget,
-          pacePreference: profile.pacePreference,
-          strengthsJson: JSON.stringify(profile.strengths),
-          blockersJson: JSON.stringify(profile.blockers),
-          bestStudyWindow: profile.bestStudyWindow,
-          planImpactJson: JSON.stringify(profile.planImpact),
+          name: normalizedProfile.name,
+          identity: normalizedProfile.identity,
+          timeBudget: normalizedProfile.timeBudget,
+          pacePreference: normalizedProfile.pacePreference,
+          strengthsJson: JSON.stringify(normalizedProfile.strengths),
+          blockersJson: JSON.stringify(normalizedProfile.blockers),
+          bestStudyWindow: normalizedProfile.bestStudyWindow,
+          planImpactJson: JSON.stringify(normalizedProfile.planImpact),
+          ageBracket: normalizedProfile.ageBracket,
+          gender: normalizedProfile.gender,
+          personalityTraitsJson: JSON.stringify(normalizedProfile.personalityTraits),
+          mbti: normalizedProfile.mbti,
+          motivationStyle: normalizedProfile.motivationStyle,
+          stressResponse: normalizedProfile.stressResponse,
+          feedbackPreference: normalizedProfile.feedbackPreference,
           updatedAt: now,
         },
       })

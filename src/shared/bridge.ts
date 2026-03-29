@@ -9,6 +9,7 @@ import type {
   UpdatePlanTaskStatusInput,
 } from './app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResponse, AiRuntimeSummaryItem } from './ai-service.js';
+import type { CodexAuthStatus } from './codex-auth.js';
 import type { LearningGoalInput } from './goal.js';
 import type { ProviderConfigInput } from './provider-config.js';
 
@@ -37,5 +38,9 @@ export type LearningCompanionBridge = {
     runProviderHealthCheck: (providerId: ProviderId) => Promise<AiProviderHealthCheckResponse>;
     getAiRuntimeSummary: () => Promise<AiRuntimeSummaryItem[]>;
     getAiObservability: () => Promise<AiObservabilitySnapshot>;
+    getCodexAuthStatus: () => Promise<CodexAuthStatus>;
+    startCodexLogin: () => Promise<CodexAuthStatus>;
+    startCodexDeviceLogin: () => Promise<CodexAuthStatus>;
+    logoutCodex: () => Promise<CodexAuthStatus>;
   };
 };
