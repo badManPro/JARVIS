@@ -5,14 +5,16 @@ import { useAppStore } from '@/store/app-store';
 import {
   Field,
   MetricRow,
+  PresetInputField,
+  PresetMultiValueField,
   buildCoachStyleSummary,
   inputClassName,
   primaryButtonClassName,
   secondaryButtonClassName,
-  splitLines,
   textareaClassName,
 } from '@/pages/dashboard/shared';
 import type { UserProfile } from '@shared/app-state';
+import { onboardingFieldOptions } from '@shared/onboarding';
 
 export function ProfilePage() {
   const profile = useAppStore((state) => state.profile);
@@ -32,10 +34,6 @@ export function ProfilePage() {
     try {
       await saveUserProfile({
         ...draft,
-        strengths: splitLines(draft.strengths.join('\n')),
-        blockers: splitLines(draft.blockers.join('\n')),
-        planImpact: splitLines(draft.planImpact.join('\n')),
-        personalityTraits: splitLines(draft.personalityTraits.join('\n')),
       });
       setEditing(false);
       setNotice('学习档案已更新。');
@@ -98,17 +96,83 @@ export function ProfilePage() {
           <SectionTitle>编辑档案</SectionTitle>
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <Field label="名字"><input className={inputClassName} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></Field>
-            <Field label="年龄阶段"><input className={inputClassName} value={draft.ageBracket} onChange={(event) => setDraft((current) => ({ ...current, ageBracket: event.target.value }))} /></Field>
+            <PresetInputField
+              label="年龄阶段"
+              value={draft.ageBracket}
+              onChange={(value) => setDraft((current) => ({ ...current, ageBracket: value }))}
+              options={onboardingFieldOptions.ageBracket}
+              placeholder="例如：25-34 岁"
+            />
             <Field label="当前水平"><textarea className={textareaClassName} rows={4} value={draft.identity} onChange={(event) => setDraft((current) => ({ ...current, identity: event.target.value }))} /></Field>
-            <Field label="时间预算"><input className={inputClassName} value={draft.timeBudget} onChange={(event) => setDraft((current) => ({ ...current, timeBudget: event.target.value }))} /></Field>
-            <Field label="学习窗口"><input className={inputClassName} value={draft.bestStudyWindow} onChange={(event) => setDraft((current) => ({ ...current, bestStudyWindow: event.target.value }))} /></Field>
-            <Field label="节奏偏好"><input className={inputClassName} value={draft.pacePreference} onChange={(event) => setDraft((current) => ({ ...current, pacePreference: event.target.value }))} /></Field>
-            <Field label="MBTI"><input className={inputClassName} value={draft.mbti} onChange={(event) => setDraft((current) => ({ ...current, mbti: event.target.value.toUpperCase() }))} /></Field>
-            <Field label="可选性别"><input className={inputClassName} value={draft.gender} onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value }))} /></Field>
-            <Field label="性格关键词（每行一个）"><textarea className={textareaClassName} rows={4} value={draft.personalityTraits.join('\n')} onChange={(event) => setDraft((current) => ({ ...current, personalityTraits: splitLines(event.target.value) }))} /></Field>
-            <Field label="激励方式"><textarea className={textareaClassName} rows={4} value={draft.motivationStyle} onChange={(event) => setDraft((current) => ({ ...current, motivationStyle: event.target.value }))} /></Field>
-            <Field label="压力偏好"><textarea className={textareaClassName} rows={4} value={draft.stressResponse} onChange={(event) => setDraft((current) => ({ ...current, stressResponse: event.target.value }))} /></Field>
-            <Field label="反馈方式"><textarea className={textareaClassName} rows={4} value={draft.feedbackPreference} onChange={(event) => setDraft((current) => ({ ...current, feedbackPreference: event.target.value }))} /></Field>
+            <PresetInputField
+              label="时间预算"
+              value={draft.timeBudget}
+              onChange={(value) => setDraft((current) => ({ ...current, timeBudget: value }))}
+              options={onboardingFieldOptions.timeBudget}
+              placeholder="例如：工作日 45 分钟，周末 2 小时"
+            />
+            <PresetInputField
+              label="学习窗口"
+              value={draft.bestStudyWindow}
+              onChange={(value) => setDraft((current) => ({ ...current, bestStudyWindow: value }))}
+              options={onboardingFieldOptions.bestStudyWindow}
+              placeholder="例如：工作日晚间 20:30 - 21:15"
+            />
+            <PresetInputField
+              label="节奏偏好"
+              value={draft.pacePreference}
+              onChange={(value) => setDraft((current) => ({ ...current, pacePreference: value }))}
+              options={onboardingFieldOptions.pacePreference}
+              placeholder="例如：先用 30-45 分钟的小步快跑"
+            />
+            <PresetInputField
+              label="MBTI"
+              value={draft.mbti}
+              onChange={(value) => setDraft((current) => ({ ...current, mbti: value.toUpperCase() }))}
+              options={onboardingFieldOptions.mbti}
+              placeholder="例如：INTJ"
+            />
+            <PresetInputField
+              label="可选性别"
+              value={draft.gender}
+              onChange={(value) => setDraft((current) => ({ ...current, gender: value }))}
+              options={onboardingFieldOptions.gender}
+              placeholder="不填也可以"
+            />
+            <PresetMultiValueField
+              label="性格关键词"
+              values={draft.personalityTraits}
+              onChange={(values) => setDraft((current) => ({ ...current, personalityTraits: values }))}
+              options={onboardingFieldOptions.personalityTraits}
+              placeholder="每行一个，例如：需要明确反馈"
+            />
+            <PresetInputField
+              label="激励方式"
+              value={draft.motivationStyle}
+              onChange={(value) => setDraft((current) => ({ ...current, motivationStyle: value }))}
+              options={onboardingFieldOptions.motivationStyle}
+              placeholder="例如：看到明确里程碑更有动力"
+              multiline
+              rows={4}
+            />
+            <PresetInputField
+              label="压力偏好"
+              value={draft.stressResponse}
+              onChange={(value) => setDraft((current) => ({ ...current, stressResponse: value }))}
+              options={onboardingFieldOptions.stressResponse}
+              placeholder="例如：先做低阻力任务恢复节奏"
+              multiline
+              rows={4}
+            />
+            <PresetInputField
+              label="反馈方式"
+              value={draft.feedbackPreference}
+              onChange={(value) => setDraft((current) => ({ ...current, feedbackPreference: value }))}
+              options={onboardingFieldOptions.feedbackPreference}
+              placeholder="例如：直接、简短，并明确下一步动作"
+              multiline
+              rows={4}
+            />
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" className={primaryButtonClassName} onClick={() => void onSave()} disabled={saving}>

@@ -31,7 +31,8 @@ import {
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
 } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
-import { createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
+import type { CompleteInitialOnboardingPayload, CompleteInitialOnboardingResult, InitialOnboardingSummary } from '../../shared/onboarding.js';
+import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
 import { normalizeSecretInput, toSafeProviderConfig } from '../../shared/provider-config.js';
 import { AiRequestLogRepository } from '../repositories/ai-request-log-repository.js';
@@ -130,6 +131,110 @@ export class AppStorageService {
 
     this.persistStateAtomically(nextState);
     return this.loadUserProfile();
+  }
+
+  async completeInitialOnboarding(payload: CompleteInitialOnboardingPayload): Promise<CompleteInitialOnboardingResult> {
+    const snapshot = this.loadAppState();
+    const goalId = snapshot.plan.activeGoalId || snapshot.goals[0]?.id || `goal-${Date.now()}`;
+    const existingGoal = snapshot.goals.find((goal) => goal.id === goalId) ?? snapshot.goals[0] ?? null;
+    const nextProfile = normalizeUserProfile({
+      ...snapshot.profile,
+      identity: payload.baseline,
+      timeBudget: payload.timeBudget,
+      bestStudyWindow: payload.bestStudyWindow,
+      pacePreference: payload.pacePreference,
+      ageBracket: payload.ageBracket,
+      gender: payload.gender,
+      personalityTraits: payload.personalityTraits,
+      mbti: payload.mbti,
+      motivationStyle: payload.motivationStyle,
+      stressResponse: payload.stressResponse,
+      feedbackPreference: payload.feedbackPreference,
+    });
+    const nextGoal = {
+      id: goalId,
+      title: payload.goalTitle.trim(),
+      motivation: existingGoal?.motivation ?? `希望系统化推进 ${payload.goalTitle.trim()}。`,
+      baseline: payload.baseline.trim(),
+      cycle: payload.cycle.trim() || existingGoal?.cycle || '6 周',
+      successMetric: existingGoal?.successMetric ?? `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
+      priority: existingGoal?.priority ?? 'P1',
+      status: 'active' as const,
+    };
+    const nextGoals = snapshot.goals.some((goal) => goal.id === goalId)
+      ? snapshot.goals.map((goal) => (goal.id === goalId ? nextGoal : goal))
+      : [...snapshot.goals, nextGoal];
+    const ensuredPlanState = ensurePlanDrafts(nextGoals, { ...snapshot.plan, activeGoalId: goalId }, nextProfile);
+    const baseDraft = ensuredPlanState.drafts.find((draft) => draft.goalId === goalId) ?? createPlanDraft(nextGoal, nextProfile);
+    const routedProvider = this.describeRoutedProvider(snapshot.settings, 'plan_generation');
+
+    let planSource: CompleteInitialOnboardingResult['planSource'] = 'template_fallback';
+    let providerLabel = routedProvider.providerLabel;
+    let fallbackReason: string | undefined;
+    let nextDraft = createPlanDraft(nextGoal, nextProfile);
+
+    try {
+      const result = await this.executeLoggedCapabilityRequest(snapshot, {
+        capability: 'plan_generation',
+        goal: nextGoal,
+        profile: nextProfile,
+        currentDraft: null,
+      }, (value) => {
+        if (value.capability !== 'plan_generation') {
+          throw new Error('计划生成返回了意外结果。');
+        }
+        return value;
+      });
+
+      planSource = 'ai';
+      providerLabel = result.providerLabel;
+      nextDraft = this.normalizeLearningPlanDraft({
+        ...baseDraft,
+        title: result.draft.title,
+        summary: result.draft.summary,
+        basis: result.draft.basis,
+        stages: result.draft.stages.map((stage) => ({
+          title: stage.title,
+          outcome: stage.outcome,
+          progress: stage.progress ?? '未开始',
+        })),
+        tasks: result.draft.tasks.map((task, index) => ({
+          id: `${baseDraft.id}-ai-task-${index + 1}`,
+          title: task.title,
+          duration: task.duration,
+          note: task.note,
+          status: task.status ?? 'todo',
+        })),
+      }, baseDraft);
+    } catch (error) {
+      fallbackReason = error instanceof Error ? error.message : '计划生成失败，已降级为模板版路径。';
+    }
+
+    const nextState = this.sanitizeState(this.prepareState(this.withProviderHealthStatus({
+      ...snapshot,
+      profile: nextProfile,
+      goals: nextGoals,
+      plan: {
+        ...ensuredPlanState,
+        activeGoalId: goalId,
+        drafts: ensuredPlanState.drafts.some((draft) => draft.goalId === goalId)
+          ? ensuredPlanState.drafts.map((draft) => (draft.goalId === goalId ? nextDraft : draft))
+          : [...ensuredPlanState.drafts, nextDraft],
+      },
+    }, routedProvider.providerId, planSource === 'ai' ? 'ready' : 'warning')).state);
+
+    this.persistStateAtomically(nextState);
+
+    const persistedState = this.loadAppState();
+    const persistedDraft = persistedState.plan.drafts.find((draft) => draft.goalId === goalId) ?? nextDraft;
+
+    return {
+      state: persistedState,
+      planSource,
+      providerLabel,
+      fallbackReason,
+      summary: this.buildInitialOnboardingSummary(persistedState.profile, nextGoal.title, persistedDraft),
+    };
   }
 
   upsertLearningGoal(goal: LearningGoalInput) {
@@ -865,6 +970,37 @@ export class AppStorageService {
         statusUpdatedAt: task.statusUpdatedAt,
       })),
       updatedAt: draft.updatedAt ?? fallback.updatedAt,
+    };
+  }
+
+  private buildInitialOnboardingSummary(
+    profile: UserProfile,
+    goalTitle: string,
+    draft: LearningPlanDraft,
+  ): InitialOnboardingSummary {
+    const personaHighlights = [
+      profile.timeBudget ? `时间预算：${profile.timeBudget}` : null,
+      profile.bestStudyWindow ? `学习窗口：${profile.bestStudyWindow}` : null,
+      profile.pacePreference ? `推进节奏：${profile.pacePreference}` : null,
+      profile.feedbackPreference ? `反馈方式：${profile.feedbackPreference}` : null,
+      profile.mbti ? `MBTI：${profile.mbti}` : null,
+      profile.personalityTraits[0] ? `性格关键词：${profile.personalityTraits[0]}` : null,
+      profile.stressResponse ? `压力应对：${profile.stressResponse}` : null,
+    ].filter(Boolean).slice(0, 3) as string[];
+    const firstTask = draft.tasks[0] ?? {
+      title: '确认第一步任务',
+      duration: '20 分钟',
+      note: '先从最小动作开始。',
+    };
+
+    return {
+      personaHighlights: personaHighlights.length ? personaHighlights : ['系统会先按低摩擦节奏启动，后续可继续补充画像。'],
+      goalTitle,
+      planTitle: draft.title,
+      planSummary: draft.summary,
+      firstTaskTitle: firstTask.title,
+      firstTaskDuration: firstTask.duration,
+      firstTaskNote: firstTask.note,
     };
   }
 }

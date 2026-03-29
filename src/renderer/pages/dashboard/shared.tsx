@@ -7,15 +7,21 @@ import type {
   TaskStatus,
   UserProfile,
 } from '@shared/app-state';
+import type { OnboardingPresetOption } from '@shared/onboarding';
 
 export const inputClassName = 'neo-input w-full rounded-[1.1rem] px-4 py-3 text-sm text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-60';
 export const textareaClassName = 'neo-input w-full resize-y rounded-[1.1rem] px-4 py-3 text-sm text-slate-900 outline-none disabled:cursor-not-allowed disabled:opacity-60';
 export const primaryButtonClassName = 'neo-button neo-button-primary inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60';
 export const secondaryButtonClassName = 'neo-button inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-60';
+export const dangerButtonClassName = 'neo-button neo-button-danger inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60';
 export const ghostButtonClassName = 'inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-white/70 hover:text-slate-900';
 export const sectionCardClassName = 'space-y-4 rounded-[1.75rem] border border-white/70 bg-white/82 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.06)]';
 export const startPageOptions = ['今日', '学习路径', '学习档案', '设置'];
 export const themeOptions = ['跟随系统', '浅色', '深色'];
+export const presetChipClassName = (active: boolean) => [
+  'rounded-full border px-3 py-2 text-sm transition',
+  active ? 'border-slate-900 bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)]' : 'border-white/80 bg-white/88 text-slate-700 hover:border-slate-300 hover:text-slate-900',
+].join(' ');
 
 export function normalizeStartPageLabel(value: string) {
   switch (value) {
@@ -164,5 +170,103 @@ export function MetricRow({
       <div className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</div>
       <div className="mt-2 text-sm leading-6 text-slate-900">{value}</div>
     </div>
+  );
+}
+
+export function PresetInputField({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  multiline = false,
+  rows = 3,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: OnboardingPresetOption[];
+  placeholder: string;
+  multiline?: boolean;
+  rows?: number;
+}) {
+  return (
+    <Field label={label}>
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => (
+            <button
+              key={`${label}-${option.label}-${option.value || 'empty'}`}
+              type="button"
+              className={presetChipClassName(option.value === value)}
+              onClick={() => onChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {multiline ? (
+          <textarea
+            className={textareaClassName}
+            rows={rows}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={placeholder}
+          />
+        ) : (
+          <input
+            className={inputClassName}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={placeholder}
+          />
+        )}
+        <div className="text-xs text-slate-500">优先点选常用选项；如果都不合适，再手动填写。</div>
+      </div>
+    </Field>
+  );
+}
+
+export function PresetMultiValueField({
+  label,
+  values,
+  onChange,
+  options,
+  placeholder,
+}: {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  options: OnboardingPresetOption[];
+  placeholder: string;
+}) {
+  return (
+    <Field label={label}>
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => {
+            const active = values.includes(option.value);
+            return (
+              <button
+                key={`${label}-${option.label}-${option.value}`}
+                type="button"
+                className={presetChipClassName(active)}
+                onClick={() => onChange(active ? values.filter((item) => item !== option.value) : [...values, option.value])}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        <textarea
+          className={textareaClassName}
+          rows={4}
+          value={values.join('\n')}
+          onChange={(event) => onChange(splitLines(event.target.value))}
+          placeholder={placeholder}
+        />
+        <div className="text-xs text-slate-500">可多选，也可直接手动补充；每行会被视为一个关键词。</div>
+      </div>
+    </Field>
   );
 }

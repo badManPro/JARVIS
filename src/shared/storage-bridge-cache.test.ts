@@ -9,6 +9,7 @@ function createStorageBridge(): LearningCompanionBridge['storage'] {
     saveAppState: async () => { throw new Error('not implemented'); },
     loadUserProfile: async () => { throw new Error('not implemented'); },
     saveUserProfile: async () => { throw new Error('not implemented'); },
+    completeInitialOnboarding: async () => { throw new Error('not implemented'); },
     upsertLearningGoal: async () => { throw new Error('not implemented'); },
     removeLearningGoal: async () => { throw new Error('not implemented'); },
     setActiveGoal: async () => { throw new Error('not implemented'); },

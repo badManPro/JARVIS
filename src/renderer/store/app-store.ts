@@ -26,6 +26,7 @@ import {
 } from '@shared/app-state';
 import { createDefaultCodexAuthStatus } from '@shared/codex-auth';
 import type { LearningGoalInput } from '@shared/goal';
+import type { CompleteInitialOnboardingPayload, CompleteInitialOnboardingResult } from '@shared/onboarding';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
 import { getCachedStorageBridge } from '@shared/storage-bridge-cache';
@@ -39,6 +40,7 @@ type AppStore = AppState & {
   hydrateFromStorage: () => Promise<void>;
   saveAppState: (nextState: AppState) => Promise<void>;
   saveUserProfile: (profile: UserProfile) => Promise<void>;
+  completeInitialOnboarding: (payload: CompleteInitialOnboardingPayload) => Promise<CompleteInitialOnboardingResult>;
   upsertLearningGoal: (goal: LearningGoalInput) => Promise<void>;
   removeLearningGoal: (goalId: string) => Promise<void>;
   setActiveGoal: (goalId: string) => Promise<void>;
@@ -178,6 +180,77 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const persistedProfile = await bridge.saveUserProfile(profile);
     set((state) => ({ ...state, profile: persistedProfile, hydrated: true, hydrationError: null }));
+  },
+  completeInitialOnboarding: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      const currentState = extractAppState(get());
+      const goalId = currentState.plan.activeGoalId || currentState.goals[0]?.id || `goal-${Date.now()}`;
+      const nextGoal = {
+        id: goalId,
+        title: payload.goalTitle.trim(),
+        motivation: `希望系统化推进 ${payload.goalTitle.trim()}。`,
+        baseline: payload.baseline.trim(),
+        cycle: payload.cycle.trim() || '6 周',
+        successMetric: `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
+        priority: 'P1' as const,
+        status: 'active' as const,
+      };
+      const nextProfile = {
+        ...currentState.profile,
+        identity: payload.baseline.trim(),
+        timeBudget: payload.timeBudget.trim(),
+        bestStudyWindow: payload.bestStudyWindow.trim(),
+        pacePreference: payload.pacePreference.trim(),
+        ageBracket: payload.ageBracket.trim(),
+        gender: payload.gender.trim(),
+        personalityTraits: payload.personalityTraits,
+        mbti: payload.mbti.trim().toUpperCase(),
+        motivationStyle: payload.motivationStyle.trim(),
+        stressResponse: payload.stressResponse.trim(),
+        feedbackPreference: payload.feedbackPreference.trim(),
+      };
+      const nextDraft = createPlanDraft(nextGoal, nextProfile);
+      const nextState: AppState = {
+        ...currentState,
+        profile: nextProfile,
+        goals: currentState.goals.some((goal) => goal.id === goalId)
+          ? currentState.goals.map((goal) => (goal.id === goalId ? nextGoal : goal))
+          : [...currentState.goals, nextGoal],
+        plan: {
+          ...currentState.plan,
+          activeGoalId: goalId,
+          drafts: currentState.plan.drafts.some((draft) => draft.goalId === goalId)
+            ? currentState.plan.drafts.map((draft) => (draft.goalId === goalId ? nextDraft : draft))
+            : [...currentState.plan.drafts, nextDraft],
+        },
+      };
+      set({
+        ...nextState,
+        hydrated: true,
+        hydrationError: 'learningCompanion bridge 不可用，已降级为模板版路径。',
+      });
+      return {
+        state: nextState,
+        planSource: 'template_fallback',
+        providerLabel: undefined,
+        fallbackReason: 'learningCompanion bridge 不可用，已降级为模板版路径。',
+        summary: {
+          personaHighlights: [`时间预算：${nextProfile.timeBudget}`],
+          goalTitle: nextGoal.title,
+          planTitle: nextDraft.title,
+          planSummary: nextDraft.summary,
+          firstTaskTitle: nextDraft.tasks[0]?.title ?? '确认第一步任务',
+          firstTaskDuration: nextDraft.tasks[0]?.duration ?? '20 分钟',
+          firstTaskNote: nextDraft.tasks[0]?.note ?? '先从最小动作开始。',
+        },
+      };
+    }
+
+    const persistedState = await bridge.completeInitialOnboarding(payload);
+    const diagnostics = await loadRuntimeDiagnostics(bridge);
+    set({ ...persistedState.state, ...diagnostics, hydrated: true, hydrationError: null });
+    return persistedState;
   },
   upsertLearningGoal: async (goal) => {
     const bridge = getBridge();

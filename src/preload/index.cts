@@ -9,6 +9,7 @@ const learningCompanion: LearningCompanionBridge = {
     saveAppState: (state) => ipcRenderer.invoke('storage:save-app-state', state),
     loadUserProfile: () => ipcRenderer.invoke('storage:load-user-profile'),
     saveUserProfile: (profile) => ipcRenderer.invoke('storage:save-user-profile', profile),
+    completeInitialOnboarding: (payload) => ipcRenderer.invoke('storage:complete-initial-onboarding', payload),
     upsertLearningGoal: (goal) => ipcRenderer.invoke('storage:upsert-learning-goal', goal),
     removeLearningGoal: (goalId) => ipcRenderer.invoke('storage:remove-learning-goal', goalId),
     setActiveGoal: (goalId) => ipcRenderer.invoke('storage:set-active-goal', goalId),

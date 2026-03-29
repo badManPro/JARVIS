@@ -11,6 +11,7 @@ import type {
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResponse, AiRuntimeSummaryItem } from './ai-service.js';
 import type { CodexAuthStatus } from './codex-auth.js';
 import type { LearningGoalInput } from './goal.js';
+import type { CompleteInitialOnboardingPayload, CompleteInitialOnboardingResult } from './onboarding.js';
 import type { ProviderConfigInput } from './provider-config.js';
 
 export type LearningCompanionBridge = {
@@ -21,6 +22,7 @@ export type LearningCompanionBridge = {
     saveAppState: (state: AppState) => Promise<AppState>;
     loadUserProfile: () => Promise<AppState['profile']>;
     saveUserProfile: (profile: AppState['profile']) => Promise<AppState['profile']>;
+    completeInitialOnboarding: (payload: CompleteInitialOnboardingPayload) => Promise<CompleteInitialOnboardingResult>;
     upsertLearningGoal: (goal: LearningGoalInput) => Promise<AppState['goals']>;
     removeLearningGoal: (goalId: string) => Promise<AppState>;
     setActiveGoal: (goalId: string) => Promise<AppState>;

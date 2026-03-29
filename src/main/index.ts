@@ -69,6 +69,7 @@ function registerIpcHandlers() {
   ipcMain.handle('storage:save-app-state', async (_event, state) => getStorageService().saveAppState(state));
   ipcMain.handle('storage:load-user-profile', async () => getStorageService().loadUserProfile());
   ipcMain.handle('storage:save-user-profile', async (_event, profile) => getStorageService().saveUserProfile(profile));
+  ipcMain.handle('storage:complete-initial-onboarding', async (_event, payload) => getStorageService().completeInitialOnboarding(payload));
   ipcMain.handle('storage:upsert-learning-goal', async (_event, goal) => getStorageService().upsertLearningGoal(goal));
   ipcMain.handle('storage:remove-learning-goal', async (_event, goalId) => getStorageService().removeLearningGoal(goalId));
   ipcMain.handle('storage:set-active-goal', async (_event, goalId) => getStorageService().setActiveGoal(goalId));

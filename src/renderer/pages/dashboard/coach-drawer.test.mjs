@@ -7,12 +7,20 @@ const coachDrawerSource = fs.readFileSync(
   path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/coach-drawer.tsx'),
   'utf8',
 );
+const profilePageSource = fs.readFileSync(
+  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/profile-page.tsx'),
+  'utf8',
+);
 const appShellSource = fs.readFileSync(
   path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/layouts/app-shell.tsx'),
   'utf8',
 );
 const appStoreSource = fs.readFileSync(
   path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/store/app-store.ts'),
+  'utf8',
+);
+const bridgeSource = fs.readFileSync(
+  path.resolve('/Users/casper/Documents/project/JARVIS/src/shared/bridge.ts'),
   'utf8',
 );
 
@@ -33,4 +41,32 @@ test('app shell passes page navigation into the coach drawer', () => {
 test('app store resyncs derived execution state after applying accepted previews', () => {
   assert.match(appStoreSource, /syncExecutionDerivedState/);
   assert.match(appStoreSource, /const nextState = syncExecutionDerivedState\(result\.state\);/);
+});
+
+test('first-run onboarding uses an explicit generating flow and summary actions', () => {
+  assert.match(coachDrawerSource, /completeInitialOnboarding/);
+  assert.match(coachDrawerSource, /'editing'\s*\|\s*'generating'\s*\|\s*'result_summary'/);
+  assert.match(coachDrawerSource, /整理画像/);
+  assert.match(coachDrawerSource, /确认目标/);
+  assert.match(coachDrawerSource, /生成路径/);
+  assert.match(coachDrawerSource, /进入学习路径/);
+  assert.match(coachDrawerSource, /直接开始今天第一步/);
+  assert.match(coachDrawerSource, /当前为模板版路径/);
+});
+
+test('bridge and store expose the completeInitialOnboarding atomic entry', () => {
+  assert.match(bridgeSource, /completeInitialOnboarding:\s*\(payload:/);
+  assert.match(appStoreSource, /completeInitialOnboarding:\s*\(payload:/);
+  assert.match(appStoreSource, /const persistedState = await bridge\.completeInitialOnboarding\(payload\);/);
+});
+
+test('coach drawer and profile page share preset-first field components and change quick actions', () => {
+  assert.match(coachDrawerSource, /PresetInputField/);
+  assert.match(coachDrawerSource, /PresetMultiValueField/);
+  assert.match(profilePageSource, /PresetInputField/);
+  assert.match(profilePageSource, /PresetMultiValueField/);
+  assert.match(coachDrawerSource, /时间变少了/);
+  assert.match(coachDrawerSource, /学习窗口变了/);
+  assert.match(coachDrawerSource, /目标变了/);
+  assert.match(coachDrawerSource, /希望反馈更直接/);
 });

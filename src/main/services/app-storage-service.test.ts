@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AppState } from '../../shared/app-state.js';
-import { seedState, updateConversationActionPreviewReview } from '../../shared/app-state.js';
+import { createEmptyAppState, seedState, updateConversationActionPreviewReview } from '../../shared/app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequest, AiResult, AiRuntimeSummaryItem } from '../../shared/ai-service.js';
 import { createDefaultCodexAuthStatus } from '../../shared/codex-auth.js';
 import { createPlanSnapshot } from '../../shared/plan-draft.js';
+import type { CompleteInitialOnboardingPayload } from '../../shared/onboarding.js';
 import { createDatabase } from '../db/client.js';
 import { appSnapshots } from '../db/schema.js';
 import { AiRequestLogRepository } from '../repositories/ai-request-log-repository.js';
@@ -700,6 +701,161 @@ test('regenerateLearningPlanDraft archives the current draft and replaces it wit
   assert.equal(nextDraft.title, 'AI 生成的冲刺草案');
   assert.equal(nextDraft.summary, '由真实 Provider 返回的计划草案。');
   assert.equal(nextState.plan.snapshots[0]?.title, previousDraft.title);
+});
+
+test('completeInitialOnboarding persists AI-generated goal, profile, and plan summary in one flow', async () => {
+  const executeCalls: AiRequest[] = [];
+  const payload: CompleteInitialOnboardingPayload = {
+    goalTitle: 'Python + AI 应用开发',
+    baseline: '前端经验较强，Python 和数据层较弱。',
+    timeBudget: '工作日 45 分钟，周末 2 小时',
+    bestStudyWindow: '工作日晚间 20:30 - 21:15',
+    pacePreference: '先用 30-45 分钟的小步快跑',
+    ageBracket: '25-34 岁',
+    gender: '',
+    personalityTraits: ['偏好明确反馈', '喜欢先看到可交付结果'],
+    mbti: 'INTJ',
+    motivationStyle: '看到清晰里程碑更有动力',
+    stressResponse: '压力大时先恢复低阻力任务节奏',
+    feedbackPreference: '提醒直接、简短，并明确下一步动作',
+    cycle: '6 周',
+  };
+  const { service } = createHarness({
+    snapshotState: createEmptyAppState(),
+    aiExecute: async (_settings, request) => {
+      executeCalls.push(request);
+      return {
+        capability: 'plan_generation',
+        providerId: 'deepseek',
+        providerLabel: 'DeepSeek',
+        model: 'deepseek-chat',
+        draft: {
+          title: 'AI 生成的 Python + AI 路径',
+          summary: '围绕 MVP 交付组织的一版真实首轮学习路径。',
+          basis: ['真实 AI 输出首轮路径'],
+          stages: [
+            { title: '阶段 1', outcome: '明确 MVP 范围', progress: '未开始' },
+            { title: '阶段 2', outcome: '完成一次端到端实现', progress: '未开始' },
+          ],
+          tasks: [
+            { title: '列出 MVP 功能清单', duration: '25 分钟', note: '先收束到可演示功能。', status: 'todo' },
+            { title: '补 Python 调用链路', duration: '45 分钟', note: '打通最小闭环。', status: 'todo' },
+          ],
+        },
+      };
+    },
+  });
+
+  service.initialize();
+
+  const result = await service.completeInitialOnboarding(payload);
+  const activeDraft = result.state.plan.drafts.find((draft) => draft.goalId === result.state.plan.activeGoalId);
+  const activeGoal = result.state.goals.find((goal) => goal.id === result.state.plan.activeGoalId);
+
+  assert.equal(executeCalls.length, 1);
+  assert.equal(executeCalls[0]?.capability, 'plan_generation');
+  assert.equal((executeCalls[0] as Extract<AiRequest, { capability: 'plan_generation' }>).currentDraft, null);
+  assert.equal(result.planSource, 'ai');
+  assert.equal(result.providerLabel, 'DeepSeek');
+  assert.equal(result.state.profile.timeBudget, payload.timeBudget);
+  assert.equal(result.state.profile.feedbackPreference, payload.feedbackPreference);
+  assert.equal(activeGoal?.title, payload.goalTitle);
+  assert.equal(activeGoal?.baseline, payload.baseline);
+  assert.equal(activeDraft?.title, 'AI 生成的 Python + AI 路径');
+  assert.equal(activeDraft?.tasks[0]?.title, '列出 MVP 功能清单');
+  assert.equal(result.summary.goalTitle, payload.goalTitle);
+  assert.equal(result.summary.firstTaskTitle, '列出 MVP 功能清单');
+  assert.equal(result.summary.personaHighlights.some((item) => item.includes(payload.timeBudget)), true);
+});
+
+test('completeInitialOnboarding falls back to a template draft when AI plan generation fails', async () => {
+  const payload: CompleteInitialOnboardingPayload = {
+    goalTitle: 'Python + AI 应用开发',
+    baseline: '有前端开发经验，但 Python 基础薄弱。',
+    timeBudget: '工作日 30 分钟，周末 2 小时',
+    bestStudyWindow: '工作日晚间 20:30 - 21:15',
+    pacePreference: '',
+    ageBracket: '',
+    gender: '',
+    personalityTraits: [],
+    mbti: '',
+    motivationStyle: '',
+    stressResponse: '',
+    feedbackPreference: '',
+    cycle: '6 周',
+  };
+  const { service } = createHarness({
+    snapshotState: createEmptyAppState(),
+    aiExecute: async () => {
+      throw new Error('DeepSeek 当前无法执行 plan_generation：缺少 Secret。');
+    },
+  });
+
+  service.initialize();
+
+  const result = await service.completeInitialOnboarding(payload);
+  const activeDraft = result.state.plan.drafts.find((draft) => draft.goalId === result.state.plan.activeGoalId);
+
+  assert.equal(result.planSource, 'template_fallback');
+  assert.equal(result.providerLabel, 'DeepSeek');
+  assert.match(result.fallbackReason ?? '', /缺少 Secret/);
+  assert.ok(activeDraft);
+  assert.equal(activeDraft.title, 'Python + AI 应用开发 · 首版计划草案');
+  assert.equal(activeDraft.tasks.length, 3);
+  assert.equal(
+    result.state.settings.providers.find((provider) => provider.id === 'deepseek')?.healthStatus,
+    'warning',
+  );
+});
+
+test('completeInitialOnboarding rolls back profile, goal, and plan writes when persistence fails', async () => {
+  const payload: CompleteInitialOnboardingPayload = {
+    goalTitle: 'Python + AI 应用开发',
+    baseline: '前端经验较强，Python 偏弱。',
+    timeBudget: '工作日 45 分钟，周末 2 小时',
+    bestStudyWindow: '工作日晚间 20:30 - 21:15',
+    pacePreference: '',
+    ageBracket: '',
+    gender: '',
+    personalityTraits: [],
+    mbti: '',
+    motivationStyle: '',
+    stressResponse: '',
+    feedbackPreference: '',
+    cycle: '6 周',
+  };
+  const { service, failingAppStateRepository } = createPersistenceFailureHarness({
+    snapshotState: createEmptyAppState(),
+    failOn: 'snapshot',
+    aiExecute: async () => ({
+      capability: 'plan_generation',
+      providerId: 'deepseek',
+      providerLabel: 'DeepSeek',
+      model: 'deepseek-chat',
+      draft: {
+        title: '不应成功落库的 AI 草案',
+        summary: '验证首次建档失败时不会留下半成品。',
+        basis: ['失败回滚测试'],
+        stages: [{ title: '阶段 1', outcome: '验证失败回滚', progress: '未开始' }],
+        tasks: [{ title: '检查回滚', duration: '20 分钟', note: '确认没有脏状态', status: 'todo' }],
+      },
+    }),
+  });
+
+  service.initialize();
+  failingAppStateRepository.armFailureAfterSuccessfulSaves(1);
+
+  await assert.rejects(
+    () => service.completeInitialOnboarding(payload),
+    /模拟快照持久化失败/,
+  );
+
+  const persistedState = service.loadAppState();
+  assert.equal(persistedState.profile.identity, '');
+  assert.equal(persistedState.profile.timeBudget, '');
+  assert.equal(persistedState.goals.length, 0);
+  assert.equal(persistedState.plan.activeGoalId, '');
+  assert.equal(persistedState.plan.drafts.length, 0);
 });
 
 test('regenerateLearningPlanDraft rolls back archived snapshot and draft replacement when snapshot persistence fails', async () => {
