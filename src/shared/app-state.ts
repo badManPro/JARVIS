@@ -102,9 +102,13 @@ export type GeneratedTodayPlanContext = {
 };
 
 export type TodayPlanStep = {
+  id: string;
   title: string;
   detail: string;
   duration: string;
+  status: TaskStatus;
+  statusNote: string;
+  statusUpdatedAt?: string;
 };
 
 export type TodayPlanResource = {
@@ -127,6 +131,7 @@ export type TodayPlan = {
   estimatedDuration: string;
   milestoneRef: string;
   steps: TodayPlanStep[];
+  tomorrowCandidates: TodayPlanStep[];
   resources: TodayPlanResource[];
   practice: TodayPlanPractice[];
   generatedFromContext: GeneratedTodayPlanContext;
@@ -278,6 +283,13 @@ export type SaveReflectionEntryInput = {
 export type UpdatePlanTaskStatusInput = {
   draftId: string;
   taskId: string;
+  status: TaskStatus;
+  statusNote?: string;
+};
+
+export type UpdateTodayPlanStepStatusInput = {
+  draftId: string;
+  stepId: string;
   status: TaskStatus;
   statusNote?: string;
 };
@@ -590,6 +602,40 @@ function normalizePlanTask(task: PlanTask): PlanTask {
   };
 }
 
+function buildTodayPlanStepId(index: number) {
+  return `today-step-${index + 1}`;
+}
+
+function normalizeTodayPlanStep(step: Partial<TodayPlanStep>, index: number): TodayPlanStep {
+  return {
+    id: step.id?.trim() || buildTodayPlanStepId(index),
+    title: step.title?.trim() ?? '',
+    detail: step.detail?.trim() ?? '',
+    duration: step.duration?.trim() ?? '',
+    status: normalizeTaskStatus(step.status),
+    statusNote: step.statusNote?.trim() ?? '',
+    statusUpdatedAt: step.statusUpdatedAt,
+  };
+}
+
+function normalizeTodayPlanStepList(steps: Array<Partial<TodayPlanStep>> | undefined) {
+  return Array.isArray(steps)
+    ? steps
+      .map((step, index) => normalizeTodayPlanStep(step, index))
+      .filter((step) => step.title || step.detail)
+    : [];
+}
+
+function getFocusTodayPlanStep(plan: TodayPlan | null | undefined) {
+  if (!plan) {
+    return null;
+  }
+
+  return plan.steps.find((step) => step.status === 'in_progress')
+    ?? plan.steps.find((step) => step.status === 'todo')
+    ?? null;
+}
+
 function normalizeMilestoneStatus(status?: string): LearningPlanMilestoneStatus {
   switch (status) {
     case 'current':
@@ -653,13 +699,8 @@ function normalizeTodayPlan(plan?: Partial<TodayPlan> | null): TodayPlan | null 
     deliverable: plan.deliverable?.trim() ?? '',
     estimatedDuration: plan.estimatedDuration?.trim() ?? '',
     milestoneRef: plan.milestoneRef?.trim() ?? '',
-    steps: Array.isArray(plan.steps)
-      ? plan.steps.map((step) => ({
-        title: step.title.trim(),
-        detail: step.detail.trim(),
-        duration: step.duration.trim(),
-      })).filter((step) => step.title || step.detail)
-      : [],
+    steps: normalizeTodayPlanStepList(plan.steps),
+    tomorrowCandidates: normalizeTodayPlanStepList(plan.tomorrowCandidates),
     resources: Array.isArray(plan.resources)
       ? plan.resources.map((resource) => ({
         title: resource.title.trim(),
@@ -1061,11 +1102,23 @@ function buildPriorityAction(
   }
 
   if (!onboarding.active && todayPlanState.status === 'ready' && todayPlanState.plan) {
+    const focusStep = getFocusTodayPlanStep(todayPlanState.plan);
+    if (focusStep) {
+      const isInProgress = focusStep.status === 'in_progress';
+      return {
+        kind: isInProgress ? 'continue' : 'start',
+        title: `${isInProgress ? '继续当前步骤' : '开始当前步骤'}：${focusStep.title}`,
+        detail: focusStep.statusNote?.trim() || focusStep.detail || todayPlanState.plan.deliverable || `当前阶段：${stageTitle}`,
+        reason: '今天的步骤级执行单已经准备好，先推进当前焦点动作，再决定是否需要调整后续步骤。',
+        duration: focusStep.duration || todayPlanState.plan.estimatedDuration || '30 分钟',
+      };
+    }
+
     return {
-      kind: 'start',
-      title: `开始今日计划：${todayPlanState.plan.todayGoal}`,
-      detail: todayPlanState.plan.deliverable || todayPlanState.plan.steps[0]?.detail || `当前阶段：${stageTitle}`,
-      reason: '今天的详细计划已经准备好，先按当前时间块推进最小可交付成果。',
+      kind: 'review',
+      title: `查看今日产出：${todayPlanState.plan.todayGoal}`,
+      detail: todayPlanState.plan.deliverable || `当前阶段：${stageTitle}`,
+      reason: '今日步骤已全部处理，下一步先确认今日产出，并查看是否有需要顺延到明天的候选步骤。',
       duration: todayPlanState.plan.estimatedDuration || '30 分钟',
     };
   }
@@ -1455,6 +1508,7 @@ function cloneLearningPlanDraft(draft: LearningPlanDraft): LearningPlanDraft {
       ? {
         ...draft.todayPlan,
         steps: draft.todayPlan.steps.map((step) => ({ ...step })),
+        tomorrowCandidates: draft.todayPlan.tomorrowCandidates.map((step) => ({ ...step })),
         resources: draft.todayPlan.resources.map((resource) => ({ ...resource })),
         practice: draft.todayPlan.practice.map((item) => ({ ...item })),
         generatedFromContext: { ...draft.todayPlan.generatedFromContext },
@@ -2595,6 +2649,102 @@ export function updatePlanTaskStatus(state: AppState, input: UpdatePlanTaskStatu
 
   if (!matchedTask) {
     throw new Error('任务不存在，无法更新状态。');
+  }
+
+  return syncExecutionDerivedState({
+    ...state,
+    plan: {
+      ...state.plan,
+      drafts: nextDrafts,
+    },
+  });
+}
+
+export function updateTodayPlanStepStatus(state: AppState, input: UpdateTodayPlanStepStatusInput): AppState {
+  const changedAt = new Date().toISOString();
+  let matchedDraft = false;
+  let matchedStep = false;
+
+  const nextDrafts = state.plan.drafts.map((draft) => {
+    if (draft.id !== input.draftId) {
+      return cloneLearningPlanDraft(draft);
+    }
+
+    matchedDraft = true;
+    const todayPlan = normalizeTodayPlan(draft.todayPlan);
+    if (!todayPlan) {
+      throw new Error('今日计划不存在，无法更新步骤状态。');
+    }
+
+    const nextSteps = todayPlan.steps.map((step, index) => normalizeTodayPlanStep(step, index));
+    const nextTomorrowCandidates = todayPlan.tomorrowCandidates.map((step, index) => normalizeTodayPlanStep(step, index));
+    const targetStep = nextSteps.find((step) => step.id === input.stepId);
+
+    if (!targetStep) {
+      throw new Error('今日步骤不存在，无法更新状态。');
+    }
+
+    matchedStep = true;
+
+    if (input.status === 'delayed') {
+      const delayedStep = {
+        ...targetStep,
+        status: 'delayed' as const,
+        statusNote: input.statusNote?.trim() ?? targetStep.statusNote ?? '',
+        statusUpdatedAt: changedAt,
+      };
+
+      return cloneLearningPlanDraft({
+        ...draft,
+        todayPlan: {
+          ...todayPlan,
+          steps: nextSteps.filter((step) => step.id !== input.stepId),
+          tomorrowCandidates: [
+            ...nextTomorrowCandidates.filter((step) => step.id !== input.stepId),
+            delayedStep,
+          ],
+        },
+        updatedAt: changedAt,
+      });
+    }
+
+    const updatedSteps = nextSteps.map((step) => {
+      if (step.id === input.stepId) {
+        return {
+          ...step,
+          status: normalizeTaskStatus(input.status),
+          statusNote: input.statusNote?.trim() ?? step.statusNote ?? '',
+          statusUpdatedAt: changedAt,
+        };
+      }
+
+      if (input.status === 'in_progress' && step.status === 'in_progress') {
+        return {
+          ...step,
+          status: 'todo' as const,
+        };
+      }
+
+      return step;
+    });
+
+    return cloneLearningPlanDraft({
+      ...draft,
+      todayPlan: {
+        ...todayPlan,
+        steps: updatedSteps,
+        tomorrowCandidates: nextTomorrowCandidates.filter((step) => step.id !== input.stepId),
+      },
+      updatedAt: changedAt,
+    });
+  });
+
+  if (!matchedDraft) {
+    throw new Error('计划草案不存在，无法更新今日步骤状态。');
+  }
+
+  if (!matchedStep) {
+    throw new Error('今日步骤不存在，无法更新状态。');
   }
 
   return syncExecutionDerivedState({

@@ -12,6 +12,7 @@ import type {
   SaveTodayPlanningContextInput,
   SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
+  UpdateTodayPlanStepStatusInput,
   UserProfile,
 } from '@shared/app-state';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
@@ -25,6 +26,7 @@ import {
   syncExecutionDerivedState,
   updateConversationActionPreviewReview,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
+  updateTodayPlanStepStatus as applyTodayPlanStepStatusUpdate,
 } from '@shared/app-state';
 import { createDefaultCodexAuthStatus } from '@shared/codex-auth';
 import type { LearningGoalInput } from '@shared/goal';
@@ -52,6 +54,7 @@ type AppStore = AppState & {
   setActiveGoal: (goalId: string) => Promise<void>;
   saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<void>;
   updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<AppState>;
+  updateTodayPlanStepStatus: (payload: UpdateTodayPlanStepStatusInput) => Promise<AppState>;
   saveReflectionEntry: (payload: SaveReflectionEntryInput) => Promise<void>;
   saveTodayPlanningContext: (payload: SaveTodayPlanningContextInput) => Promise<AppState>;
   generateTodayPlan: (payload: GenerateTodayPlanInput) => Promise<AppState>;
@@ -403,6 +406,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     const persistedState = await bridge.updatePlanTaskStatus(payload);
+    set({ ...persistedState, hydrated: true, hydrationError: null });
+    return persistedState;
+  },
+  updateTodayPlanStepStatus: async (payload) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      const nextState = applyTodayPlanStepStatusUpdate(extractAppState(get()), payload);
+      set((state) => ({
+        ...state,
+        ...nextState,
+        hydrated: true,
+        hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+      }));
+      return nextState;
+    }
+
+    const persistedState = await bridge.updateTodayPlanStepStatus(payload);
     set({ ...persistedState, hydrated: true, hydrationError: null });
     return persistedState;
   },

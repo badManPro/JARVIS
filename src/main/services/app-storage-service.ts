@@ -9,6 +9,7 @@ import type {
   SaveTodayPlanningContextInput,
   SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
+  UpdateTodayPlanStepStatusInput,
   UserProfile,
 } from '../../shared/app-state.js';
 import type {
@@ -32,6 +33,7 @@ import {
   saveTodayPlanningContext as applyTodayPlanningContextSave,
   syncExecutionDerivedState,
   updatePlanTaskStatus as applyPlanTaskStatusUpdate,
+  updateTodayPlanStepStatus as applyTodayPlanStepStatusUpdate,
   ROUGH_PLAN_STALE_TAG,
 } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
@@ -353,6 +355,14 @@ export class AppStorageService {
   updatePlanTaskStatus(input: UpdatePlanTaskStatusInput) {
     const snapshot = this.loadAppState();
     const nextState = this.sanitizeState(this.prepareState(applyPlanTaskStatusUpdate(snapshot, input)).state);
+
+    this.persistStateAtomically(nextState);
+    return this.loadAppState();
+  }
+
+  updateTodayPlanStepStatus(input: UpdateTodayPlanStepStatusInput) {
+    const snapshot = this.loadAppState();
+    const nextState = this.sanitizeState(this.prepareState(applyTodayPlanStepStatusUpdate(snapshot, input)).state);
 
     this.persistStateAtomically(nextState);
     return this.loadAppState();
@@ -1022,6 +1032,33 @@ export class AppStorageService {
     }
   }
 
+  private normalizeTodayPlanStep(
+    step: Partial<NonNullable<LearningPlanDraft['todayPlan']>['steps'][number]>,
+    index: number,
+  ): NonNullable<LearningPlanDraft['todayPlan']>['steps'][number] {
+    return {
+      id: step.id?.trim() || `today-step-${index + 1}`,
+      title: step.title?.trim() ?? '',
+      detail: step.detail?.trim() ?? '',
+      duration: step.duration?.trim() ?? '',
+      status: step.status === 'in_progress' || step.status === 'done' || step.status === 'delayed' || step.status === 'skipped'
+        ? step.status
+        : 'todo',
+      statusNote: step.statusNote?.trim() ?? '',
+      statusUpdatedAt: step.statusUpdatedAt,
+    };
+  }
+
+  private normalizeTodayPlanStepList(
+    steps: Array<Partial<NonNullable<LearningPlanDraft['todayPlan']>['steps'][number]>> | undefined,
+  ) {
+    return Array.isArray(steps)
+      ? steps
+        .map((step, index) => this.normalizeTodayPlanStep(step, index))
+        .filter((step) => step.title || step.detail)
+      : [];
+  }
+
   private buildFallbackTodayPlan(
     goal: LearningGoalInput & { id?: string } | AppState['goals'][number],
     draft: LearningPlanDraft,
@@ -1037,7 +1074,7 @@ export class AppStorageService {
       deliverable: '完成一个能证明今天已推进的最小成果',
       estimatedDuration: draft.todayContext.availableDuration || firstTask?.duration || profile.timeBudget || '30 分钟',
       milestoneRef: firstMilestone?.title || '本周里程碑',
-      steps: [
+      steps: this.normalizeTodayPlanStepList([
         {
           title: '先确认今天的最小目标',
           detail: firstTask?.note || '先把今天要交付什么写清楚，再开始执行。',
@@ -1048,7 +1085,8 @@ export class AppStorageService {
           detail: '按最小闭环推进，不额外扩展范围。',
           duration: firstTask?.duration || draft.todayContext.availableDuration || '20 分钟',
         },
-      ],
+      ]),
+      tomorrowCandidates: [],
       resources: [
         {
           title: '使用当前最熟悉的一份入门资料',
@@ -1081,11 +1119,8 @@ export class AppStorageService {
       ...this.buildFallbackTodayPlan(goal, fallbackDraft, profile),
       ...result.plan,
       status: result.plan.status === 'stale' ? 'stale' : 'ready',
-      steps: result.plan.steps.map((step) => ({
-        title: step.title.trim(),
-        detail: step.detail.trim(),
-        duration: step.duration.trim(),
-      })),
+      steps: this.normalizeTodayPlanStepList(result.plan.steps),
+      tomorrowCandidates: this.normalizeTodayPlanStepList(result.plan.tomorrowCandidates),
       resources: result.plan.resources.map((resource) => ({
         title: resource.title.trim(),
         url: resource.url.trim(),
@@ -1146,11 +1181,8 @@ export class AppStorageService {
           deliverable: draft.todayPlan.deliverable.trim(),
           estimatedDuration: draft.todayPlan.estimatedDuration.trim(),
           milestoneRef: draft.todayPlan.milestoneRef.trim(),
-          steps: draft.todayPlan.steps.map((step) => ({
-            title: step.title.trim(),
-            detail: step.detail.trim(),
-            duration: step.duration.trim(),
-          })).filter((step) => step.title || step.detail),
+          steps: this.normalizeTodayPlanStepList(draft.todayPlan.steps),
+          tomorrowCandidates: this.normalizeTodayPlanStepList(draft.todayPlan.tomorrowCandidates),
           resources: draft.todayPlan.resources.map((resource) => ({
             title: resource.title.trim(),
             url: resource.url.trim(),

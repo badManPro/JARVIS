@@ -5,6 +5,11 @@
 核心理念：通过对话逐步建立用户画像，再基于画像生成个性化学习计划，并在执行中持续修正。
 
 ## 当前阶段
+当前判断：
+- 当前阶段：`Phase 2 / 今日执行引擎升级`
+- 当前进度估算：约 `45%`
+- 当前唯一下一任务：`Phase 2 / Task 5 / 为跳过与延期补齐真正的后续依赖压缩与重排`
+
 已完成：
 - 更细化的页面信息架构文档
 - Electron + React + TypeScript 客户端最小骨架
@@ -172,12 +177,16 @@ npm run dist:win
 - 关键链路集成测试现已覆盖“对话建议审核后写回 profile / goal / plan”与“执行/复盘反馈进入 plan adjustment request”两条闭环，并修复了双引号建议里的新增任务标题解析
 - 空数据库首次启动现已进入真实空状态，不再自动写入示例画像、目标、计划和对话
 - 首页、侧栏和对话页现已补齐首启 onboarding 与空状态入口，用户可直接跳到画像 / 目标 / 计划 / 设置页完成第一次初始化
+- 今日细版计划现已升级为带 `id / status / statusNote / statusUpdatedAt` 的步骤级执行结构
+- 今日页现已围绕 `todayPlan.steps` 工作，支持 `开始 / 完成 / 延期 / 跳过`
+- 完成当前步骤后会自动切到下一步，延期步骤会自动进入“明天候选区”
+- 今日步骤状态现已通过 renderer → preload → main → SQLite 持久化，并在重启后恢复
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. `Release Candidate`：最终回归与演示准备
-2. 发布元数据与签名收口
-3. 继续细化 AI runtime 的 tracing / metrics 与排障体验
+1. `Phase 2 / Task 5`：为跳过 / 延期补齐真正的后续依赖压缩与重排
+2. `Phase 3 / Task 1`：建立主目标与副目标调度结构
+3. `Phase 3 / Task 3`：新增日历排程页，承接延期和一周时间块重排
 
 ## 当前推荐下一任务
-- `Release Candidate`：最终回归与演示准备
+- `Phase 2 / Task 5`：为跳过与延期补齐真正的后续依赖压缩与重排

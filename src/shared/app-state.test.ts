@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as appStateModule from './app-state.js';
 import {
   appendConversationMessage,
   createEmptyAppState,
@@ -108,6 +109,83 @@ test('appendConversationMessage appends a trimmed user message without clearing 
   assert.equal(nextState.conversation.messages[0]?.content, '我最近工作日只够学 30 分钟，想压缩目标周期。');
   assert.equal(nextState.conversation.suggestions[0], '采纳：把学习窗口调整到周末上午 09:00 - 11:00');
   assert.equal(nextState.conversation.actionPreviews.length, 1);
+});
+
+test('updateTodayPlanStepStatus moves delayed steps into tomorrow candidates and advances focus', () => {
+  const activeDraftId = seedState.plan.drafts[0]?.id ?? 'plan-goal-python-ai';
+  const stateWithTodayPlan = {
+    ...JSON.parse(JSON.stringify(seedState)),
+    plan: {
+      ...seedState.plan,
+      drafts: seedState.plan.drafts.map((draft) => (
+        draft.id === activeDraftId
+          ? {
+            ...draft,
+            todayPlan: {
+              date: '2026-03-31',
+              status: 'ready',
+              todayGoal: '完成 Python 环境安装与第一个脚本',
+              deliverable: '跑通 hello_cli.py',
+              estimatedDuration: '30 分钟',
+              milestoneRef: '第 1 周：搭好 Python 本地环境',
+              steps: [
+                { id: 'today-step-1', title: '安装并验证 Python', detail: '确认 python3 --version', duration: '10 分钟' },
+                { id: 'today-step-2', title: '创建 hello_cli.py', detail: '先写最小输入输出', duration: '10 分钟' },
+                { id: 'today-step-3', title: '运行并记录结果', detail: '确认脚本可以执行', duration: '10 分钟' },
+              ],
+              tomorrowCandidates: [],
+              resources: [],
+              practice: [],
+              generatedFromContext: {
+                availableDuration: '今天 30 分钟',
+                studyWindow: '今晚 20:30 - 21:00',
+                note: '',
+              },
+            },
+          }
+          : draft
+      )),
+    },
+  };
+
+  const updateTodayPlanStepStatus = (appStateModule as unknown as {
+    updateTodayPlanStepStatus: (
+      state: typeof stateWithTodayPlan,
+      input: { draftId: string; stepId: string; status: string; statusNote?: string },
+    ) => typeof stateWithTodayPlan;
+  }).updateTodayPlanStepStatus;
+
+  const startedState = updateTodayPlanStepStatus(stateWithTodayPlan, {
+    draftId: activeDraftId,
+    stepId: 'today-step-1',
+    status: 'in_progress',
+    statusNote: '从今日页开始推进。',
+  });
+
+  const startedDraft = startedState.plan.drafts.find((draft: { id: string }) => draft.id === activeDraftId);
+  const startedStep = startedDraft?.todayPlan?.steps[0] as { status?: string; statusNote?: string; statusUpdatedAt?: string } | undefined;
+  assert.equal(startedStep?.status, 'in_progress');
+  assert.equal(startedStep?.statusNote, '从今日页开始推进。');
+  assert.match(startedStep?.statusUpdatedAt ?? '', /\d{4}-\d{2}-\d{2}T/);
+
+  const delayedState = updateTodayPlanStepStatus(startedState, {
+    draftId: activeDraftId,
+    stepId: 'today-step-1',
+    status: 'delayed',
+    statusNote: '今晚时间不够，顺延到明天候选区。',
+  });
+
+  const delayedDraft = delayedState.plan.drafts.find((draft: { id: string }) => draft.id === activeDraftId);
+  const remainingSteps = delayedDraft?.todayPlan?.steps as Array<{ id?: string; status?: string; title?: string }> | undefined;
+  const tomorrowCandidates = (delayedDraft?.todayPlan as {
+    tomorrowCandidates?: Array<{ id?: string; status?: string; title?: string; statusNote?: string }>;
+  } | undefined)?.tomorrowCandidates;
+
+  assert.equal(remainingSteps?.some((step) => step.id === 'today-step-1'), false);
+  assert.equal(remainingSteps?.[0]?.id, 'today-step-2');
+  assert.equal(tomorrowCandidates?.[0]?.id, 'today-step-1');
+  assert.equal(tomorrowCandidates?.[0]?.status, 'delayed');
+  assert.equal(tomorrowCandidates?.[0]?.statusNote, '今晚时间不够，顺延到明天候选区。');
 });
 
 test('updatePlanTaskStatus records execution metadata and refreshes dashboard/reflection inputs', () => {

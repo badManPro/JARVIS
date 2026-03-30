@@ -15,10 +15,12 @@ const appStoreSource = fs.readFileSync(appStorePath, 'utf8');
 test('today page opens a reflection sheet after task completion, delay, or skip', () => {
   assert.equal(fs.existsSync(reflectionSheetPath), true);
   assert.match(todayPageSource, /ReflectionSheet/);
-  assert.match(todayPageSource, /status === 'done' \|\| status === 'delayed' \|\| status === 'skipped'/);
+  assert.match(todayPageSource, /case 'done':|case 'delayed':|case 'skipped':/);
   assert.match(todayPageSource, /period="daily"/);
   assert.match(todayPageSource, /生成今日计划|重新生成今日计划/);
   assert.match(todayPageSource, /仅今天有效/);
+  assert.match(todayPageSource, /明天候选区/);
+  assert.match(todayPageSource, /后续步骤|依赖|顺延/);
   assert.match(todayPageSource, /今日产出/);
   assert.match(todayPageSource, /resources|practice|steps/);
 });
@@ -32,8 +34,8 @@ test('path page keeps the first screen focused on current stage and moves basis 
   assert.doesNotMatch(pathPageSource, /<SectionTitle>路径依据<\/SectionTitle>/);
 });
 
-test('app store returns the updated state from task status changes', () => {
-  assert.match(appStoreSource, /updatePlanTaskStatus: \(payload: UpdatePlanTaskStatusInput\) => Promise<AppState>;/);
-  assert.match(appStoreSource, /const persistedState = await bridge.updatePlanTaskStatus\(payload\);/);
+test('app store returns the updated state from today-step status changes', () => {
+  assert.match(appStoreSource, /updateTodayPlanStepStatus: \(payload: UpdateTodayPlanStepStatusInput\) => Promise<AppState>;/);
+  assert.match(appStoreSource, /const persistedState = await bridge.updateTodayPlanStepStatus\(payload\);/);
   assert.match(appStoreSource, /return persistedState;/);
 });

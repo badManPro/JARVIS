@@ -5,6 +5,7 @@ import type {
   LearningGoal,
   LearningPlanDraft,
   TaskStatus,
+  TodayPlanStep,
   UserProfile,
 } from '@shared/app-state';
 import type { OnboardingPresetOption } from '@shared/onboarding';
@@ -70,6 +71,25 @@ export function getFocusTask(draft: LearningPlanDraft | null) {
     ?? draft.tasks.find((task) => task.status === 'todo')
     ?? draft.tasks[0]
     ?? null;
+}
+
+export function getFocusTodayPlanStep(draft: LearningPlanDraft | null) {
+  const plan = draft?.todayPlan;
+  if (!plan) {
+    return null;
+  }
+
+  return plan.steps.find((step) => step.status === 'in_progress')
+    ?? plan.steps.find((step) => step.status === 'todo')
+    ?? null;
+}
+
+export function getRemainingTodayPlanSteps(
+  draft: LearningPlanDraft | null,
+  focusStepId?: string,
+) {
+  const steps = draft?.todayPlan?.steps ?? [];
+  return steps.filter((step) => step.id !== focusStepId) as TodayPlanStep[];
 }
 
 export function taskStatusLabel(status: TaskStatus) {

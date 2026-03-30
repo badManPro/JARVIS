@@ -8,7 +8,8 @@ import {
   MetricRow,
   getActiveDraft,
   getActiveGoal,
-  getFocusTask,
+  getFocusTodayPlanStep,
+  getRemainingTodayPlanSteps,
   inputClassName,
   primaryButtonClassName,
   riskBadgeClassName,
@@ -17,7 +18,7 @@ import {
   taskStatusLabel,
   textareaClassName,
 } from '@/pages/dashboard/shared';
-import type { LearningPlanDraft, TaskStatus } from '@shared/app-state';
+import type { LearningPlanDraft, TaskStatus, TodayPlanStep } from '@shared/app-state';
 
 type TodayPlanDisplayState =
   | { status: 'missing'; plan: null }
@@ -35,14 +36,22 @@ export function TodayPage({
   const profile = useAppStore((state) => state.profile);
   const plan = useAppStore((state) => state.plan);
   const goals = useAppStore((state) => state.goals);
-  const updatePlanTaskStatus = useAppStore((state) => state.updatePlanTaskStatus);
+  const updateTodayPlanStepStatus = useAppStore((state) => state.updateTodayPlanStepStatus);
   const saveTodayPlanningContext = useAppStore((state) => state.saveTodayPlanningContext);
   const generateTodayPlan = useAppStore((state) => state.generateTodayPlan);
   const activeGoal = getActiveGoal(goals, plan.activeGoalId);
   const activeDraft = getActiveDraft(plan);
-  const focusTask = getFocusTask(activeDraft);
   const primaryRisk = dashboard.riskSignals[0] ?? null;
   const todayPlanState = resolveTodayPlanDisplayState(activeDraft);
+  const focusStep = todayPlanState.status === 'ready' || todayPlanState.status === 'stale'
+    ? getFocusTodayPlanStep(activeDraft)
+    : null;
+  const remainingSteps = todayPlanState.status === 'ready' || todayPlanState.status === 'stale'
+    ? getRemainingTodayPlanSteps(activeDraft, focusStep?.id)
+    : [];
+  const tomorrowCandidates = todayPlanState.status === 'ready' || todayPlanState.status === 'stale'
+    ? (activeDraft?.todayPlan?.tomorrowCandidates ?? [])
+    : [];
   const [availableDuration, setAvailableDuration] = useState('');
   const [studyWindow, setStudyWindow] = useState('');
   const [todayNote, setTodayNote] = useState('');
@@ -110,23 +119,47 @@ export function TodayPage({
     }
   }
 
-  async function markTask(status: TaskStatus) {
-    if (!activeDraft || !focusTask) {
+  async function markTodayStep(step: TodayPlanStep, status: TaskStatus) {
+    if (!activeDraft || todayPlanState.status !== 'ready') {
       return;
     }
 
-    await updatePlanTaskStatus({
+    const nextState = await updateTodayPlanStepStatus({
       draftId: activeDraft.id,
-      taskId: focusTask.id,
+      stepId: step.id,
       status,
-      statusNote: status === 'in_progress' ? '从今日页开始推进。' : status === 'done' ? '从今日页标记完成。' : '今日页快速调整节奏。',
+      statusNote: getStepStatusNote(step, status),
     });
+    const nextDraft = nextState.plan.drafts.find((draft) => draft.id === activeDraft.id) ?? null;
+    const nextFocusStep = getFocusTodayPlanStep(nextDraft);
 
-    if (status === 'done' || status === 'delayed' || status === 'skipped') {
-      setReflectionContext({
-        taskTitle: focusTask.title,
-        status,
-      });
+    switch (status) {
+      case 'in_progress':
+        setNotice(`已开始当前步骤：${step.title}`);
+        break;
+      case 'done':
+        setNotice(nextFocusStep ? `已完成当前步骤，下一步已切到「${nextFocusStep.title}」。` : '今天的步骤已全部处理完成。');
+        setReflectionContext({
+          taskTitle: step.title,
+          status,
+        });
+        break;
+      case 'delayed':
+        setNotice('已移入明天候选区；后续步骤会继续围绕当前可执行内容推进。');
+        setReflectionContext({
+          taskTitle: step.title,
+          status,
+        });
+        break;
+      case 'skipped':
+        setNotice('已跳过当前步骤；后续步骤会继续，但你可能需要补回这一步的前置内容。');
+        setReflectionContext({
+          taskTitle: step.title,
+          status,
+        });
+        break;
+      default:
+        break;
     }
   }
 
@@ -291,21 +324,75 @@ export function TodayPage({
         <div className="grid gap-5 xl:grid-cols-[1.05fr,0.95fr]">
           <Card>
             <SectionTitle>学习步骤</SectionTitle>
-            <div className="mt-5 space-y-3">
-              {todayPlanState.status === 'ready' || todayPlanState.status === 'stale' ? todayPlanState.plan.steps.map((step, index) => (
-                <div key={`${step.title}-${index + 1}`} className="rounded-[1.35rem] border border-white/80 bg-white/88 px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="text-sm font-medium text-slate-900">{index + 1}. {step.title}</div>
-                    <Badge className="bg-slate-100 text-slate-700">{step.duration}</Badge>
+            {todayPlanState.status === 'ready' || todayPlanState.status === 'stale' ? (
+              <div className="mt-5 space-y-5">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">当前步骤</div>
+                  {focusStep ? (
+                    <div className="mt-3 rounded-[1.5rem] bg-slate-950 px-5 py-5 text-white">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={taskStatusBadgeClassName(focusStep.status)}>{taskStatusLabel(focusStep.status)}</Badge>
+                        <Badge className="bg-white/10 text-white">{focusStep.duration}</Badge>
+                      </div>
+                      <div className="mt-4 text-xl font-semibold tracking-[-0.04em]">{focusStep.title}</div>
+                      <div className="mt-3 text-sm leading-6 text-white/80">{focusStep.detail}</div>
+                      {focusStep.statusNote ? (
+                        <div className="mt-3 rounded-[1rem] bg-white/10 px-3 py-3 text-xs leading-5 text-white/75">{focusStep.statusNote}</div>
+                      ) : null}
+                      {todayPlanState.status === 'ready' ? (
+                        <div className="mt-5 flex flex-wrap gap-3">
+                          {focusStep.status !== 'in_progress' ? (
+                            <button type="button" className={primaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'in_progress')}>开始</button>
+                          ) : (
+                            <button type="button" className={primaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'done')}>完成</button>
+                          )}
+                          <button type="button" className={secondaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'delayed')}>延期</button>
+                          <button type="button" className={secondaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'skipped')}>跳过</button>
+                        </div>
+                      ) : (
+                        <div className="mt-5 rounded-[1rem] bg-white/10 px-3 py-3 text-xs leading-5 text-white/75">
+                          当前计划已经过期。请先重新生成，再继续推进步骤状态。
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-[1.35rem] border border-dashed border-white/80 bg-white/72 px-5 py-6 text-sm leading-6 text-slate-600">
+                      当前步骤已处理完成。接下来可以回看今日产出，或者查看明天候选区里的顺延项。
+                    </div>
+                  )}
+                  <div className="mt-3 rounded-[1.2rem] bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
+                    完成后会自动切到下一步；延期会进入明天候选区；跳过会提示后续步骤可能缺少前置内容。
                   </div>
-                  <Muted className="mt-2">{step.detail}</Muted>
                 </div>
-              )) : (
-                <div className="rounded-[1.35rem] border border-dashed border-white/80 bg-white/72 px-5 py-6 text-sm leading-6 text-slate-600">
-                  今日计划尚未生成。先填写“仅今天有效”的时间块，再点击“生成今日计划”。
+
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">后续步骤</div>
+                  <div className="mt-3 space-y-3">
+                    {remainingSteps.length ? remainingSteps.map((step, index) => (
+                      <div key={step.id} className="rounded-[1.35rem] border border-white/80 bg-white/88 px-4 py-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="text-sm font-medium text-slate-900">{index + 1}. {step.title}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge className={taskStatusBadgeClassName(step.status)}>{taskStatusLabel(step.status)}</Badge>
+                            <Badge className="bg-slate-100 text-slate-700">{step.duration}</Badge>
+                          </div>
+                        </div>
+                        <Muted className="mt-2">{step.detail}</Muted>
+                        {step.statusNote ? <div className="mt-2 text-xs leading-5 text-slate-500">{step.statusNote}</div> : null}
+                      </div>
+                    )) : (
+                      <div className="rounded-[1.35rem] border border-dashed border-white/80 bg-white/72 px-5 py-6 text-sm leading-6 text-slate-600">
+                        当前没有更多后续步骤；你可以把注意力放在今日产出或明天候选区。
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-[1.35rem] border border-dashed border-white/80 bg-white/72 px-5 py-6 text-sm leading-6 text-slate-600">
+                今日计划尚未生成。先填写“仅今天有效”的时间块，再点击“生成今日计划”。
+              </div>
+            )}
           </Card>
 
           <div className="space-y-5">
@@ -358,32 +445,26 @@ export function TodayPage({
           </Card>
 
           <Card>
-            <SectionTitle>粗版路径进度</SectionTitle>
-            <Muted className="mt-2">细版计划帮助你今天落地，粗版任务状态仍保留给复盘链路。</Muted>
-            <div className="mt-5 rounded-[1.5rem] border border-white/80 bg-white/85 p-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className={focusTask ? taskStatusBadgeClassName(focusTask.status) : 'bg-slate-100 text-slate-700'}>
-                  {focusTask ? taskStatusLabel(focusTask.status) : '待生成'}
-                </Badge>
-                <Badge className="bg-slate-100 text-slate-700">{focusTask?.duration ?? dashboard.priorityAction.duration}</Badge>
-              </div>
-              <div className="mt-4 text-xl font-semibold tracking-[-0.04em] text-slate-950">
-                {focusTask?.title ?? '还没有粗版任务，先完成建档'}
-              </div>
-              <Muted className="mt-3">
-                {focusTask?.note ?? '建档完成后，这里会保留当前粗版任务，供阶段复盘和任务状态跟踪使用。'}
-              </Muted>
-              {!dashboard.onboarding.active && activeDraft && focusTask ? (
-                <div className="mt-5 flex flex-wrap gap-3">
-                  {focusTask.status !== 'in_progress' ? (
-                    <button type="button" className={primaryButtonClassName} onClick={() => void markTask('in_progress')}>开始</button>
-                  ) : (
-                    <button type="button" className={primaryButtonClassName} onClick={() => void markTask('done')}>完成</button>
-                  )}
-                  <button type="button" className={secondaryButtonClassName} onClick={() => void markTask('delayed')}>延后</button>
-                  <button type="button" className={secondaryButtonClassName} onClick={() => void markTask('skipped')}>跳过</button>
+            <SectionTitle>明天候选区</SectionTitle>
+            <Muted className="mt-2">延期步骤会自动顺延到这里；你不需要手动重排，后续阶段会继续消费这些候选。</Muted>
+            <div className="mt-5 space-y-3">
+              {tomorrowCandidates.length ? tomorrowCandidates.map((step) => (
+                <div key={step.id} className="rounded-[1.35rem] border border-white/80 bg-white/88 px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-slate-900">{step.title}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={taskStatusBadgeClassName(step.status)}>{taskStatusLabel(step.status)}</Badge>
+                      <Badge className="bg-slate-100 text-slate-700">{step.duration}</Badge>
+                    </div>
+                  </div>
+                  <Muted className="mt-2">{step.detail}</Muted>
+                  {step.statusNote ? <div className="mt-2 text-xs leading-5 text-slate-500">{step.statusNote}</div> : null}
                 </div>
-              ) : null}
+              )) : (
+                <div className="rounded-[1.35rem] border border-dashed border-white/80 bg-white/72 px-5 py-6 text-sm leading-6 text-slate-600">
+                  当前没有顺延步骤。把某一步标记为延期后，它会自动出现在明天候选区。
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -402,6 +483,22 @@ export function TodayPage({
       />
     </>
   );
+}
+
+function getStepStatusNote(step: TodayPlanStep, status: TaskStatus) {
+  switch (status) {
+    case 'in_progress':
+      return '从今日页开始推进。';
+    case 'done':
+      return '从今日页标记完成。';
+    case 'delayed':
+      return `当前时间块不足，已将「${step.title}」顺延到明天候选区。`;
+    case 'skipped':
+      return `已跳过「${step.title}」，后续步骤会继续，但可能缺少前置依赖。`;
+    case 'todo':
+    default:
+      return step.statusNote;
+  }
 }
 
 function getCalendarDate(now: Date) {

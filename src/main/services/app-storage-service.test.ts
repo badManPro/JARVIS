@@ -845,7 +845,8 @@ test('saveTodayPlanningContext stores daily-only overrides without mutating the 
       deliverable: '跑通 hello_cli.py',
       estimatedDuration: '45 分钟',
       milestoneRef: '第 1 周：搭好 Python 本地环境',
-      steps: [{ title: '安装 Python', detail: '确认 python3 --version', duration: '10 分钟' }],
+      steps: [{ id: 'today-step-1', title: '安装 Python', detail: '确认 python3 --version', duration: '10 分钟', status: 'todo' as const, statusNote: '' }],
+      tomorrowCandidates: [],
       resources: [{ title: 'Python 官网', url: 'https://www.python.org/', reason: '下载 Python' }],
       practice: [{ title: '写 hello_cli.py', detail: '完成输入输出最小脚本', output: '可运行脚本' }],
       generatedFromContext: {
@@ -892,6 +893,7 @@ test('generateTodayPlan stores a structured daily plan under the active rough dr
           estimatedDuration: '30 分钟',
           milestoneRef: '第 1 周：搭好 Python 本地环境',
           steps: [{ title: '安装并验证 Python', detail: '确认 python3 --version', duration: '10 分钟' }],
+          tomorrowCandidates: [],
           resources: [{ title: 'Python 官方教程', url: 'https://docs.python.org/3/tutorial/index.html', reason: '先看官方最小入门' }],
           practice: [{ title: '完成 2 个输入输出练习', detail: '练习 print、input、变量', output: '可运行脚本' }],
           generatedFromContext: {
@@ -900,7 +902,7 @@ test('generateTodayPlan stores a structured daily plan under the active rough dr
             note: '今天先完成最小闭环',
           },
         },
-      };
+      } as unknown as AiResult;
     },
   });
 
@@ -923,6 +925,20 @@ test('generateTodayPlan stores a structured daily plan under the active rough dr
   assert.equal(activeDraft?.todayPlan?.todayGoal, '完成 Python 环境安装与最小语法热身');
   assert.equal(activeDraft?.todayPlan?.resources[0]?.title, 'Python 官方教程');
   assert.equal(activeDraft?.todayPlan?.generatedFromContext.availableDuration, '今天 30 分钟');
+  const firstStep = activeDraft?.todayPlan?.steps[0] as {
+    id?: string;
+    status?: string;
+    statusNote?: string;
+    statusUpdatedAt?: string;
+  } | undefined;
+  assert.equal(firstStep?.id, 'today-step-1');
+  assert.equal(firstStep?.status, 'todo');
+  assert.equal(firstStep?.statusNote, '');
+  assert.equal(firstStep?.statusUpdatedAt, undefined);
+  assert.deepEqual(
+    (activeDraft?.todayPlan as { tomorrowCandidates?: unknown[] } | undefined)?.tomorrowCandidates ?? [],
+    [],
+  );
 });
 
 test('completeInitialOnboarding rolls back profile, goal, and plan writes when persistence fails', async () => {
@@ -1235,6 +1251,88 @@ test('updatePlanTaskStatus persists execution metadata and refreshes dashboard/r
   const persistedTask = persistedDraft?.tasks.find((task) => task.id === 'task-python-ai-3');
   assert.ok(persistedTask);
   assert.equal(persistedTask.statusNote, '本周先完成任务日志与最小可观测性收尾。');
+});
+
+test('updateTodayPlanStepStatus persists step execution changes and moves delayed steps into tomorrow candidates', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => ({
+      capability: 'daily_plan_generation',
+      providerId: 'deepseek',
+      providerLabel: 'DeepSeek',
+      model: 'deepseek-chat',
+      plan: {
+        date: '2026-03-31',
+        status: 'ready',
+        todayGoal: '完成 Python 环境安装与第一个脚本',
+        deliverable: '跑通 hello_cli.py',
+        estimatedDuration: '30 分钟',
+        milestoneRef: '第 1 周：搭好 Python 本地环境',
+        steps: [
+          { title: '安装并验证 Python', detail: '确认 python3 --version', duration: '10 分钟' },
+          { title: '创建 hello_cli.py', detail: '完成最小输入输出', duration: '10 分钟' },
+          { title: '运行并记录结果', detail: '保留一份可运行输出', duration: '10 分钟' },
+        ],
+        tomorrowCandidates: [],
+        resources: [],
+        practice: [],
+        generatedFromContext: {
+          availableDuration: '今天 30 分钟',
+          studyWindow: '今晚 20:30 - 21:00',
+          note: '今天先完成最小闭环',
+        },
+      },
+    } as unknown as AiResult),
+  });
+
+  const initialState = service.initialize();
+  service.saveTodayPlanningContext({
+    goalId: initialState.plan.activeGoalId,
+    availableDuration: '今天 30 分钟',
+    studyWindow: '今晚 20:30 - 21:00',
+    note: '今天先完成最小闭环',
+  });
+  const plannedState = await service.generateTodayPlan({
+    goalId: initialState.plan.activeGoalId,
+  });
+
+  const activeDraft = plannedState.plan.drafts.find((draft) => draft.goalId === plannedState.plan.activeGoalId);
+  assert.ok(activeDraft);
+
+  const updateTodayPlanStepStatus = (service as unknown as {
+    updateTodayPlanStepStatus: (input: {
+      draftId: string;
+      stepId: string;
+      status: string;
+      statusNote?: string;
+    }) => AppState;
+  }).updateTodayPlanStepStatus;
+
+  const nextState = updateTodayPlanStepStatus.call(service, {
+    draftId: activeDraft.id,
+    stepId: 'today-step-1',
+    status: 'delayed',
+    statusNote: '今晚时间不够，顺延到明天。',
+  });
+
+  const updatedDraft = nextState.plan.drafts.find((draft) => draft.id === activeDraft.id);
+  const tomorrowCandidates = (updatedDraft?.todayPlan as {
+    tomorrowCandidates?: Array<{ id?: string; title?: string; status?: string; statusNote?: string }>;
+  } | undefined)?.tomorrowCandidates;
+
+  const remainingSteps = updatedDraft?.todayPlan?.steps as Array<{ id?: string; title?: string; status?: string }> | undefined;
+  assert.equal(remainingSteps?.[0]?.id, 'today-step-2');
+  assert.equal(tomorrowCandidates?.[0]?.id, 'today-step-1');
+  assert.equal(tomorrowCandidates?.[0]?.title, '安装并验证 Python');
+  assert.equal(tomorrowCandidates?.[0]?.status, 'delayed');
+  assert.equal(tomorrowCandidates?.[0]?.statusNote, '今晚时间不够，顺延到明天。');
+
+  const reloaded = service.loadAppState();
+  const persistedDraft = reloaded.plan.drafts.find((draft) => draft.id === activeDraft.id);
+  const persistedTomorrowCandidates = (persistedDraft?.todayPlan as {
+    tomorrowCandidates?: Array<{ id?: string; status?: string; statusNote?: string }>;
+  } | undefined)?.tomorrowCandidates;
+  assert.equal(persistedTomorrowCandidates?.[0]?.id, 'today-step-1');
+  assert.equal(persistedTomorrowCandidates?.[0]?.status, 'delayed');
 });
 
 test('saveReflectionEntry persists structured reflection input and reloads it from storage', () => {

@@ -15,6 +15,7 @@ const learningCompanion: LearningCompanionBridge = {
     setActiveGoal: (goalId) => ipcRenderer.invoke('storage:set-active-goal', goalId),
     saveLearningPlanDraft: (draft) => ipcRenderer.invoke('storage:save-learning-plan-draft', draft),
     updatePlanTaskStatus: (payload) => ipcRenderer.invoke('storage:update-plan-task-status', payload),
+    updateTodayPlanStepStatus: (payload) => ipcRenderer.invoke('storage:update-today-plan-step-status', payload),
     saveReflectionEntry: (payload) => ipcRenderer.invoke('storage:save-reflection-entry', payload),
     saveTodayPlanningContext: (payload) => ipcRenderer.invoke('storage:save-today-planning-context', payload),
     generateTodayPlan: (payload) => ipcRenderer.invoke('storage:generate-today-plan', payload),

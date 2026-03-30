@@ -9,6 +9,7 @@ import type {
   ProviderSecretInput,
   SaveReflectionEntryInput,
   UpdatePlanTaskStatusInput,
+  UpdateTodayPlanStepStatusInput,
 } from './app-state.js';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResponse, AiRuntimeSummaryItem } from './ai-service.js';
 import type { CodexAuthStatus } from './codex-auth.js';
@@ -30,6 +31,7 @@ export type LearningCompanionBridge = {
     setActiveGoal: (goalId: string) => Promise<AppState>;
     saveLearningPlanDraft: (draft: LearningPlanDraft) => Promise<AppState>;
     updatePlanTaskStatus: (payload: UpdatePlanTaskStatusInput) => Promise<AppState>;
+    updateTodayPlanStepStatus: (payload: UpdateTodayPlanStepStatusInput) => Promise<AppState>;
     saveReflectionEntry: (payload: SaveReflectionEntryInput) => Promise<AppState>;
     saveTodayPlanningContext: (payload: SaveTodayPlanningContextInput) => Promise<AppState>;
     generateTodayPlan: (payload: GenerateTodayPlanInput) => Promise<AppState>;
