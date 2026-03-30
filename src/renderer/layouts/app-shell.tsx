@@ -11,7 +11,10 @@ type AppShellProps = {
 };
 
 function getActiveGoalTitle(goals: ReturnType<typeof useAppStore.getState>['goals'], activeGoalId: string) {
-  return goals.find((goal) => goal.id === activeGoalId)?.title ?? goals[0]?.title ?? '先完成第一轮建档';
+  return goals.find((goal) => goal.id === activeGoalId)?.title
+    ?? goals.find((goal) => goal.role === 'main')?.title
+    ?? goals[0]?.title
+    ?? '先完成第一轮建档';
 }
 
 export function AppShell({ currentPage, onPageChange }: AppShellProps) {

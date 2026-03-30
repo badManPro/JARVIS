@@ -38,6 +38,11 @@ import {
 } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
 import {
+  DEFAULT_MAIN_GOAL_WEIGHT,
+  normalizeGoalScheduleWeight,
+  resolveGoalScheduling,
+} from '../../shared/goal.js';
+import {
   buildPlanningConfirmationHighlights,
   derivePlanningConfirmation,
 } from '../../shared/onboarding.js';
@@ -183,11 +188,14 @@ export class AppStorageService {
       successMetric: existingGoal?.successMetric ?? `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
       priority: existingGoal?.priority ?? 'P1',
       status: 'active' as const,
+      role: 'main' as const,
+      scheduleWeight: existingGoal?.scheduleWeight ?? DEFAULT_MAIN_GOAL_WEIGHT,
     };
     const nextGoals = snapshot.goals.some((goal) => goal.id === goalId)
       ? snapshot.goals.map((goal) => (goal.id === goalId ? nextGoal : goal))
       : [...snapshot.goals, nextGoal];
-    const ensuredPlanState = ensurePlanDrafts(nextGoals, { ...snapshot.plan, activeGoalId: goalId }, nextProfile);
+    const scheduledGoals = resolveGoalScheduling(nextGoals, goalId);
+    const ensuredPlanState = ensurePlanDrafts(scheduledGoals.goals, { ...snapshot.plan, activeGoalId: scheduledGoals.activeGoalId }, nextProfile);
     const baseDraft = ensuredPlanState.drafts.find((draft) => draft.goalId === goalId) ?? createPlanDraft(nextGoal, nextProfile);
     const routedProvider = this.describeRoutedProvider(snapshot.settings, 'plan_generation');
 
@@ -237,10 +245,10 @@ export class AppStorageService {
     const nextState = this.sanitizeState(this.prepareState(this.withProviderHealthStatus({
       ...snapshot,
       profile: nextProfile,
-      goals: nextGoals,
+      goals: scheduledGoals.goals,
       plan: {
         ...ensuredPlanState,
-        activeGoalId: goalId,
+        activeGoalId: scheduledGoals.activeGoalId,
         drafts: ensuredPlanState.drafts.some((draft) => draft.goalId === goalId)
           ? ensuredPlanState.drafts.map((draft) => (draft.goalId === goalId ? nextDraft : draft))
           : [...ensuredPlanState.drafts, nextDraft],
@@ -268,15 +276,33 @@ export class AppStorageService {
   upsertLearningGoal(goal: LearningGoalInput) {
     const snapshot = this.loadAppState();
     const goalId = goal.id?.trim() || `goal-${Date.now()}`;
-    const persistedGoals = this.entitiesRepository.upsertLearningGoal({
+    const existingGoal = snapshot.goals.find((item) => item.id === goalId);
+    const requestedRole = goal.role ?? existingGoal?.role ?? (snapshot.goals.length ? 'secondary' : 'main');
+    const nextGoal = {
+      ...existingGoal,
       ...goal,
       id: goalId,
-    });
-
-    const nextPlanState = ensurePlanDrafts(persistedGoals, snapshot.plan, snapshot.profile);
+      role: requestedRole,
+      scheduleWeight: normalizeGoalScheduleWeight(
+        goal.scheduleWeight ?? existingGoal?.scheduleWeight,
+        requestedRole,
+      ),
+    };
+    const draftGoals = snapshot.goals.some((item) => item.id === goalId)
+      ? snapshot.goals.map((item) => (item.id === goalId ? nextGoal : item))
+      : [...snapshot.goals, nextGoal];
+    const scheduledGoals = resolveGoalScheduling(
+      draftGoals,
+      requestedRole === 'main' ? goalId : snapshot.plan.activeGoalId,
+    );
+    const nextPlanState = ensurePlanDrafts(
+      scheduledGoals.goals,
+      { ...snapshot.plan, activeGoalId: scheduledGoals.activeGoalId },
+      snapshot.profile,
+    );
     const nextState = this.sanitizeState(this.withResolvedConversationState({
       ...snapshot,
-      goals: persistedGoals,
+      goals: scheduledGoals.goals,
       plan: nextPlanState,
       conversation: snapshot.conversation,
     }));
@@ -293,10 +319,14 @@ export class AppStorageService {
     }
 
     const nextGoals = snapshot.goals.filter((goal) => goal.id !== goalId);
-    const nextPlanState = ensurePlanDrafts(
+    const scheduledGoals = resolveGoalScheduling(
       nextGoals,
+      snapshot.plan.activeGoalId === goalId ? undefined : snapshot.plan.activeGoalId,
+    );
+    const nextPlanState = ensurePlanDrafts(
+      scheduledGoals.goals,
       {
-        activeGoalId: snapshot.plan.activeGoalId === goalId ? (nextGoals[0]?.id ?? '') : snapshot.plan.activeGoalId,
+        activeGoalId: scheduledGoals.activeGoalId,
         drafts: snapshot.plan.drafts.filter((draft) => draft.goalId !== goalId),
         snapshots: snapshot.plan.snapshots.filter((planSnapshot) => planSnapshot.goalId !== goalId),
       },
@@ -305,7 +335,7 @@ export class AppStorageService {
 
     const nextState = this.sanitizeState(this.withResolvedConversationState({
       ...snapshot,
-      goals: nextGoals,
+      goals: scheduledGoals.goals,
       plan: nextPlanState,
       conversation: snapshot.conversation,
     }));
@@ -321,9 +351,15 @@ export class AppStorageService {
       throw new Error('目标不存在，无法设为当前目标。');
     }
 
-    const ensuredPlanState = ensurePlanDrafts(snapshot.goals, { ...snapshot.plan, activeGoalId: goalId }, snapshot.profile);
+    const scheduledGoals = resolveGoalScheduling(snapshot.goals, goalId);
+    const ensuredPlanState = ensurePlanDrafts(
+      scheduledGoals.goals,
+      { ...snapshot.plan, activeGoalId: scheduledGoals.activeGoalId },
+      snapshot.profile,
+    );
     const nextState = this.sanitizeState(this.withResolvedConversationState({
       ...snapshot,
+      goals: scheduledGoals.goals,
       plan: ensuredPlanState,
       conversation: snapshot.conversation,
     }));

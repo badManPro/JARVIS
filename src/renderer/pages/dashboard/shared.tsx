@@ -55,7 +55,10 @@ export function splitLines(value: string) {
 }
 
 export function getActiveGoal(goals: LearningGoal[], activeGoalId: string) {
-  return goals.find((goal) => goal.id === activeGoalId) ?? goals[0] ?? null;
+  return goals.find((goal) => goal.id === activeGoalId)
+    ?? goals.find((goal) => goal.role === 'main')
+    ?? goals[0]
+    ?? null;
 }
 
 export function getActiveDraft(plan: AppState['plan']) {

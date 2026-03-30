@@ -1,11 +1,12 @@
 import type { AppState, ModelCapability, ProviderConfig } from '../../shared/app-state.js';
 import { seedState } from '../../shared/app-state.js';
+import { resolveGoalScheduling } from '../../shared/goal.js';
 import { ensurePlanDrafts } from '../../shared/plan-draft.js';
 
 type RouteKey = keyof AppState['settings']['routing'];
 
 export type AppStateConsistencyIssue = {
-  code: 'plan_repaired' | 'plan_snapshot_repaired' | 'settings_route_repaired' | 'settings_route_unresolved';
+  code: 'goal_schedule_repaired' | 'plan_repaired' | 'plan_snapshot_repaired' | 'settings_route_repaired' | 'settings_route_unresolved';
   message: string;
 };
 
@@ -43,7 +44,19 @@ export function normalizeAppStateConsistency(state: AppState): AppStateConsisten
   const issues: AppStateConsistencyIssue[] = [];
   let repaired = false;
 
-  const ensuredPlan = ensurePlanDrafts(state.goals, state.plan, state.profile);
+  const resolvedGoals = resolveGoalScheduling(state.goals, state.plan.activeGoalId);
+  if (
+    resolvedGoals.activeGoalId !== state.plan.activeGoalId
+    || JSON.stringify(resolvedGoals.goals) !== JSON.stringify(state.goals)
+  ) {
+    repaired = true;
+    issues.push({
+      code: 'goal_schedule_repaired',
+      message: '已修正主副目标角色、调度权重与 activeGoalId 的一致性。',
+    });
+  }
+
+  const ensuredPlan = ensurePlanDrafts(resolvedGoals.goals, { ...state.plan, activeGoalId: resolvedGoals.activeGoalId }, state.profile);
   if (JSON.stringify(ensuredPlan) !== JSON.stringify(state.plan)) {
     repaired = true;
     issues.push({
@@ -116,6 +129,7 @@ export function normalizeAppStateConsistency(state: AppState): AppStateConsisten
   return {
     state: {
       ...state,
+      goals: resolvedGoals.goals,
       plan: {
         ...ensuredPlan,
         snapshots,

@@ -31,6 +31,11 @@ import {
 import { createDefaultCodexAuthStatus } from '@shared/codex-auth';
 import type { LearningGoalInput } from '@shared/goal';
 import {
+  DEFAULT_MAIN_GOAL_WEIGHT,
+  normalizeGoalScheduleWeight,
+  resolveGoalScheduling,
+} from '@shared/goal';
+import {
   buildPlanningConfirmationHighlights,
   derivePlanningConfirmation,
 } from '@shared/onboarding';
@@ -207,6 +212,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         successMetric: `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
         priority: 'P1' as const,
         status: 'active' as const,
+        role: 'main' as const,
+        scheduleWeight: DEFAULT_MAIN_GOAL_WEIGHT,
       };
       const planningConfirmation = derivePlanningConfirmation({
         pacePreference: payload.pacePreference,
@@ -235,15 +242,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
         autonomyPreference: planningConfirmation.autonomyPreference,
       };
       const nextDraft = createPlanDraft(nextGoal, nextProfile);
+      const scheduledGoals = resolveGoalScheduling(
+        currentState.goals.some((goal) => goal.id === goalId)
+          ? currentState.goals.map((goal) => (goal.id === goalId ? nextGoal : goal))
+          : [...currentState.goals, nextGoal],
+        goalId,
+      );
       const nextState: AppState = {
         ...currentState,
         profile: nextProfile,
-        goals: currentState.goals.some((goal) => goal.id === goalId)
-          ? currentState.goals.map((goal) => (goal.id === goalId ? nextGoal : goal))
-          : [...currentState.goals, nextGoal],
+        goals: scheduledGoals.goals,
         plan: {
           ...currentState.plan,
-          activeGoalId: goalId,
+          activeGoalId: scheduledGoals.activeGoalId,
           drafts: currentState.plan.drafts.some((draft) => draft.goalId === goalId)
             ? currentState.plan.drafts.map((draft) => (draft.goalId === goalId ? nextDraft : draft))
             : [...currentState.plan.drafts, nextDraft],
@@ -282,18 +293,49 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (!bridge) {
       const goalId = goal.id ?? `goal-${Date.now()}`;
       set((state) => ({
-        ...state,
-        goals: state.goals.some((item) => item.id === goalId)
-          ? state.goals.map((item) => (item.id === goalId ? { ...item, ...goal, id: goalId } : item))
-          : [...state.goals, { ...goal, id: goalId }],
-        hydrated: true,
-        hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+        ...(() => {
+          const existingGoal = state.goals.find((item) => item.id === goalId);
+          const requestedRole = goal.role ?? existingGoal?.role ?? (state.goals.length ? 'secondary' : 'main');
+          const nextGoal = {
+            ...existingGoal,
+            ...goal,
+            id: goalId,
+            role: requestedRole,
+            scheduleWeight: normalizeGoalScheduleWeight(goal.scheduleWeight ?? existingGoal?.scheduleWeight, requestedRole),
+          };
+          const scheduledGoals = resolveGoalScheduling(
+            state.goals.some((item) => item.id === goalId)
+              ? state.goals.map((item) => (item.id === goalId ? nextGoal : item))
+              : [...state.goals, nextGoal],
+            requestedRole === 'main' ? goalId : state.plan.activeGoalId,
+          );
+
+          return {
+            ...state,
+            goals: scheduledGoals.goals,
+            plan: {
+              ...state.plan,
+              activeGoalId: scheduledGoals.activeGoalId,
+            },
+            hydrated: true,
+            hydrationError: 'learningCompanion bridge 不可用，未写入本地数据库。',
+          };
+        })(),
       }));
       return;
     }
 
     const goals = await bridge.upsertLearningGoal(goal);
-    set((state) => ({ ...state, goals, hydrated: true, hydrationError: null }));
+    set((state) => ({
+      ...state,
+      goals,
+      plan: {
+        ...state.plan,
+        activeGoalId: resolveGoalScheduling(goals).activeGoalId,
+      },
+      hydrated: true,
+      hydrationError: null,
+    }));
   },
   removeLearningGoal: async (goalId) => {
     const bridge = getBridge();
@@ -305,15 +347,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
 
         const nextGoals = state.goals.filter((goal) => goal.id !== goalId);
-        const nextActiveGoalId = state.plan.activeGoalId === goalId ? (nextGoals[0]?.id ?? '') : state.plan.activeGoalId;
+        const scheduledGoals = resolveGoalScheduling(
+          nextGoals,
+          state.plan.activeGoalId === goalId ? undefined : state.plan.activeGoalId,
+        );
+        const nextActiveGoalId = scheduledGoals.activeGoalId;
         const nextDrafts = state.plan.drafts.filter((draft) => draft.goalId !== goalId);
         const nextSnapshots = state.plan.snapshots.filter((snapshot) => snapshot.goalId !== goalId);
         const activeDraft = findDraftByGoalId(nextDrafts, nextActiveGoalId);
-        const activeGoal = nextGoals.find((goal) => goal.id === nextActiveGoalId) ?? nextGoals[0] ?? null;
+        const activeGoal = scheduledGoals.goals.find((goal) => goal.id === nextActiveGoalId) ?? scheduledGoals.goals[0] ?? null;
 
         return {
           ...state,
-          goals: nextGoals,
+          goals: scheduledGoals.goals,
           plan: {
             ...state.plan,
             activeGoalId: nextActiveGoalId,
@@ -344,12 +390,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
           return state;
         }
 
+        const scheduledGoals = resolveGoalScheduling(state.goals, goalId);
         const activeDraft = findDraftByGoalId(state.plan.drafts, goalId);
         return {
           ...state,
+          goals: scheduledGoals.goals,
           plan: {
             ...state.plan,
-            activeGoalId: goalId,
+            activeGoalId: scheduledGoals.activeGoalId,
           },
           conversation: {
             ...state.conversation,

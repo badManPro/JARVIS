@@ -315,6 +315,18 @@ function addPlanDraftPlanningColumns(sqlite: Database.Database) {
   }
 }
 
+function addGoalSchedulingColumns(sqlite: Database.Database) {
+  const learningGoalColumns = getTableColumns(sqlite, 'learning_goals');
+
+  if (!learningGoalColumns.some((column) => column.name === 'role')) {
+    sqlite.exec('ALTER TABLE learning_goals ADD COLUMN role TEXT NOT NULL DEFAULT \'secondary\';');
+  }
+
+  if (!learningGoalColumns.some((column) => column.name === 'schedule_weight')) {
+    sqlite.exec('ALTER TABLE learning_goals ADD COLUMN schedule_weight INTEGER NOT NULL DEFAULT 30;');
+  }
+}
+
 const migrations: Migration[] = [
   {
     version: 1,
@@ -350,6 +362,13 @@ const migrations: Migration[] = [
     name: 'add planning confirmation profile columns',
     up: (sqlite) => {
       addPlanningConfirmationProfileColumns(sqlite);
+    },
+  },
+  {
+    version: 6,
+    name: 'add primary secondary goal scheduling columns',
+    up: (sqlite) => {
+      addGoalSchedulingColumns(sqlite);
     },
   },
 ];

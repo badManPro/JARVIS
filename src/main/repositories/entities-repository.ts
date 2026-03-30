@@ -2,6 +2,7 @@ import { asc, eq } from 'drizzle-orm';
 import type { LearningGoal, LearningPlanDraft, LearningPlanSnapshot, LearningPlanStage, LearningPlanState, PlanTask, ReflectionEntry, UserProfile } from '../../shared/app-state.js';
 import { normalizeUserProfile } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
+import { normalizeGoalScheduleWeight, normalizeLearningGoalRole } from '../../shared/goal.js';
 import { learningGoals, learningPlanDrafts, learningPlans, learningPlanSnapshots, reflectionEntries, planSnapshotStages, planSnapshotTasks, planStages, planTasks, userProfiles } from '../db/schema.js';
 import type { LearningCompanionDatabase } from '../db/client.js';
 
@@ -104,16 +105,21 @@ export class EntitiesRepository {
       .from(learningGoals)
       .orderBy(asc(learningGoals.id))
       .all()
-      .map((row) => ({
-        id: row.id,
-        title: row.title,
-        motivation: row.motivation,
-        baseline: row.baseline,
-        cycle: row.cycle,
-        successMetric: row.successMetric,
-        priority: row.priority as LearningGoal['priority'],
-        status: row.status as LearningGoal['status'],
-      }));
+      .map((row) => {
+        const role = normalizeLearningGoalRole(row.role);
+        return {
+          id: row.id,
+          title: row.title,
+          motivation: row.motivation,
+          baseline: row.baseline,
+          cycle: row.cycle,
+          successMetric: row.successMetric,
+          priority: row.priority as LearningGoal['priority'],
+          status: row.status as LearningGoal['status'],
+          role,
+          scheduleWeight: normalizeGoalScheduleWeight(row.scheduleWeight, role),
+        };
+      });
   }
 
   replaceLearningGoals(goals: LearningGoal[]) {
@@ -133,6 +139,8 @@ export class EntitiesRepository {
           successMetric: goal.successMetric,
           priority: goal.priority,
           status: goal.status,
+          role: goal.role,
+          scheduleWeight: goal.scheduleWeight,
           updatedAt: now,
         })),
       )
@@ -152,6 +160,8 @@ export class EntitiesRepository {
         successMetric: goal.successMetric,
         priority: goal.priority,
         status: goal.status,
+        role: goal.role ?? 'secondary',
+        scheduleWeight: goal.scheduleWeight ?? 30,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -164,6 +174,8 @@ export class EntitiesRepository {
           successMetric: goal.successMetric,
           priority: goal.priority,
           status: goal.status,
+          role: goal.role ?? 'secondary',
+          scheduleWeight: goal.scheduleWeight ?? 30,
           updatedAt: now,
         },
       })

@@ -12,4 +12,7 @@ test('path page foregrounds the rough weekly path and rough-plan regeneration co
   assert.match(pathPageSource, /milestones/);
   assert.match(pathPageSource, /当前关键节点|重要节点|本周目标/);
   assert.match(pathPageSource, /removeLearningGoal/);
+  assert.match(pathPageSource, /主目标/);
+  assert.match(pathPageSource, /副目标/);
+  assert.match(pathPageSource, /调度权重/);
 });

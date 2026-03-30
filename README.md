@@ -6,9 +6,9 @@
 
 ## 当前阶段
 当前判断：
-- 当前阶段：`Phase 2 / 今日执行引擎升级`
-- 当前进度估算：约 `45%`
-- 当前唯一下一任务：`Phase 2 / Task 5 / 为跳过与延期补齐真正的后续依赖压缩与重排`
+- 当前阶段：`Phase 3 / 主副目标与日历调度`
+- 当前进度估算：约 `58%`
+- 当前唯一下一任务：`Phase 3 / Task 2 / 让系统优先保证主目标的连续推进`
 
 已完成：
 - 更细化的页面信息架构文档
@@ -38,6 +38,8 @@
 - 复盘页已支持日 / 周 / 阶段周期切换、结构化输入表单、本地保存与建议区；手动输入会落到 `reflection_entries`
 - SQLite 初始化现已切换为显式 schema migration runner，并通过 `PRAGMA user_version` 管理数据库版本升级
 - Main 存储层现会在 load/save 路径执行关键一致性检查，自动修复 stale plan snapshot 引用和指向缺失 provider 的 route
+- `LearningGoal` 现已具备结构化 `role / scheduleWeight`，目标集合会在 load/save 时自动修正为唯一主目标
+- 学习路径页现可明确区分主目标 / 副目标，并展示后续日历调度会使用的目标权重
 
 ## 技术栈
 - Electron
@@ -157,6 +159,7 @@ npm run dist:win
 - `reflection_entries` 会结构化保存日 / 周 / 阶段复盘的偏差说明、难度判断、时间分配、自评、复盘结论与后续动作
 - 用户画像、目标、设置页的关键字段已经可以通过 renderer → preload → main → SQLite 真实保存并在重启后回填
 - 计划相关数据已拆为：`learning_plans.active_goal_id` 保存当前主目标，`learning_plan_drafts` 保存各目标草案，`plan_stages` / `plan_tasks` 保存对应阶段与任务
+- `learning_goals` 现会额外保存 `role / schedule_weight`，并与 `learning_plans.active_goal_id` 共同承接主副目标边界
 - `plan_tasks` 现会额外保存 `status_note` / `status_updated_at`，用于承接任务完成 / 跳过 / 延后等真实执行信号
 - 目标页已支持“设为当前目标”，计划页会直接切换到该目标对应的独立草案内容，而不是仅做展示映射
 - 点击“重新生成计划”前，会先把当前草案归档到 `learning_plan_snapshots`、`plan_snapshot_stages`、`plan_snapshot_tasks`，并可在计划页直接选择历史快照做版本对比
@@ -184,9 +187,9 @@ npm run dist:win
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. `Phase 2 / Task 5`：为跳过 / 延期补齐真正的后续依赖压缩与重排
-2. `Phase 3 / Task 1`：建立主目标与副目标调度结构
-3. `Phase 3 / Task 3`：新增日历排程页，承接延期和一周时间块重排
+1. `Phase 3 / Task 2`：让系统优先保证主目标的连续推进
+2. `Phase 3 / Task 3`：新增日历排程页，承接延期和一周时间块重排
+3. `Phase 4 / Task 1`：深做编程、乐器、健身三类领域规则
 
 ## 当前推荐下一任务
-- `Phase 2 / Task 5`：为跳过与延期补齐真正的后续依赖压缩与重排
+- `Phase 3 / Task 2`：让系统优先保证主目标的连续推进

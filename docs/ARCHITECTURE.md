@@ -62,7 +62,7 @@
 ## 4. 前端状态分层（当前阶段）
 Renderer 先按以下状态切分：
 1. profile：用户画像、偏好、风险与影响解释
-2. goals：目标列表、主目标、状态与成功标准
+2. goals：目标列表、主副角色、调度权重、状态与成功标准
 3. plan drafts：按目标归属的阶段计划草案、阶段任务与当前激活目标
 4. conversation：当前会话、消息流、建议动作、action preview、审核状态与应用状态
 5. settings：主题、启动页、Provider 列表、用途路由策略
@@ -90,9 +90,9 @@ Renderer 先按以下状态切分：
    - 规范化保存用户画像主体字段
    - `strengths / blockers / planImpact` 先以 JSON 文本列承载
 3. `learning_goals`
-   - 规范化保存目标列表与状态
+   - 规范化保存目标列表、主副角色、调度权重与状态
 4. `learning_plans`
-   - 仅保存 `active_goal_id`，代表当前主目标
+   - 仅保存 `active_goal_id`，代表当前主目标；与 `learning_goals.role` 共同约束唯一主目标
 5. `learning_plan_drafts`
    - 按 `goal_id` 保存每个目标的独立计划草案摘要与标题
    - `basis` 当前先以 JSON 文本列承载
@@ -160,8 +160,8 @@ Preload 当前暴露：
 
 这意味着当前已经具备十四类真实交互：
 1. 用户画像关键字段通过 `saveUserProfile` 写入本地 SQLite
-2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并落到 `learning_goals`
-3. 目标切换通过 `setActiveGoal` 持久化 `active_goal_id`，并让计划页直接读取该目标对应的独立草案
+2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并把 `role / scheduleWeight` 一起落到 `learning_goals`
+3. 目标切换通过 `setActiveGoal` 同步更新 `active_goal_id` 与唯一主目标角色，并让计划页直接读取该目标对应的独立草案
 4. 目标删除通过 `removeLearningGoal` 同步清理 `learning_goals`、目标关联计划草案与版本快照，并处理 active goal 回退
 5. 计划页通过 `saveLearningPlanDraft` 支持草案手动保存
 6. 计划页通过 `updatePlanTaskStatus` 支持对单个任务执行开始 / 完成 / 跳过 / 延后，并立即刷新首页与复盘输入

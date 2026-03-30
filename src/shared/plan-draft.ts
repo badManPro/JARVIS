@@ -7,6 +7,7 @@ import type {
   UserProfile,
 } from './app-state.js';
 import { createEmptyTodayPlanningContext } from './app-state.js';
+import { resolveGoalScheduling } from './goal.js';
 
 type PlanDraftMode = 'initial' | 'regenerated';
 
@@ -48,7 +49,7 @@ export function createPlanDraft(goal: LearningGoal, profile: UserProfile, mode: 
   const firstStrength = profile.strengths[0] ?? '已有经验可迁移';
   const firstBlocker = profile.blockers[0] ?? '需要控制任务摩擦';
   const firstPlanImpact = profile.planImpact[0] ?? '计划保持低摩擦、可持续';
-  const focusTag = goal.priority === 'P1' ? '主线目标' : '并行目标';
+  const focusTag = goal.role === 'main' ? '主目标' : '副目标';
   const titleSuffix = mode === 'regenerated' ? '重生成计划草案' : '首版计划草案';
   const summaryPrefix = mode === 'regenerated' ? '已根据当前目标与画像重生成一版可执行草案' : '会基于当前基础先生成一份可执行草案';
   const basis = [
@@ -87,8 +88,10 @@ export function createPlanDraft(goal: LearningGoal, profile: UserProfile, mode: 
 }
 
 export function ensurePlanDrafts(goals: LearningGoal[], planState: LearningPlanState, profile: UserProfile): LearningPlanState {
-  const snapshots = (planState.snapshots ?? []).filter((snapshot) => goals.some((goal) => goal.id === snapshot.goalId));
-  const drafts = goals.map((goal) => {
+  const scheduled = resolveGoalScheduling(goals, planState.activeGoalId);
+  const normalizedGoals = scheduled.goals;
+  const snapshots = (planState.snapshots ?? []).filter((snapshot) => normalizedGoals.some((goal) => goal.id === snapshot.goalId));
+  const drafts = normalizedGoals.map((goal) => {
     const existingDraft = planState.drafts.find((draft) => draft.goalId === goal.id);
     if (!existingDraft) {
       return createPlanDraft(goal, profile);
@@ -105,12 +108,8 @@ export function ensurePlanDrafts(goals: LearningGoal[], planState: LearningPlanS
     };
   });
 
-  const activeGoalId = goals.some((goal) => goal.id === planState.activeGoalId)
-    ? planState.activeGoalId
-    : goals[0]?.id ?? '';
-
   return {
-    activeGoalId,
+    activeGoalId: scheduled.activeGoalId,
     drafts,
     snapshots,
   };

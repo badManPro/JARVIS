@@ -12,6 +12,7 @@ import {
   updatePlanTaskStatus,
   updateConversationActionPreviewReview,
 } from './app-state.js';
+import { resolveGoalScheduling } from './goal.js';
 
 test('resolveConversationState records source metadata and creation time for new action previews', () => {
   const before = Date.now();
@@ -561,4 +562,40 @@ test('resolveConversationState parses reflection-driven profile suggestions into
 
   assert.equal(planImpactPreview?.execution?.type, 'profile_update');
   assert.equal(planImpactPreview?.changes.some((change) => change.field === 'profile.planImpact' && change.after === '后续计划优先拆成 30 分钟内的小步'), true);
+});
+
+test('resolveGoalScheduling enforces one main goal and stable schedule weights', () => {
+  const result = resolveGoalScheduling([
+    {
+      id: 'goal-main',
+      title: '主线目标',
+      motivation: '保持连续推进',
+      baseline: '已有起点',
+      cycle: '8 周',
+      successMetric: '完成主线交付',
+      priority: 'P1',
+      status: 'active',
+      role: 'secondary',
+      scheduleWeight: 0,
+    },
+    {
+      id: 'goal-side',
+      title: '副线目标',
+      motivation: '补位推进',
+      baseline: '刚开始',
+      cycle: '4 周',
+      successMetric: '形成稳定副线节奏',
+      priority: 'P2',
+      status: 'active',
+      role: 'main',
+      scheduleWeight: 999,
+    },
+  ], 'goal-main');
+
+  assert.equal(result.activeGoalId, 'goal-main');
+  assert.equal(result.goals.filter((goal) => goal.role === 'main').length, 1);
+  assert.equal(result.goals.find((goal) => goal.id === 'goal-main')?.role, 'main');
+  assert.equal(result.goals.find((goal) => goal.id === 'goal-main')?.scheduleWeight, 70);
+  assert.equal(result.goals.find((goal) => goal.id === 'goal-side')?.role, 'secondary');
+  assert.equal(result.goals.find((goal) => goal.id === 'goal-side')?.scheduleWeight, 100);
 });

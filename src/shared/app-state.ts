@@ -1,5 +1,6 @@
 export type ProviderId = 'openai' | 'codex' | 'glm' | 'kimi' | 'deepseek' | 'custom';
 export type GoalStatus = 'active' | 'paused' | 'completed';
+export type LearningGoalRole = 'main' | 'secondary';
 export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'delayed' | 'skipped';
 export type HealthStatus = 'unknown' | 'ready' | 'warning';
 
@@ -61,6 +62,8 @@ export type LearningGoal = {
   successMetric: string;
   priority: 'P1' | 'P2' | 'P3';
   status: GoalStatus;
+  role: LearningGoalRole;
+  scheduleWeight: number;
 };
 
 export type PlanTask = {
@@ -491,7 +494,10 @@ const defaultRouting = {
 } satisfies AppState['settings']['routing'];
 
 function getActiveConversationGoal(goals: LearningGoal[], activeGoalId: string) {
-  return goals.find((goal) => goal.id === activeGoalId) ?? goals[0] ?? null;
+  return goals.find((goal) => goal.id === activeGoalId)
+    ?? goals.find((goal) => goal.role === 'main')
+    ?? goals[0]
+    ?? null;
 }
 
 function getActiveConversationDraft(plan: LearningPlanState) {
@@ -2950,6 +2956,8 @@ const baseSeedState: AppState = {
       successMetric: '能独立完成一个本地优先的 AI 学习工具 MVP。',
       priority: 'P1',
       status: 'active',
+      role: 'main',
+      scheduleWeight: 70,
     },
     {
       id: 'goal-writing',
@@ -2960,6 +2968,8 @@ const baseSeedState: AppState = {
       successMetric: '每周至少 1 次结构化复盘。',
       priority: 'P2',
       status: 'active',
+      role: 'secondary',
+      scheduleWeight: 30,
     },
   ],
   plan: {

@@ -39,6 +39,8 @@ export const learningGoals = sqliteTable('learning_goals', {
   successMetric: text('success_metric').notNull(),
   priority: text('priority').notNull(),
   status: text('status').notNull(),
+  role: text('role').notNull(),
+  scheduleWeight: integer('schedule_weight').notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 

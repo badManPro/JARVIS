@@ -538,6 +538,63 @@ test('initialize repairs stale structured plan snapshot references before return
   assert.equal(reloaded.plan.snapshots[0]?.draftId, reloaded.plan.drafts[0]?.id);
 });
 
+test('upsertLearningGoal keeps the existing main goal when creating a secondary goal', () => {
+  const { service } = createHarness();
+  const initialState = service.initialize();
+
+  service.upsertLearningGoal({
+    title: '补位健身目标',
+    motivation: '维持基础体能',
+    baseline: '最近频率不稳定',
+    cycle: '6 周',
+    successMetric: '每周稳定完成 2 次训练',
+    priority: 'P2',
+    status: 'active',
+    role: 'secondary',
+    scheduleWeight: 30,
+  } as never);
+
+  const nextState = service.loadAppState();
+  const createdGoal = nextState.goals.find((goal) => goal.title === '补位健身目标');
+
+  assert.ok(createdGoal);
+  assert.equal(nextState.plan.activeGoalId, initialState.plan.activeGoalId);
+  assert.equal(nextState.goals.find((goal) => goal.id === initialState.plan.activeGoalId)?.role, 'main');
+  assert.equal((createdGoal as typeof createdGoal & { role?: string })?.role, 'secondary');
+  assert.equal((createdGoal as typeof createdGoal & { scheduleWeight?: number })?.scheduleWeight, 30);
+});
+
+test('setActiveGoal promotes the target goal to main and demotes the previous main goal', () => {
+  const { service } = createHarness();
+  const initialState = service.initialize();
+  const previousMainGoal = initialState.goals.find((goal) => goal.id === initialState.plan.activeGoalId);
+  const targetGoal = initialState.goals.find((goal) => goal.id !== initialState.plan.activeGoalId);
+
+  assert.ok(previousMainGoal);
+  assert.ok(targetGoal);
+
+  const nextState = service.setActiveGoal(targetGoal.id);
+
+  assert.equal(nextState.plan.activeGoalId, targetGoal.id);
+  assert.equal(nextState.goals.find((goal) => goal.id === targetGoal.id)?.role, 'main');
+  assert.equal(nextState.goals.find((goal) => goal.id === previousMainGoal.id)?.role, 'secondary');
+});
+
+test('removeLearningGoal promotes a remaining goal to main after deleting the active main goal', () => {
+  const { service } = createHarness();
+  const initialState = service.initialize();
+  const deletedGoalId = initialState.plan.activeGoalId;
+  const expectedNextMain = initialState.goals.find((goal) => goal.id !== deletedGoalId);
+
+  assert.ok(expectedNextMain);
+
+  const nextState = service.removeLearningGoal(deletedGoalId);
+
+  assert.equal(nextState.plan.activeGoalId, expectedNextMain.id);
+  assert.equal(nextState.goals.find((goal) => goal.id === expectedNextMain.id)?.role, 'main');
+  assert.equal(nextState.goals.some((goal) => goal.id === deletedGoalId), false);
+});
+
 test('saveAppState repairs invalid provider routing before persisting settings', () => {
   const { service, settingsRepository } = createHarness();
   const initialState = service.initialize();

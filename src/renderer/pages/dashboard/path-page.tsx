@@ -99,6 +99,8 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
               </Muted>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Badge className="bg-slate-900 text-white">{activeGoal?.cycle ?? '待设置周期'}</Badge>
+                <Badge className="bg-white/90 text-slate-700">{activeGoal?.role === 'main' ? '主目标' : '副目标'}</Badge>
+                <Badge className="bg-white/90 text-slate-700">调度权重 {activeGoal?.scheduleWeight ?? 0}</Badge>
                 <Badge className="bg-white/90 text-slate-700">{currentMilestone?.title ?? '等待第一个周里程碑'}</Badge>
                 <Badge className="bg-white/90 text-slate-700">{activeSnapshots.length} 个历史快照</Badge>
               </div>
@@ -229,10 +231,10 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <SectionTitle>目标管理</SectionTitle>
-                <Muted className="mt-2">在当前学习路径里切换主目标，或删除不再需要的目标数据。</Muted>
+                <Muted className="mt-2">在当前学习路径里明确主目标 / 副目标，并查看后续日历调度会参考的权重边界。</Muted>
               </div>
               <div className="rounded-[1.2rem] bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                当前主目标关联 {activeDraft ? '1' : '0'} 个草案，{activeSnapshots.length} 个历史快照。
+                当前主目标关联 {activeDraft ? '1' : '0'} 个草案，{activeSnapshots.length} 个历史快照，当前调度权重 {activeGoal?.scheduleWeight ?? 0}。
               </div>
             </div>
             <div className="mt-5 grid gap-3">
@@ -252,13 +254,15 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
                         </Muted>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Badge className={active ? 'bg-white/15 text-white' : 'bg-slate-900 text-white'}>{active ? '当前主目标' : '候选目标'}</Badge>
+                        <Badge className={active ? 'bg-white/15 text-white' : 'bg-slate-900 text-white'}>{active ? '当前主目标' : goal.role === 'main' ? '主目标' : '副目标'}</Badge>
                         <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.priority}</Badge>
                       </div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs">
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.status === 'active' ? '进行中' : goal.status === 'paused' ? '暂停' : '已完成'}</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.cycle || '未设置周期'}</Badge>
+                      <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.role === 'main' ? '主目标' : '副目标'}</Badge>
+                      <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>调度权重 {goal.scheduleWeight}</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goalDraftCount} 个计划草案</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goalSnapshotCount} 个历史快照</Badge>
                     </div>
