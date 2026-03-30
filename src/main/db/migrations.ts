@@ -275,6 +275,26 @@ function addEnhancedUserProfileColumns(sqlite: Database.Database) {
   }
 }
 
+function addPlanningConfirmationProfileColumns(sqlite: Database.Database) {
+  const userProfileColumns = getTableColumns(sqlite, 'user_profiles');
+
+  if (!userProfileColumns.some((column) => column.name === 'planning_style')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN planning_style TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'decision_support_level')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN decision_support_level TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'feedback_tone')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN feedback_tone TEXT NOT NULL DEFAULT \'\';');
+  }
+
+  if (!userProfileColumns.some((column) => column.name === 'autonomy_preference')) {
+    sqlite.exec('ALTER TABLE user_profiles ADD COLUMN autonomy_preference TEXT NOT NULL DEFAULT \'\';');
+  }
+}
+
 function addPlanDraftPlanningColumns(sqlite: Database.Database) {
   const learningPlanDraftColumns = getTableColumns(sqlite, 'learning_plan_drafts');
   if (!learningPlanDraftColumns.some((column) => column.name === 'milestones_json')) {
@@ -323,6 +343,13 @@ const migrations: Migration[] = [
     name: 'add rough-plan milestones and daily planning columns',
     up: (sqlite) => {
       addPlanDraftPlanningColumns(sqlite);
+    },
+  },
+  {
+    version: 5,
+    name: 'add planning confirmation profile columns',
+    up: (sqlite) => {
+      addPlanningConfirmationProfileColumns(sqlite);
     },
   },
 ];

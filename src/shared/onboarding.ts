@@ -1,4 +1,4 @@
-import type { AppState } from './app-state.js';
+import type { AppState, UserProfile } from './app-state.js';
 
 export type OnboardingPresetOption = {
   label: string;
@@ -6,6 +6,11 @@ export type OnboardingPresetOption = {
 };
 
 export type InitialPlanSource = 'ai' | 'template_fallback';
+
+export type PlanningConfirmation = Pick<
+  UserProfile,
+  'planningStyle' | 'decisionSupportLevel' | 'feedbackTone' | 'autonomyPreference'
+>;
 
 export type CompleteInitialOnboardingPayload = {
   goalTitle: string;
@@ -25,6 +30,7 @@ export type CompleteInitialOnboardingPayload = {
 
 export type InitialOnboardingSummary = {
   personaHighlights: string[];
+  planningHighlights: string[];
   goalTitle: string;
   planTitle: string;
   planSummary: string;
@@ -101,6 +107,24 @@ export const onboardingFieldOptions = {
     { label: '结构化复盘', value: '希望按问题、原因、行动三段式给反馈' },
     { label: '结果导向', value: '更关注是否靠近成果，而不是过程描述' },
   ],
+  planningStyle: [
+    { label: '框架优先', value: '先框架后执行，先确认主线再拆到当天动作' },
+    { label: '低阻力启动', value: '先低阻力启动，再逐步加深到完整训练或练习' },
+    { label: '主线拆解', value: '先确认本周主线，再拆成今天可直接开始的动作' },
+  ],
+  decisionSupportLevel: [
+    { label: '系统直接给', value: '系统可以直接给出下一步，只在大调整时再确认' },
+    { label: '结构化建议', value: '系统先给结构化建议，关键切换由你确认' },
+  ],
+  feedbackTone: [
+    { label: '直接结果导向', value: '直接、短句、结果导向' },
+    { label: '先肯定后推进', value: '先肯定进展，再明确下一步' },
+    { label: '清晰克制', value: '清晰、克制、明确下一步' },
+  ],
+  autonomyPreference: [
+    { label: '小调自动', value: '小调整自动执行，大调整先确认' },
+    { label: '先提建议', value: '默认先给建议，再由你确认是否改动计划' },
+  ],
   personalityTraits: [
     { label: '偏好明确反馈', value: '偏好明确反馈' },
     { label: '容易过度准备', value: '容易过度准备' },
@@ -117,3 +141,51 @@ export const changeQuickActionOptions: OnboardingPresetOption[] = [
   { label: '目标变了', value: '当前主目标需要调整，之前的成功标准已经不完全适用。' },
   { label: '希望反馈更直接', value: '我希望后续提醒和反馈更直接，少一点铺垫。' },
 ];
+
+function includesAny(source: string, patterns: string[]) {
+  return patterns.some((pattern) => source.includes(pattern));
+}
+
+export function derivePlanningConfirmation(profile: Pick<
+  UserProfile,
+  'pacePreference' | 'personalityTraits' | 'mbti' | 'motivationStyle' | 'stressResponse' | 'feedbackPreference'
+>): PlanningConfirmation {
+  const traits = profile.personalityTraits.join('；');
+  const combined = [
+    profile.pacePreference,
+    traits,
+    profile.mbti,
+    profile.motivationStyle,
+    profile.stressResponse,
+    profile.feedbackPreference,
+  ].join('｜');
+
+  const prefersFramework = includesAny(combined, ['INTJ', 'INFJ', 'ISTJ', '整体框架', '明确里程碑', '框架']);
+  const needsLowFriction = includesAny(combined, ['小步快跑', '低阻力', '先易后难', '最小步', '明确下一步']);
+  const prefersDirectFeedback = includesAny(combined, ['直接', '简短', '结果导向']);
+  const wantsAutopilot = includesAny(combined, ['明确下一步', '减少并行', '低阻力', '连续反馈', '直接']);
+
+  return {
+    planningStyle: prefersFramework
+      ? '先框架后执行，先确认主线再拆到当天动作'
+      : (needsLowFriction ? '先低阻力启动，再逐步加深到完整训练或练习' : '先确认本周主线，再拆成今天可直接开始的动作'),
+    decisionSupportLevel: wantsAutopilot
+      ? '系统可以直接给出下一步，只在大调整时再确认'
+      : '系统先给结构化建议，关键切换由你确认',
+    feedbackTone: prefersDirectFeedback
+      ? '直接、短句、结果导向'
+      : (includesAny(combined, ['鼓励']) ? '先肯定进展，再明确下一步' : '清晰、克制、明确下一步'),
+    autonomyPreference: wantsAutopilot
+      ? '小调整自动执行，大调整先确认'
+      : '默认先给建议，再由你确认是否改动计划',
+  };
+}
+
+export function buildPlanningConfirmationHighlights(confirmation: PlanningConfirmation) {
+  return [
+    confirmation.planningStyle ? `拆解方式：${confirmation.planningStyle}` : null,
+    confirmation.decisionSupportLevel ? `决策支持：${confirmation.decisionSupportLevel}` : null,
+    confirmation.feedbackTone ? `反馈语气：${confirmation.feedbackTone}` : null,
+    confirmation.autonomyPreference ? `自动调整：${confirmation.autonomyPreference}` : null,
+  ].filter(Boolean) as string[];
+}

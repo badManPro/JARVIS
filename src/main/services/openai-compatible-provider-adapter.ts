@@ -133,6 +133,10 @@ export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capabili
     `激励方式：${request.profile.motivationStyle || '暂无'}`,
     `压力偏好：${request.profile.stressResponse || '暂无'}`,
     `反馈方式：${request.profile.feedbackPreference || '暂无'}`,
+    `规划倾向：${request.profile.planningStyle || '暂无'}`,
+    `决策支持：${request.profile.decisionSupportLevel || '暂无'}`,
+    `反馈语气：${request.profile.feedbackTone || '暂无'}`,
+    `自动调整边界：${request.profile.autonomyPreference || '暂无'}`,
     request.currentDraft ? `当前草案摘要：${request.currentDraft.summary}` : '当前没有既有草案。',
   ].join('\n');
 }
@@ -153,6 +157,9 @@ export function buildDailyPlanGenerationPrompt(request: Extract<AiRequest, { cap
     `仅今天有效的学习窗口：${request.todayContext.studyWindow || '未覆盖'}`,
     `今天的额外说明：${request.todayContext.note || '无'}`,
     `反馈偏好：${request.profile.feedbackPreference || '提醒直接、明确下一步'}`,
+    `规划倾向：${request.profile.planningStyle || '先确认主线，再拆到当天动作'}`,
+    `决策支持：${request.profile.decisionSupportLevel || '系统直接给出下一步'}`,
+    `自动调整边界：${request.profile.autonomyPreference || '小调整自动执行，大调整先确认'}`,
   ].join('\n');
 }
 
@@ -200,6 +207,10 @@ export function buildTextPrompt(request: Exclude<AiRequest, { capability: 'plan_
         `激励方式：${request.profile.motivationStyle || '暂无'}`,
         `压力偏好：${request.profile.stressResponse || '暂无'}`,
         `反馈方式：${request.profile.feedbackPreference || '暂无'}`,
+        `规划倾向：${request.profile.planningStyle || '暂无'}`,
+        `决策支持：${request.profile.decisionSupportLevel || '暂无'}`,
+        `反馈语气：${request.profile.feedbackTone || '暂无'}`,
+        `自动调整边界：${request.profile.autonomyPreference || '暂无'}`,
         `当前草案：${request.currentDraft.summary}`,
         '复盘上下文：',
         ...formatReflectionContext(request.reflection),

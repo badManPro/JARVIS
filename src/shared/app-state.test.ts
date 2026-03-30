@@ -237,6 +237,10 @@ test('createEmptyAppState includes the enhanced learner persona profile fields',
     motivationStyle: '',
     stressResponse: '',
     feedbackPreference: '',
+    planningStyle: '',
+    decisionSupportLevel: '',
+    feedbackTone: '',
+    autonomyPreference: '',
   });
 });
 
@@ -259,6 +263,10 @@ test('syncExecutionDerivedState derives onboarding guidance for a first-run empt
       motivationStyle: '',
       stressResponse: '',
       feedbackPreference: '',
+      planningStyle: '',
+      decisionSupportLevel: '',
+      feedbackTone: '',
+      autonomyPreference: '',
     },
     goals: [],
     plan: {

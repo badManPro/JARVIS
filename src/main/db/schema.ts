@@ -23,6 +23,10 @@ export const userProfiles = sqliteTable('user_profiles', {
   motivationStyle: text('motivation_style').notNull(),
   stressResponse: text('stress_response').notNull(),
   feedbackPreference: text('feedback_preference').notNull(),
+  planningStyle: text('planning_style').notNull(),
+  decisionSupportLevel: text('decision_support_level').notNull(),
+  feedbackTone: text('feedback_tone').notNull(),
+  autonomyPreference: text('autonomy_preference').notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 

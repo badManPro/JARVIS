@@ -46,6 +46,10 @@ export type UserProfile = {
   motivationStyle: string;
   stressResponse: string;
   feedbackPreference: string;
+  planningStyle: string;
+  decisionSupportLevel: string;
+  feedbackTone: string;
+  autonomyPreference: string;
 };
 
 export type LearningGoal = {
@@ -401,6 +405,10 @@ export function createEmptyUserProfile(): UserProfile {
     motivationStyle: '',
     stressResponse: '',
     feedbackPreference: '',
+    planningStyle: '',
+    decisionSupportLevel: '',
+    feedbackTone: '',
+    autonomyPreference: '',
   };
 }
 
@@ -434,6 +442,10 @@ export function normalizeUserProfile(profile?: Partial<UserProfile> | null): Use
     motivationStyle: profile?.motivationStyle?.trim() ?? fallback.motivationStyle,
     stressResponse: profile?.stressResponse?.trim() ?? fallback.stressResponse,
     feedbackPreference: profile?.feedbackPreference?.trim() ?? fallback.feedbackPreference,
+    planningStyle: profile?.planningStyle?.trim() ?? fallback.planningStyle,
+    decisionSupportLevel: profile?.decisionSupportLevel?.trim() ?? fallback.decisionSupportLevel,
+    feedbackTone: profile?.feedbackTone?.trim() ?? fallback.feedbackTone,
+    autonomyPreference: profile?.autonomyPreference?.trim() ?? fallback.autonomyPreference,
   };
 }
 
@@ -2639,6 +2651,10 @@ const baseSeedState: AppState = {
     motivationStyle: '更适合看到明确里程碑与可交付结果',
     stressResponse: '连续被打断时更适合先做低阻力任务恢复节奏',
     feedbackPreference: '希望提醒直接、简短，并明确下一步动作',
+    planningStyle: '先框架后执行，先确认主线再拆到当天动作',
+    decisionSupportLevel: '系统可以直接给出下一步，只在大调整时再确认',
+    feedbackTone: '直接、短句、结果导向',
+    autonomyPreference: '小调整自动执行，大调整先确认',
   },
   dashboard: {
     todayFocus: '完成目标级计划草案切换，让不同学习主线真正拥有自己的计划内容',

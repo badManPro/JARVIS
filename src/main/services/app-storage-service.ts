@@ -35,6 +35,10 @@ import {
   ROUGH_PLAN_STALE_TAG,
 } from '../../shared/app-state.js';
 import type { LearningGoalInput } from '../../shared/goal.js';
+import {
+  buildPlanningConfirmationHighlights,
+  derivePlanningConfirmation,
+} from '../../shared/onboarding.js';
 import type { CompleteInitialOnboardingPayload, CompleteInitialOnboardingResult, InitialOnboardingSummary } from '../../shared/onboarding.js';
 import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
@@ -142,6 +146,14 @@ export class AppStorageService {
     const snapshot = this.loadAppState();
     const goalId = snapshot.plan.activeGoalId || snapshot.goals[0]?.id || `goal-${Date.now()}`;
     const existingGoal = snapshot.goals.find((goal) => goal.id === goalId) ?? snapshot.goals[0] ?? null;
+    const planningConfirmation = derivePlanningConfirmation({
+      pacePreference: payload.pacePreference,
+      personalityTraits: payload.personalityTraits,
+      mbti: payload.mbti,
+      motivationStyle: payload.motivationStyle,
+      stressResponse: payload.stressResponse,
+      feedbackPreference: payload.feedbackPreference,
+    });
     const nextProfile = normalizeUserProfile({
       ...snapshot.profile,
       identity: payload.baseline,
@@ -155,6 +167,10 @@ export class AppStorageService {
       motivationStyle: payload.motivationStyle,
       stressResponse: payload.stressResponse,
       feedbackPreference: payload.feedbackPreference,
+      planningStyle: planningConfirmation.planningStyle,
+      decisionSupportLevel: planningConfirmation.decisionSupportLevel,
+      feedbackTone: planningConfirmation.feedbackTone,
+      autonomyPreference: planningConfirmation.autonomyPreference,
     });
     const nextGoal = {
       id: goalId,
@@ -1208,6 +1224,12 @@ export class AppStorageService {
       profile.personalityTraits[0] ? `性格关键词：${profile.personalityTraits[0]}` : null,
       profile.stressResponse ? `压力应对：${profile.stressResponse}` : null,
     ].filter(Boolean).slice(0, 3) as string[];
+    const planningHighlights = buildPlanningConfirmationHighlights({
+      planningStyle: profile.planningStyle,
+      decisionSupportLevel: profile.decisionSupportLevel,
+      feedbackTone: profile.feedbackTone,
+      autonomyPreference: profile.autonomyPreference,
+    });
     const firstTask = draft.tasks[0] ?? {
       title: '确认第一步任务',
       duration: '20 分钟',
@@ -1216,6 +1238,7 @@ export class AppStorageService {
 
     return {
       personaHighlights: personaHighlights.length ? personaHighlights : ['系统会先按低摩擦节奏启动，后续可继续补充画像。'],
+      planningHighlights: planningHighlights.length ? planningHighlights : ['系统会先给出明确下一步，并在大调整前征求确认。'],
       goalTitle,
       planTitle: draft.title,
       planSummary: draft.summary,

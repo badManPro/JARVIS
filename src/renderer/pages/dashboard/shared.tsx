@@ -138,7 +138,18 @@ export function buildCoachStyleSummary(profile: UserProfile) {
     profile.feedbackPreference ? `反馈方式偏向 ${profile.feedbackPreference}` : null,
     profile.pacePreference ? `任务拆解会遵循「${profile.pacePreference}」` : null,
     profile.stressResponse ? `压力波动时优先采用「${profile.stressResponse}」` : null,
+    profile.planningStyle ? `默认按「${profile.planningStyle}」拆解学习动作` : null,
+    profile.autonomyPreference ? `自动调整策略为「${profile.autonomyPreference}」` : null,
   ].filter(Boolean) as string[];
+}
+
+export function buildPlanningConfirmationRows(profile: UserProfile) {
+  return [
+    { label: '拆解方式', value: profile.planningStyle || '未确认' },
+    { label: '决策支持', value: profile.decisionSupportLevel || '未确认' },
+    { label: '反馈语气', value: profile.feedbackTone || '未确认' },
+    { label: '自动调整', value: profile.autonomyPreference || '未确认' },
+  ];
 }
 
 export function Field({

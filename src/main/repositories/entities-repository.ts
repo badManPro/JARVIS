@@ -35,6 +35,10 @@ export class EntitiesRepository {
       motivationStyle: row.motivationStyle,
       stressResponse: row.stressResponse,
       feedbackPreference: row.feedbackPreference,
+      planningStyle: row.planningStyle,
+      decisionSupportLevel: row.decisionSupportLevel,
+      feedbackTone: row.feedbackTone,
+      autonomyPreference: row.autonomyPreference,
     });
   }
 
@@ -60,6 +64,10 @@ export class EntitiesRepository {
         motivationStyle: normalizedProfile.motivationStyle,
         stressResponse: normalizedProfile.stressResponse,
         feedbackPreference: normalizedProfile.feedbackPreference,
+        planningStyle: normalizedProfile.planningStyle,
+        decisionSupportLevel: normalizedProfile.decisionSupportLevel,
+        feedbackTone: normalizedProfile.feedbackTone,
+        autonomyPreference: normalizedProfile.autonomyPreference,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -80,6 +88,10 @@ export class EntitiesRepository {
           motivationStyle: normalizedProfile.motivationStyle,
           stressResponse: normalizedProfile.stressResponse,
           feedbackPreference: normalizedProfile.feedbackPreference,
+          planningStyle: normalizedProfile.planningStyle,
+          decisionSupportLevel: normalizedProfile.decisionSupportLevel,
+          feedbackTone: normalizedProfile.feedbackTone,
+          autonomyPreference: normalizedProfile.autonomyPreference,
           updatedAt: now,
         },
       })

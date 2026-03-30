@@ -771,6 +771,10 @@ test('completeInitialOnboarding persists AI-generated goal, profile, and plan su
   assert.equal(result.providerLabel, 'DeepSeek');
   assert.equal(result.state.profile.timeBudget, payload.timeBudget);
   assert.equal(result.state.profile.feedbackPreference, payload.feedbackPreference);
+  assert.equal(result.state.profile.planningStyle, '先框架后执行，先确认主线再拆到当天动作');
+  assert.equal(result.state.profile.decisionSupportLevel, '系统可以直接给出下一步，只在大调整时再确认');
+  assert.equal(result.state.profile.feedbackTone, '直接、短句、结果导向');
+  assert.equal(result.state.profile.autonomyPreference, '小调整自动执行，大调整先确认');
   assert.equal(activeGoal?.title, payload.goalTitle);
   assert.equal(activeGoal?.baseline, payload.baseline);
   assert.equal(activeDraft?.title, 'AI 生成的 Python + AI 路径');
@@ -781,6 +785,8 @@ test('completeInitialOnboarding persists AI-generated goal, profile, and plan su
   assert.equal(result.summary.goalTitle, payload.goalTitle);
   assert.equal(result.summary.firstTaskTitle, '列出 MVP 功能清单');
   assert.equal(result.summary.personaHighlights.some((item) => item.includes(payload.timeBudget)), true);
+  assert.equal(result.summary.planningHighlights.some((item) => item.includes('先框架后执行')), true);
+  assert.equal(result.summary.planningHighlights.some((item) => item.includes('小调整自动执行，大调整先确认')), true);
 });
 
 test('completeInitialOnboarding falls back to a template draft when AI plan generation fails', async () => {

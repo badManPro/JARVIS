@@ -19,7 +19,7 @@ function createTempDbFile() {
 test('createDatabase sets the latest schema version for a fresh database', () => {
   const { sqlite } = createDatabase(':memory:');
 
-  assert.equal(getSchemaVersion(sqlite), 4);
+  assert.equal(getSchemaVersion(sqlite), 5);
 
   sqlite.close();
 });
@@ -60,7 +60,7 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
   const learningPlanColumns = migrated.prepare('PRAGMA table_info(learning_plans)').all() as Array<{ name: string }>;
   const userProfileColumns = migrated.prepare('PRAGMA table_info(user_profiles)').all() as Array<{ name: string }>;
 
-  assert.equal(getSchemaVersion(migrated), 4);
+  assert.equal(getSchemaVersion(migrated), 5);
   assert.deepEqual(
     planTaskColumns.map((column) => column.name).sort(),
     [
@@ -101,13 +101,17 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
       'best_study_window',
       'blockers_json',
       'feedback_preference',
+      'feedback_tone',
       'gender',
       'id',
       'identity',
       'mbti',
       'motivation_style',
       'name',
+      'autonomy_preference',
+      'decision_support_level',
       'pace_preference',
+      'planning_style',
       'personality_traits_json',
       'plan_impact_json',
       'stress_response',

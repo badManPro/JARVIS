@@ -8,6 +8,7 @@ import {
   PresetInputField,
   PresetMultiValueField,
   buildCoachStyleSummary,
+  buildPlanningConfirmationRows,
   inputClassName,
   primaryButtonClassName,
   secondaryButtonClassName,
@@ -45,6 +46,7 @@ export function ProfilePage() {
   }
 
   const coachStyleSummary = buildCoachStyleSummary(profile);
+  const planningConfirmationRows = buildPlanningConfirmationRows(profile);
 
   return (
     <div className="space-y-5">
@@ -63,7 +65,7 @@ export function ProfilePage() {
         </div>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-3">
+      <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-4">
         <Card>
           <SectionTitle>学习背景</SectionTitle>
           <div className="mt-4 space-y-3">
@@ -79,6 +81,14 @@ export function ProfilePage() {
             <MetricRow label="MBTI" value={profile.mbti || '未填写'} compact />
             <MetricRow label="性格关键词" value={profile.personalityTraits.join(' / ') || '未填写'} compact />
             <MetricRow label="压力偏好" value={profile.stressResponse || '未填写'} compact />
+          </div>
+        </Card>
+        <Card>
+          <SectionTitle>规划确认</SectionTitle>
+          <div className="mt-4 space-y-3">
+            {planningConfirmationRows.map((item) => (
+              <MetricRow key={item.label} label={item.label} value={item.value} compact />
+            ))}
           </div>
         </Card>
         <Card>
@@ -170,6 +180,42 @@ export function ProfilePage() {
               onChange={(value) => setDraft((current) => ({ ...current, feedbackPreference: value }))}
               options={onboardingFieldOptions.feedbackPreference}
               placeholder="例如：直接、简短，并明确下一步动作"
+              multiline
+              rows={4}
+            />
+            <PresetInputField
+              label="拆解方式"
+              value={draft.planningStyle}
+              onChange={(value) => setDraft((current) => ({ ...current, planningStyle: value }))}
+              options={onboardingFieldOptions.planningStyle}
+              placeholder="例如：先框架后执行，先确认主线再拆到当天动作"
+              multiline
+              rows={4}
+            />
+            <PresetInputField
+              label="决策支持"
+              value={draft.decisionSupportLevel}
+              onChange={(value) => setDraft((current) => ({ ...current, decisionSupportLevel: value }))}
+              options={onboardingFieldOptions.decisionSupportLevel}
+              placeholder="例如：系统可以直接给出下一步，只在大调整时再确认"
+              multiline
+              rows={4}
+            />
+            <PresetInputField
+              label="反馈语气"
+              value={draft.feedbackTone}
+              onChange={(value) => setDraft((current) => ({ ...current, feedbackTone: value }))}
+              options={onboardingFieldOptions.feedbackTone}
+              placeholder="例如：直接、短句、结果导向"
+              multiline
+              rows={4}
+            />
+            <PresetInputField
+              label="自动调整"
+              value={draft.autonomyPreference}
+              onChange={(value) => setDraft((current) => ({ ...current, autonomyPreference: value }))}
+              options={onboardingFieldOptions.autonomyPreference}
+              placeholder="例如：小调整自动执行，大调整先确认"
               multiline
               rows={4}
             />

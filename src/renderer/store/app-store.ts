@@ -28,6 +28,10 @@ import {
 } from '@shared/app-state';
 import { createDefaultCodexAuthStatus } from '@shared/codex-auth';
 import type { LearningGoalInput } from '@shared/goal';
+import {
+  buildPlanningConfirmationHighlights,
+  derivePlanningConfirmation,
+} from '@shared/onboarding';
 import type { CompleteInitialOnboardingPayload, CompleteInitialOnboardingResult } from '@shared/onboarding';
 import { createPlanDraft, createPlanSnapshot, getNextSnapshotVersion } from '@shared/plan-draft';
 import type { ProviderConfigInput } from '@shared/provider-config';
@@ -201,6 +205,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
         priority: 'P1' as const,
         status: 'active' as const,
       };
+      const planningConfirmation = derivePlanningConfirmation({
+        pacePreference: payload.pacePreference,
+        personalityTraits: payload.personalityTraits,
+        mbti: payload.mbti,
+        motivationStyle: payload.motivationStyle,
+        stressResponse: payload.stressResponse,
+        feedbackPreference: payload.feedbackPreference,
+      });
       const nextProfile = {
         ...currentState.profile,
         identity: payload.baseline.trim(),
@@ -214,6 +226,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         motivationStyle: payload.motivationStyle.trim(),
         stressResponse: payload.stressResponse.trim(),
         feedbackPreference: payload.feedbackPreference.trim(),
+        planningStyle: planningConfirmation.planningStyle,
+        decisionSupportLevel: planningConfirmation.decisionSupportLevel,
+        feedbackTone: planningConfirmation.feedbackTone,
+        autonomyPreference: planningConfirmation.autonomyPreference,
       };
       const nextDraft = createPlanDraft(nextGoal, nextProfile);
       const nextState: AppState = {
@@ -242,6 +258,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         fallbackReason: 'learningCompanion bridge 不可用，已降级为模板版路径。',
         summary: {
           personaHighlights: [`时间预算：${nextProfile.timeBudget}`],
+          planningHighlights: buildPlanningConfirmationHighlights(planningConfirmation),
           goalTitle: nextGoal.title,
           planTitle: nextDraft.title,
           planSummary: nextDraft.summary,

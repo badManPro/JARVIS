@@ -489,12 +489,21 @@ function OnboardingResultOverlay({
           </div>
         ) : null}
 
-        <div className="mt-8 grid gap-5 lg:grid-cols-[0.95fr,1.05fr,1fr]">
+        <div className="mt-8 grid gap-5 xl:grid-cols-2 2xl:grid-cols-4">
           <div className="rounded-[1.6rem] border border-white/80 bg-white/92 p-5">
             <div className="text-xs uppercase tracking-[0.18em] text-slate-500">画像关键词</div>
             <div className="mt-4 space-y-3">
               {result.summary.personaHighlights.map((item) => (
                 <div key={item} className="rounded-[1.15rem] bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">{item}</div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[1.6rem] border border-white/80 bg-white/92 p-5">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">规划确认</div>
+            <div className="mt-4 space-y-3">
+              {result.summary.planningHighlights.map((item) => (
+                <div key={item} className="rounded-[1.15rem] bg-sky-50 px-4 py-3 text-sm leading-6 text-slate-700">{item}</div>
               ))}
             </div>
           </div>
