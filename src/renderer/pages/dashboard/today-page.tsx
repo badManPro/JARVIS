@@ -18,7 +18,7 @@ import {
   taskStatusLabel,
   textareaClassName,
 } from '@/pages/dashboard/shared';
-import type { LearningPlanDraft, TaskStatus, TodayPlanStep } from '@shared/app-state';
+import type { LearningPlanDependencyStrategy, LearningPlanDraft, TaskStatus, TodayPlanStep } from '@shared/app-state';
 
 type TodayPlanDisplayState =
   | { status: 'missing'; plan: null }
@@ -145,14 +145,14 @@ export function TodayPage({
         });
         break;
       case 'delayed':
-        setNotice('已移入明天候选区；后续步骤会继续围绕当前可执行内容推进。');
+        setNotice('已移入明天候选区；系统已把后续步骤切到“压缩继续”并自动重排。');
         setReflectionContext({
           taskTitle: step.title,
           status,
         });
         break;
       case 'skipped':
-        setNotice('已跳过当前步骤；后续步骤会继续，但你可能需要补回这一步的前置内容。');
+        setNotice('已跳过当前步骤；系统已把受影响步骤标记为“等待补回”，并自动重排后续顺序。');
         setReflectionContext({
           taskTitle: step.title,
           status,
@@ -333,6 +333,11 @@ export function TodayPage({
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge className={taskStatusBadgeClassName(focusStep.status)}>{taskStatusLabel(focusStep.status)}</Badge>
                         <Badge className="bg-white/10 text-white">{focusStep.duration}</Badge>
+                        {focusStep.dependencyStrategy ? (
+                          <Badge className={dependencyStrategyBadgeClassName(focusStep.dependencyStrategy)}>
+                            {dependencyStrategyLabel(focusStep.dependencyStrategy)}
+                          </Badge>
+                        ) : null}
                       </div>
                       <div className="mt-4 text-xl font-semibold tracking-[-0.04em]">{focusStep.title}</div>
                       <div className="mt-3 text-sm leading-6 text-white/80">{focusStep.detail}</div>
@@ -361,7 +366,7 @@ export function TodayPage({
                     </div>
                   )}
                   <div className="mt-3 rounded-[1.2rem] bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
-                    完成后会自动切到下一步；延期会进入明天候选区；跳过会提示后续步骤可能缺少前置内容。
+                    完成后会自动切到下一步；延期会触发压缩继续并把原步骤顺延到明天候选区；跳过会把受影响步骤标成等待补回；系统会自动重排剩余顺序。
                   </div>
                 </div>
 
@@ -375,6 +380,11 @@ export function TodayPage({
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge className={taskStatusBadgeClassName(step.status)}>{taskStatusLabel(step.status)}</Badge>
                             <Badge className="bg-slate-100 text-slate-700">{step.duration}</Badge>
+                            {step.dependencyStrategy ? (
+                              <Badge className={dependencyStrategyBadgeClassName(step.dependencyStrategy)}>
+                                {dependencyStrategyLabel(step.dependencyStrategy)}
+                              </Badge>
+                            ) : null}
                           </div>
                         </div>
                         <Muted className="mt-2">{step.detail}</Muted>
@@ -446,7 +456,7 @@ export function TodayPage({
 
           <Card>
             <SectionTitle>明天候选区</SectionTitle>
-            <Muted className="mt-2">延期步骤会自动顺延到这里；你不需要手动重排，后续阶段会继续消费这些候选。</Muted>
+            <Muted className="mt-2">延期步骤会自动顺延到这里；如果它影响了今天后续链路，系统会在今日页把下游步骤切到压缩继续、等待补回或自动重排。</Muted>
             <div className="mt-5 space-y-3">
               {tomorrowCandidates.length ? tomorrowCandidates.map((step) => (
                 <div key={step.id} className="rounded-[1.35rem] border border-white/80 bg-white/88 px-4 py-4">
@@ -455,6 +465,11 @@ export function TodayPage({
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge className={taskStatusBadgeClassName(step.status)}>{taskStatusLabel(step.status)}</Badge>
                       <Badge className="bg-slate-100 text-slate-700">{step.duration}</Badge>
+                      {step.dependencyStrategy ? (
+                        <Badge className={dependencyStrategyBadgeClassName(step.dependencyStrategy)}>
+                          {dependencyStrategyLabel(step.dependencyStrategy)}
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
                   <Muted className="mt-2">{step.detail}</Muted>
@@ -498,6 +513,30 @@ function getStepStatusNote(step: TodayPlanStep, status: TaskStatus) {
     case 'todo':
     default:
       return step.statusNote;
+  }
+}
+
+function dependencyStrategyLabel(strategy: TodayPlanDependencyStrategy) {
+  switch (strategy) {
+    case 'compress_continue':
+      return '压缩继续';
+    case 'wait_recovery':
+      return '等待补回';
+    case 'auto_reorder':
+    default:
+      return '自动重排';
+  }
+}
+
+function dependencyStrategyBadgeClassName(strategy: TodayPlanDependencyStrategy) {
+  switch (strategy) {
+    case 'compress_continue':
+      return 'bg-amber-100 text-amber-900';
+    case 'wait_recovery':
+      return 'bg-rose-100 text-rose-900';
+    case 'auto_reorder':
+    default:
+      return 'bg-sky-100 text-sky-900';
   }
 }
 

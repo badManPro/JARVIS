@@ -17,6 +17,7 @@ test('today page exposes daily-only planning context controls and structured dai
   assert.match(todayPageSource, /开始|完成|延期|跳过/);
   assert.match(todayPageSource, /明天候选区/);
   assert.match(todayPageSource, /updateTodayPlanStepStatus/);
+  assert.match(todayPageSource, /压缩继续|等待补回|自动重排/);
   assert.match(todayPageSource, /资源|resources/);
   assert.match(todayPageSource, /练习|practice/);
   assert.match(todayPageSource, /今日产出|deliverable/);

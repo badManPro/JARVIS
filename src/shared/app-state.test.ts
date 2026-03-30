@@ -176,16 +176,98 @@ test('updateTodayPlanStepStatus moves delayed steps into tomorrow candidates and
   });
 
   const delayedDraft = delayedState.plan.drafts.find((draft: { id: string }) => draft.id === activeDraftId);
-  const remainingSteps = delayedDraft?.todayPlan?.steps as Array<{ id?: string; status?: string; title?: string }> | undefined;
+  const remainingSteps = delayedDraft?.todayPlan?.steps as Array<{
+    id?: string;
+    status?: string;
+    title?: string;
+    statusNote?: string;
+    dependencyStrategy?: string;
+  }> | undefined;
   const tomorrowCandidates = (delayedDraft?.todayPlan as {
     tomorrowCandidates?: Array<{ id?: string; status?: string; title?: string; statusNote?: string }>;
   } | undefined)?.tomorrowCandidates;
 
   assert.equal(remainingSteps?.some((step) => step.id === 'today-step-1'), false);
   assert.equal(remainingSteps?.[0]?.id, 'today-step-2');
+  assert.equal(remainingSteps?.[0]?.dependencyStrategy, 'compress_continue');
+  assert.match(remainingSteps?.[0]?.statusNote ?? '', /压缩继续/);
+  assert.match(remainingSteps?.[0]?.statusNote ?? '', /安装并验证 Python/);
+  assert.equal(remainingSteps?.[1]?.dependencyStrategy, 'auto_reorder');
+  assert.match(remainingSteps?.[1]?.statusNote ?? '', /自动重排/);
   assert.equal(tomorrowCandidates?.[0]?.id, 'today-step-1');
   assert.equal(tomorrowCandidates?.[0]?.status, 'delayed');
   assert.equal(tomorrowCandidates?.[0]?.statusNote, '今晚时间不够，顺延到明天候选区。');
+});
+
+test('updateTodayPlanStepStatus reorders skipped steps and marks downstream recovery strategy', () => {
+  const activeDraftId = seedState.plan.drafts[0]?.id ?? 'plan-goal-python-ai';
+  const stateWithTodayPlan = {
+    ...JSON.parse(JSON.stringify(seedState)),
+    plan: {
+      ...seedState.plan,
+      drafts: seedState.plan.drafts.map((draft) => (
+        draft.id === activeDraftId
+          ? {
+            ...draft,
+            todayPlan: {
+              date: '2026-03-31',
+              status: 'ready',
+              todayGoal: '完成 Python 环境安装与第一个脚本',
+              deliverable: '跑通 hello_cli.py',
+              estimatedDuration: '30 分钟',
+              milestoneRef: '第 1 周：搭好 Python 本地环境',
+              steps: [
+                { id: 'today-step-1', title: '安装并验证 Python', detail: '确认 python3 --version', duration: '10 分钟' },
+                { id: 'today-step-2', title: '创建 hello_cli.py', detail: '先写最小输入输出', duration: '10 分钟' },
+                { id: 'today-step-3', title: '运行并记录结果', detail: '确认脚本可以执行', duration: '10 分钟' },
+              ],
+              tomorrowCandidates: [],
+              resources: [],
+              practice: [],
+              generatedFromContext: {
+                availableDuration: '今天 30 分钟',
+                studyWindow: '今晚 20:30 - 21:00',
+                note: '',
+              },
+            },
+          }
+          : draft
+      )),
+    },
+  };
+
+  const updateTodayPlanStepStatus = (appStateModule as unknown as {
+    updateTodayPlanStepStatus: (
+      state: typeof stateWithTodayPlan,
+      input: { draftId: string; stepId: string; status: string; statusNote?: string },
+    ) => typeof stateWithTodayPlan;
+  }).updateTodayPlanStepStatus;
+
+  const skippedState = updateTodayPlanStepStatus(stateWithTodayPlan, {
+    draftId: activeDraftId,
+    stepId: 'today-step-1',
+    status: 'skipped',
+    statusNote: '今晚先保留最小脚手架，不做环境安装。',
+  });
+
+  const skippedDraft = skippedState.plan.drafts.find((draft: { id: string }) => draft.id === activeDraftId);
+  const reorderedSteps = skippedDraft?.todayPlan?.steps as Array<{
+    id?: string;
+    status?: string;
+    statusNote?: string;
+    dependencyStrategy?: string;
+  }> | undefined;
+  const lastStep = reorderedSteps?.[reorderedSteps.length - 1];
+
+  assert.equal(reorderedSteps?.[0]?.id, 'today-step-2');
+  assert.equal(reorderedSteps?.[0]?.dependencyStrategy, 'wait_recovery');
+  assert.match(reorderedSteps?.[0]?.statusNote ?? '', /等待补回/);
+  assert.match(reorderedSteps?.[0]?.statusNote ?? '', /安装并验证 Python/);
+  assert.equal(reorderedSteps?.[1]?.dependencyStrategy, 'auto_reorder');
+  assert.match(reorderedSteps?.[1]?.statusNote ?? '', /自动重排/);
+  assert.equal(lastStep?.id, 'today-step-1');
+  assert.equal(lastStep?.status, 'skipped');
+  assert.equal(lastStep?.statusNote, '今晚先保留最小脚手架，不做环境安装。');
 });
 
 test('updatePlanTaskStatus records execution metadata and refreshes dashboard/reflection inputs', () => {

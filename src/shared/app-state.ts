@@ -101,6 +101,8 @@ export type GeneratedTodayPlanContext = {
   note: string;
 };
 
+export type TodayPlanDependencyStrategy = 'compress_continue' | 'wait_recovery' | 'auto_reorder';
+
 export type TodayPlanStep = {
   id: string;
   title: string;
@@ -109,6 +111,7 @@ export type TodayPlanStep = {
   status: TaskStatus;
   statusNote: string;
   statusUpdatedAt?: string;
+  dependencyStrategy?: TodayPlanDependencyStrategy;
 };
 
 export type TodayPlanResource = {
@@ -606,6 +609,17 @@ function buildTodayPlanStepId(index: number) {
   return `today-step-${index + 1}`;
 }
 
+function normalizeTodayPlanDependencyStrategy(strategy?: string): TodayPlanDependencyStrategy | undefined {
+  switch (strategy) {
+    case 'compress_continue':
+    case 'wait_recovery':
+    case 'auto_reorder':
+      return strategy;
+    default:
+      return undefined;
+  }
+}
+
 function normalizeTodayPlanStep(step: Partial<TodayPlanStep>, index: number): TodayPlanStep {
   return {
     id: step.id?.trim() || buildTodayPlanStepId(index),
@@ -615,6 +629,7 @@ function normalizeTodayPlanStep(step: Partial<TodayPlanStep>, index: number): To
     status: normalizeTaskStatus(step.status),
     statusNote: step.statusNote?.trim() ?? '',
     statusUpdatedAt: step.statusUpdatedAt,
+    dependencyStrategy: normalizeTodayPlanDependencyStrategy(step.dependencyStrategy),
   };
 }
 
@@ -624,6 +639,60 @@ function normalizeTodayPlanStepList(steps: Array<Partial<TodayPlanStep>> | undef
       .map((step, index) => normalizeTodayPlanStep(step, index))
       .filter((step) => step.title || step.detail)
     : [];
+}
+
+function stripTodayPlanDependencyNote(statusNote: string) {
+  return statusNote.replace(/^(压缩继续|等待补回|自动重排)：\s*/u, '').trim();
+}
+
+function clearTodayPlanDependencyStrategy(step: TodayPlanStep): TodayPlanStep {
+  return {
+    ...step,
+    dependencyStrategy: undefined,
+    statusNote: stripTodayPlanDependencyNote(step.statusNote ?? ''),
+  };
+}
+
+function mergeTodayPlanStepNotes(...notes: Array<string | undefined>) {
+  return Array.from(new Set(notes.map((note) => note?.trim() ?? '').filter(Boolean))).join(' ');
+}
+
+function buildTodayPlanDependencyNote(strategy: TodayPlanDependencyStrategy, blockedStepTitle: string) {
+  switch (strategy) {
+    case 'compress_continue':
+      return `压缩继续：前置步骤「${blockedStepTitle}」已顺延，当前只推进不依赖它的最小动作。`;
+    case 'wait_recovery':
+      return `等待补回：前置步骤「${blockedStepTitle}」已跳过，如遇阻塞请先补回再继续。`;
+    case 'auto_reorder':
+    default:
+      return `自动重排：系统已把这一步放到新的顺序里，待前置处理后再恢复完整链路。`;
+  }
+}
+
+function applyTodayPlanDependencyStrategy(
+  steps: TodayPlanStep[],
+  blockedStepTitle: string,
+  firstStrategy: Exclude<TodayPlanDependencyStrategy, 'auto_reorder'>,
+) {
+  let actionableCount = 0;
+
+  return steps.map((step) => {
+    const cleanedStep = clearTodayPlanDependencyStrategy(step);
+    if (cleanedStep.status !== 'todo' && cleanedStep.status !== 'in_progress') {
+      return cleanedStep;
+    }
+
+    actionableCount += 1;
+    const strategy: TodayPlanDependencyStrategy = actionableCount === 1 ? firstStrategy : 'auto_reorder';
+    return {
+      ...cleanedStep,
+      dependencyStrategy: strategy,
+      statusNote: mergeTodayPlanStepNotes(
+        buildTodayPlanDependencyNote(strategy, blockedStepTitle),
+        cleanedStep.statusNote,
+      ),
+    };
+  });
 }
 
 function getFocusTodayPlanStep(plan: TodayPlan | null | undefined) {
@@ -2678,7 +2747,8 @@ export function updateTodayPlanStepStatus(state: AppState, input: UpdateTodayPla
 
     const nextSteps = todayPlan.steps.map((step, index) => normalizeTodayPlanStep(step, index));
     const nextTomorrowCandidates = todayPlan.tomorrowCandidates.map((step, index) => normalizeTodayPlanStep(step, index));
-    const targetStep = nextSteps.find((step) => step.id === input.stepId);
+    const targetIndex = nextSteps.findIndex((step) => step.id === input.stepId);
+    const targetStep = targetIndex >= 0 ? nextSteps[targetIndex] : undefined;
 
     if (!targetStep) {
       throw new Error('今日步骤不存在，无法更新状态。');
@@ -2687,22 +2757,60 @@ export function updateTodayPlanStepStatus(state: AppState, input: UpdateTodayPla
     matchedStep = true;
 
     if (input.status === 'delayed') {
+      const cleanedTargetStep = clearTodayPlanDependencyStrategy(targetStep);
       const delayedStep = {
-        ...targetStep,
+        ...cleanedTargetStep,
         status: 'delayed' as const,
-        statusNote: input.statusNote?.trim() ?? targetStep.statusNote ?? '',
+        statusNote: input.statusNote?.trim() ?? cleanedTargetStep.statusNote,
         statusUpdatedAt: changedAt,
       };
+      const downstreamSteps = applyTodayPlanDependencyStrategy(
+        nextSteps.slice(targetIndex + 1),
+        targetStep.title,
+        'compress_continue',
+      );
 
       return cloneLearningPlanDraft({
         ...draft,
         todayPlan: {
           ...todayPlan,
-          steps: nextSteps.filter((step) => step.id !== input.stepId),
+          steps: [
+            ...nextSteps.slice(0, targetIndex),
+            ...downstreamSteps,
+          ],
           tomorrowCandidates: [
             ...nextTomorrowCandidates.filter((step) => step.id !== input.stepId),
             delayedStep,
           ],
+        },
+        updatedAt: changedAt,
+      });
+    }
+
+    if (input.status === 'skipped') {
+      const cleanedTargetStep = clearTodayPlanDependencyStrategy(targetStep);
+      const skippedStep = {
+        ...cleanedTargetStep,
+        status: 'skipped' as const,
+        statusNote: input.statusNote?.trim() ?? cleanedTargetStep.statusNote,
+        statusUpdatedAt: changedAt,
+      };
+      const downstreamSteps = applyTodayPlanDependencyStrategy(
+        nextSteps.slice(targetIndex + 1),
+        targetStep.title,
+        'wait_recovery',
+      );
+
+      return cloneLearningPlanDraft({
+        ...draft,
+        todayPlan: {
+          ...todayPlan,
+          steps: [
+            ...nextSteps.slice(0, targetIndex),
+            ...downstreamSteps,
+            skippedStep,
+          ],
+          tomorrowCandidates: nextTomorrowCandidates.filter((step) => step.id !== input.stepId),
         },
         updatedAt: changedAt,
       });
@@ -2713,7 +2821,7 @@ export function updateTodayPlanStepStatus(state: AppState, input: UpdateTodayPla
         return {
           ...step,
           status: normalizeTaskStatus(input.status),
-          statusNote: input.statusNote?.trim() ?? step.statusNote ?? '',
+          statusNote: mergeTodayPlanStepNotes(step.statusNote, input.statusNote),
           statusUpdatedAt: changedAt,
         };
       }

@@ -8,19 +8,20 @@
 
 **Tech Stack:** React, TypeScript, Zustand, Electron, node:test
 
-**Status:** `in_progress`
+**Status:** `complete`
 
 **Completed In This Session:**
 - Task 1 complete
 - Task 2 complete
 - Task 3 complete
 - Task 4 complete
+- Task 5 complete
 
 **Verified Evidence:**
 - `npm run build`
 - `node --test dist-electron/src/shared/app-state.test.js dist-electron/src/main/services/app-storage-service.test.js src/renderer/pages/dashboard/today-page.test.mjs src/renderer/pages/dashboard/reflection-flow.test.mjs`
 
-**Next Task:** `Phase 2 / Task 5 / 为跳过与延期补齐真正的后续依赖压缩与重排`
+**Next Task:** `Phase 3 / Task 1 / 为目标增加主副角色和调度权重`
 
 ---
 

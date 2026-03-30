@@ -1046,6 +1046,11 @@ export class AppStorageService {
         : 'todo',
       statusNote: step.statusNote?.trim() ?? '',
       statusUpdatedAt: step.statusUpdatedAt,
+      dependencyStrategy: step.dependencyStrategy === 'compress_continue'
+        || step.dependencyStrategy === 'wait_recovery'
+        || step.dependencyStrategy === 'auto_reorder'
+        ? step.dependencyStrategy
+        : undefined,
     };
   }
 

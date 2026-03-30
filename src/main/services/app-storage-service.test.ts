@@ -1319,8 +1319,17 @@ test('updateTodayPlanStepStatus persists step execution changes and moves delaye
     tomorrowCandidates?: Array<{ id?: string; title?: string; status?: string; statusNote?: string }>;
   } | undefined)?.tomorrowCandidates;
 
-  const remainingSteps = updatedDraft?.todayPlan?.steps as Array<{ id?: string; title?: string; status?: string }> | undefined;
+  const remainingSteps = updatedDraft?.todayPlan?.steps as Array<{
+    id?: string;
+    title?: string;
+    status?: string;
+    statusNote?: string;
+    dependencyStrategy?: string;
+  }> | undefined;
   assert.equal(remainingSteps?.[0]?.id, 'today-step-2');
+  assert.equal(remainingSteps?.[0]?.dependencyStrategy, 'compress_continue');
+  assert.match(remainingSteps?.[0]?.statusNote ?? '', /压缩继续/);
+  assert.equal(remainingSteps?.[1]?.dependencyStrategy, 'auto_reorder');
   assert.equal(tomorrowCandidates?.[0]?.id, 'today-step-1');
   assert.equal(tomorrowCandidates?.[0]?.title, '安装并验证 Python');
   assert.equal(tomorrowCandidates?.[0]?.status, 'delayed');
@@ -1328,11 +1337,112 @@ test('updateTodayPlanStepStatus persists step execution changes and moves delaye
 
   const reloaded = service.loadAppState();
   const persistedDraft = reloaded.plan.drafts.find((draft) => draft.id === activeDraft.id);
+  const persistedRemainingSteps = persistedDraft?.todayPlan?.steps as Array<{
+    id?: string;
+    dependencyStrategy?: string;
+    statusNote?: string;
+  }> | undefined;
   const persistedTomorrowCandidates = (persistedDraft?.todayPlan as {
     tomorrowCandidates?: Array<{ id?: string; status?: string; statusNote?: string }>;
   } | undefined)?.tomorrowCandidates;
+  assert.equal(persistedRemainingSteps?.[0]?.dependencyStrategy, 'compress_continue');
+  assert.match(persistedRemainingSteps?.[0]?.statusNote ?? '', /压缩继续/);
   assert.equal(persistedTomorrowCandidates?.[0]?.id, 'today-step-1');
   assert.equal(persistedTomorrowCandidates?.[0]?.status, 'delayed');
+});
+
+test('updateTodayPlanStepStatus reorders skipped steps behind runnable work and persists recovery hints', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => ({
+      capability: 'daily_plan_generation',
+      providerId: 'deepseek',
+      providerLabel: 'DeepSeek',
+      model: 'deepseek-chat',
+      plan: {
+        date: '2026-03-31',
+        status: 'ready',
+        todayGoal: '完成 Python 环境安装与第一个脚本',
+        deliverable: '跑通 hello_cli.py',
+        estimatedDuration: '30 分钟',
+        milestoneRef: '第 1 周：搭好 Python 本地环境',
+        steps: [
+          { title: '安装并验证 Python', detail: '确认 python3 --version', duration: '10 分钟' },
+          { title: '创建 hello_cli.py', detail: '完成最小输入输出', duration: '10 分钟' },
+          { title: '运行并记录结果', detail: '保留一份可运行输出', duration: '10 分钟' },
+        ],
+        tomorrowCandidates: [],
+        resources: [],
+        practice: [],
+        generatedFromContext: {
+          availableDuration: '今天 30 分钟',
+          studyWindow: '今晚 20:30 - 21:00',
+          note: '今天先完成最小闭环',
+        },
+      },
+    } as unknown as AiResult),
+  });
+
+  const initialState = service.initialize();
+  service.saveTodayPlanningContext({
+    goalId: initialState.plan.activeGoalId,
+    availableDuration: '今天 30 分钟',
+    studyWindow: '今晚 20:30 - 21:00',
+    note: '今天先完成最小闭环',
+  });
+  const plannedState = await service.generateTodayPlan({
+    goalId: initialState.plan.activeGoalId,
+  });
+
+  const activeDraft = plannedState.plan.drafts.find((draft) => draft.goalId === plannedState.plan.activeGoalId);
+  assert.ok(activeDraft);
+
+  const updateTodayPlanStepStatus = (service as unknown as {
+    updateTodayPlanStepStatus: (input: {
+      draftId: string;
+      stepId: string;
+      status: string;
+      statusNote?: string;
+    }) => AppState;
+  }).updateTodayPlanStepStatus;
+
+  const nextState = updateTodayPlanStepStatus.call(service, {
+    draftId: activeDraft.id,
+    stepId: 'today-step-1',
+    status: 'skipped',
+    statusNote: '今晚只保留脚手架，不做环境安装。',
+  });
+
+  const updatedDraft = nextState.plan.drafts.find((draft) => draft.id === activeDraft.id);
+  const reorderedSteps = updatedDraft?.todayPlan?.steps as Array<{
+    id?: string;
+    status?: string;
+    statusNote?: string;
+    dependencyStrategy?: string;
+  }> | undefined;
+  const lastStep = reorderedSteps?.[reorderedSteps.length - 1];
+
+  assert.equal(reorderedSteps?.[0]?.id, 'today-step-2');
+  assert.equal(reorderedSteps?.[0]?.dependencyStrategy, 'wait_recovery');
+  assert.match(reorderedSteps?.[0]?.statusNote ?? '', /等待补回/);
+  assert.equal(reorderedSteps?.[1]?.dependencyStrategy, 'auto_reorder');
+  assert.equal(lastStep?.id, 'today-step-1');
+  assert.equal(lastStep?.status, 'skipped');
+  assert.equal(lastStep?.statusNote, '今晚只保留脚手架，不做环境安装。');
+
+  const reloaded = service.loadAppState();
+  const persistedDraft = reloaded.plan.drafts.find((draft) => draft.id === activeDraft.id);
+  const persistedSteps = persistedDraft?.todayPlan?.steps as Array<{
+    id?: string;
+    status?: string;
+    dependencyStrategy?: string;
+    statusNote?: string;
+  }> | undefined;
+  const persistedLastStep = persistedSteps?.[persistedSteps.length - 1];
+
+  assert.equal(persistedSteps?.[0]?.dependencyStrategy, 'wait_recovery');
+  assert.match(persistedSteps?.[0]?.statusNote ?? '', /等待补回/);
+  assert.equal(persistedLastStep?.id, 'today-step-1');
+  assert.equal(persistedLastStep?.status, 'skipped');
 });
 
 test('saveReflectionEntry persists structured reflection input and reloads it from storage', () => {
