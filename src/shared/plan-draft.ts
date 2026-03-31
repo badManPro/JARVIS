@@ -7,7 +7,7 @@ import type {
   UserProfile,
 } from './app-state.js';
 import { createEmptyTodayPlanningContext } from './app-state.js';
-import { buildProgrammingPlanTemplate } from './domain-rules.js';
+import { buildDomainPlanTemplate } from './domain-rules.js';
 import { resolveGoalScheduling } from './goal.js';
 
 type PlanDraftMode = 'initial' | 'regenerated';
@@ -53,14 +53,14 @@ export function createPlanDraft(goal: LearningGoal, profile: UserProfile, mode: 
   const focusTag = goal.role === 'main' ? '主目标' : '副目标';
   const titleSuffix = mode === 'regenerated' ? '重生成计划草案' : '首版计划草案';
   const summaryPrefix = mode === 'regenerated' ? '已根据当前目标与画像重生成一版可执行草案' : '会基于当前基础先生成一份可执行草案';
-  const programmingTemplate = goal.domain === 'programming' ? buildProgrammingPlanTemplate(goal, profile) : null;
+  const domainTemplate = buildDomainPlanTemplate(goal, profile);
   const basis = [
     `学习动机：${goal.motivation}`,
     `当前基础：${goal.baseline}`,
     `画像优势：${firstStrength}`,
     `风险提醒：${firstBlocker}`,
     `节奏策略：${firstPlanImpact}；${intensityHint}`,
-    ...(programmingTemplate?.basis ?? []),
+    ...(domainTemplate?.basis ?? []),
   ];
 
   if (mode === 'regenerated') {
@@ -71,17 +71,17 @@ export function createPlanDraft(goal: LearningGoal, profile: UserProfile, mode: 
     id: buildDraftId(goal.id),
     goalId: goal.id,
     title: `${goal.title} · ${titleSuffix}`,
-    summary: programmingTemplate
-      ? `${focusTag}「${goal.title}」${summaryPrefix}“${goal.baseline}”：${programmingTemplate.summary}`
+    summary: domainTemplate
+      ? `${focusTag}「${goal.title}」${summaryPrefix}“${goal.baseline}”：${domainTemplate.summary}`
       : `${focusTag}「${goal.title}」${summaryPrefix}“${goal.baseline}”：先拆出低门槛起步动作，再逐步走向“${goal.successMetric}”。`,
     basis,
-    stages: programmingTemplate?.stages ?? [
+    stages: domainTemplate?.stages ?? [
       { title: '阶段 1：校准起点', outcome: `明确「${goal.title}」的当前起点与最小可执行动作`, progress: '进行中' },
       { title: '阶段 2：稳定推进', outcome: `围绕 ${goal.cycle} 周期保持稳定任务节奏`, progress: '未开始' },
       { title: '阶段 3：验证达成', outcome: `用“${goal.successMetric}”检验目标结果`, progress: '未开始' },
     ],
-    milestones: programmingTemplate?.milestones ?? buildMilestones(goal, profile),
-    tasks: (programmingTemplate?.tasks ?? [
+    milestones: domainTemplate?.milestones ?? buildMilestones(goal, profile),
+    tasks: (domainTemplate?.tasks ?? [
       { title: '安装并验证本地学习环境', duration: '20 分钟', status: 'todo' as const, note: '先把工具和运行方式确认好，避免一开始卡在环境问题。' },
       { title: '完成 2 个最基础概念练习', duration: '30 分钟', status: 'todo' as const, note: `优先选择能在 ${profile.bestStudyWindow || '当前学习窗口'} 内完成的小练习。` },
       { title: '记录一版本周最小成果目标', duration: '15 分钟', status: 'todo' as const, note: '写清楚这周要交付什么，避免只学不落地。' },

@@ -46,10 +46,38 @@ const programmingDomainKeywords = [
   'ai',
 ];
 
+const instrumentDomainKeywords = [
+  '吉他',
+  'guitar',
+  '钢琴',
+  'piano',
+  '键盘',
+  '电子琴',
+  '小提琴',
+  'violin',
+  '尤克里里',
+  'ukulele',
+  '贝斯',
+  'bass',
+  '架子鼓',
+  '鼓',
+  'drum',
+  'drums',
+  '乐器',
+  '弹唱',
+  '指弹',
+  '和弦',
+  '音阶',
+  '练琴',
+  '练鼓',
+  '调音',
+  '节拍器',
+];
+
 export const learningGoalDomainOptions: Array<{ value: LearningGoalDomain; label: string }> = [
   { value: 'general', label: '通用' },
   { value: 'programming', label: '编程' },
-  { value: 'instrument', label: '乐器（待细化）' },
+  { value: 'instrument', label: '乐器' },
   { value: 'fitness', label: '健身（待细化）' },
 ];
 
@@ -79,6 +107,10 @@ export function inferLearningGoalDomain(goal: Partial<Pick<LearningGoalInput, 't
 
   if (programmingDomainKeywords.some((keyword) => combined.includes(keyword))) {
     return 'programming' as const;
+  }
+
+  if (instrumentDomainKeywords.some((keyword) => combined.includes(keyword))) {
+    return 'instrument' as const;
   }
 
   return 'general' as const;

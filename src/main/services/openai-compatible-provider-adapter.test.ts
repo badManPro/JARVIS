@@ -27,6 +27,16 @@ function createProgrammingGoal() {
   } as never;
 }
 
+function createInstrumentGoal() {
+  return {
+    ...seedState.goals[0],
+    title: '吉他弹唱入门',
+    baseline: '能看懂和弦图，但换和弦容易卡拍。',
+    successMetric: '录下一段稳定的弹唱片段',
+    domain: 'instrument',
+  } as never;
+}
+
 test('OpenAiCompatibleProviderAdapter includes reflection context in profile extraction prompts', async () => {
   let requestBody: { messages?: Array<{ content?: string }> } = {};
   const adapter = new OpenAiCompatibleProviderAdapter({
@@ -196,4 +206,62 @@ test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan ge
   assert.match(prompt, /可运行代码|运行验证/);
   assert.equal(result.plan.todayGoal, '完成 Python 虚拟环境和 print/input 语法入门');
   assert.equal(result.plan.resources[0]?.title, 'Python 官方教程');
+});
+
+test('OpenAiCompatibleProviderAdapter includes instrument-specific prompt guidance in plan and daily generation prompts', async () => {
+  const prompts: string[] = [];
+  const adapter = new OpenAiCompatibleProviderAdapter({
+    fetchFn: async (_input, init) => {
+      const requestBody = JSON.parse(String(init?.body));
+      prompts.push(requestBody.messages?.[1]?.content ?? '');
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: requestBody.messages?.[1]?.content?.includes('"date":"')
+                  ? '{"date":"2026-03-31","status":"ready","todayGoal":"完成吉他节拍器慢练","deliverable":"录下一段 30 秒练习录音","estimatedDuration":"30 分钟","milestoneRef":"第 1 周：校准吉他基础动作","steps":[{"title":"调音并热身","detail":"先完成调音和和弦切换热身","duration":"8 分钟"}],"resources":[{"title":"吉他基础和弦与右手节奏示范","url":"","reason":"先对照示范确认节奏和动作"}],"practice":[{"title":"节拍器慢练 + 录音回听","detail":"围绕 1 个和弦切换做慢练","output":"1 段录音 + 1 条自评"}],"generatedFromContext":{"availableDuration":"今天 30 分钟","studyWindow":"今晚 21:00 - 21:30","note":"今天只练和弦切换"}}'
+                  : '{"title":"吉他练习草案","summary":"围绕吉他慢练和录音回听推进","basis":["先调音"],"stages":[{"title":"阶段 1","outcome":"校准起点","progress":"进行中"}],"milestones":[{"title":"第 1 周：校准吉他基础动作","focus":"先固定调音和节拍器慢练","outcome":"形成 1 段稳定片段","status":"current"},{"title":"第 2 周：攻克关键段落","focus":"分段慢练","outcome":"节拍稳定","status":"upcoming"},{"title":"第 3 周：完成录音回听","focus":"连贯演奏","outcome":"得到录音","status":"upcoming"}],"tasks":[{"title":"调音并热身","duration":"15 分钟","note":"先调音再热身","status":"todo"}]}',
+              },
+            },
+          ],
+        }),
+      } as unknown as Response;
+    },
+  });
+
+  await adapter.execute({
+    provider: createProvider(),
+    request: {
+      capability: 'plan_generation',
+      goal: createInstrumentGoal(),
+      profile: seedState.profile,
+      currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
+    },
+  });
+
+  await adapter.execute({
+    provider: createProvider(),
+    request: {
+      capability: 'daily_plan_generation',
+      goal: createInstrumentGoal(),
+      profile: seedState.profile,
+      currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
+      todayContext: {
+        availableDuration: '今天 30 分钟',
+        studyWindow: '今晚 21:00 - 21:30',
+        note: '今天只练和弦切换',
+        updatedAt: '2026-03-31T10:00:00.000Z',
+      },
+    },
+  });
+
+  const combinedPrompt = prompts.join('\n');
+  assert.match(combinedPrompt, /目标领域：乐器/);
+  assert.match(combinedPrompt, /示范对照|节拍器慢练|录音回听/);
+  assert.match(combinedPrompt, /当前识别乐器：吉他/);
+  assert.match(combinedPrompt, /调音|热身|分段重复/);
 });

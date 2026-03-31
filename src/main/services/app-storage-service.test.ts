@@ -940,6 +940,38 @@ test('completeInitialOnboarding infers programming domain for programming goals'
   assert.equal((activeGoal as typeof activeGoal & { domain?: string })?.domain, 'programming');
 });
 
+test('completeInitialOnboarding infers instrument domain for instrument goals', async () => {
+  const payload: CompleteInitialOnboardingPayload = {
+    goalTitle: '吉他弹唱入门',
+    baseline: '能看懂基础和弦图，但换和弦和节拍器配合不稳定。',
+    timeBudget: '工作日 30 分钟，周末 1 小时',
+    bestStudyWindow: '工作日晚间 21:00 - 21:30',
+    pacePreference: '',
+    ageBracket: '',
+    gender: '',
+    personalityTraits: [],
+    mbti: '',
+    motivationStyle: '',
+    stressResponse: '',
+    feedbackPreference: '',
+    cycle: '6 周',
+  };
+  const { service } = createHarness({
+    snapshotState: createEmptyAppState(),
+    aiExecute: async () => {
+      throw new Error('DeepSeek 当前无法执行 plan_generation：缺少 Secret。');
+    },
+  });
+
+  service.initialize();
+
+  const result = await service.completeInitialOnboarding(payload);
+  const activeGoal = result.state.goals.find((goal) => goal.id === result.state.plan.activeGoalId);
+
+  assert.equal((activeGoal as typeof activeGoal & { domain?: string })?.domain, 'instrument');
+  assert.match(result.state.plan.drafts[0]?.summary ?? '', /乐器|节拍器|录音|慢练/);
+});
+
 test('saveTodayPlanningContext stores daily-only overrides without mutating the long-term profile and marks the current daily plan stale', () => {
   const { service } = createHarness();
   const initialState = service.initialize();
@@ -1084,6 +1116,52 @@ test('generateTodayPlan falls back to programming-specific daily guidance when A
   );
   assert.equal(
     activeDraft.todayPlan.practice.some((item) => /代码|脚本|可运行/.test(item.output)),
+    true,
+  );
+});
+
+test('generateTodayPlan falls back to instrument-specific daily guidance when AI generation fails', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => {
+      throw new Error('DeepSeek 当前无法执行 daily_plan_generation：缺少 Secret。');
+    },
+  });
+
+  const initialState = service.initialize();
+  const activeGoal = initialState.goals.find((goal) => goal.id === initialState.plan.activeGoalId);
+  assert.ok(activeGoal);
+
+  service.upsertLearningGoal({
+    ...activeGoal,
+    title: '吉他弹唱入门',
+    baseline: '换和弦容易卡拍，节拍器跟不稳。',
+    successMetric: '录下一段稳定的 8 小节弹唱片段',
+    domain: 'instrument',
+  } as never);
+  service.saveTodayPlanningContext({
+    goalId: initialState.plan.activeGoalId,
+    availableDuration: '今天 30 分钟',
+    studyWindow: '今晚 21:00 - 21:30',
+    note: '今天先把和弦切换和节拍器慢练稳定下来',
+  });
+
+  const nextState = await service.generateTodayPlan({
+    goalId: initialState.plan.activeGoalId,
+  });
+
+  const activeDraft = nextState.plan.drafts.find((draft) => draft.goalId === nextState.plan.activeGoalId);
+
+  assert.ok(activeDraft?.todayPlan);
+  assert.equal(
+    activeDraft.todayPlan.resources.some((resource) => /示范|节拍器|录音/.test(`${resource.title} ${resource.reason}`)),
+    true,
+  );
+  assert.equal(
+    activeDraft.todayPlan.steps.some((step) => /调音|热身|节拍器|录音/.test(`${step.title} ${step.detail}`)),
+    true,
+  );
+  assert.equal(
+    activeDraft.todayPlan.practice.some((item) => /录音|节拍|音准|动作/.test(item.output)),
     true,
   );
 });

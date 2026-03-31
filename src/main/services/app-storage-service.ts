@@ -43,7 +43,7 @@ import {
   normalizeGoalScheduleWeight,
   resolveGoalScheduling,
 } from '../../shared/goal.js';
-import { buildProgrammingTodayPlanTemplate } from '../../shared/domain-rules.js';
+import { buildDomainTodayPlanTemplate } from '../../shared/domain-rules.js';
 import {
   buildPlanningConfirmationHighlights,
   derivePlanningConfirmation,
@@ -1127,22 +1127,20 @@ export class AppStorageService {
   ): NonNullable<LearningPlanDraft['todayPlan']> {
     const firstMilestone = draft.milestones[0];
     const firstTask = draft.tasks[0];
-    const programmingTemplate = goal.domain === 'programming'
-      ? buildProgrammingTodayPlanTemplate(goal as AppState['goals'][number], draft, profile)
-      : null;
+    const domainTemplate = buildDomainTodayPlanTemplate(goal as AppState['goals'][number], draft, profile);
 
     return {
       date: new Date().toISOString().slice(0, 10),
       status: 'ready' as const,
-      todayGoal: programmingTemplate?.todayGoal ?? firstTask?.title ?? `围绕「${goal.title}」完成今天的最小闭环`,
-      deliverable: programmingTemplate?.deliverable ?? '完成一个能证明今天已推进的最小成果',
-      estimatedDuration: programmingTemplate?.estimatedDuration
+      todayGoal: domainTemplate?.todayGoal ?? firstTask?.title ?? `围绕「${goal.title}」完成今天的最小闭环`,
+      deliverable: domainTemplate?.deliverable ?? '完成一个能证明今天已推进的最小成果',
+      estimatedDuration: domainTemplate?.estimatedDuration
         ?? draft.todayContext.availableDuration
         ?? firstTask?.duration
         ?? profile.timeBudget
         ?? '30 分钟',
       milestoneRef: firstMilestone?.title || '本周里程碑',
-      steps: this.normalizeTodayPlanStepList(programmingTemplate?.steps ?? [
+      steps: this.normalizeTodayPlanStepList(domainTemplate?.steps ?? [
         {
           title: '先确认今天的最小目标',
           detail: firstTask?.note || '先把今天要交付什么写清楚，再开始执行。',
@@ -1155,14 +1153,14 @@ export class AppStorageService {
         },
       ]),
       tomorrowCandidates: [],
-      resources: programmingTemplate?.resources ?? [
+      resources: domainTemplate?.resources ?? [
         {
           title: '使用当前最熟悉的一份入门资料',
           url: '',
           reason: 'AI 不可用时，先沿用你最容易开始的资料，避免今天停在准备阶段。',
         },
       ],
-      practice: programmingTemplate?.practice ?? [
+      practice: domainTemplate?.practice ?? [
         {
           title: '完成一个最小练习',
           detail: '把今天的学习内容转成一个真实动作或脚本。',
