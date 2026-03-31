@@ -13,6 +13,8 @@ test('today page exposes daily-only planning context controls and structured dai
   assert.match(todayPageSource, /仅今天有效/);
   assert.match(todayPageSource, /generateTodayPlan/);
   assert.match(todayPageSource, /saveTodayPlanningContext/);
+  assert.match(todayPageSource, /publishCompanionCue/);
+  assert.match(todayPageSource, /sourceLabel: '今日页联动'/);
   assert.match(todayPageSource, /主目标连续推进/);
   assert.match(todayPageSource, /主目标优先占位/);
   assert.match(todayPageSource, /副目标补位/);
@@ -30,4 +32,5 @@ test('today page exposes daily-only planning context controls and structured dai
   assert.match(todayPageSource, /系统正在把今天的限制重排成可执行步骤/);
   assert.match(todayPageSource, /下一步已自动上浮|feedback-focus-card/);
   assert.match(todayPageSource, /明天候选区|feedback-target-surface/);
+  assert.match(todayPageSource, /角色庆祝|角色提醒|角色状态反馈/);
 });

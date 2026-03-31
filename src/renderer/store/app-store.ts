@@ -46,6 +46,7 @@ import type { ProviderConfigInput } from '@shared/provider-config';
 import { getCachedStorageBridge } from '@shared/storage-bridge-cache';
 
 type AppStore = AppState & {
+  companionCue: CompanionCue | null;
   codexAuth: CodexAuthStatus;
   aiRuntimeSummary: AiRuntimeSummaryItem[];
   aiObservability: AiObservabilitySnapshot;
@@ -82,7 +83,32 @@ type AppStore = AppState & {
   logoutCodex: () => Promise<void>;
   refreshAiRuntimeSummary: () => Promise<void>;
   refreshAiObservability: () => Promise<void>;
+  publishCompanionCue: (cue: CompanionCueInput) => void;
+  clearCompanionCue: () => void;
 };
+
+type CompanionCueMode = 'reminder' | 'celebration' | 'status';
+
+type CompanionCueSource = 'today' | 'calendar';
+
+type CompanionCue = {
+  id: string;
+  source: CompanionCueSource;
+  sourceLabel: string;
+  mode: CompanionCueMode;
+  label: string;
+  title: string;
+  detail: string;
+  note: string;
+  chips: string[];
+  actionLabel: string;
+  actionPageId: string;
+};
+
+type CompanionCueInput = Omit<CompanionCue, 'id'>;
+
+const companionCueDurationMs = 4200;
+let companionCueTimeout: ReturnType<typeof globalThis.setTimeout> | null = null;
 
 function getBridge() {
   return getCachedStorageBridge(window);
@@ -128,6 +154,13 @@ function createEmptyAiObservability(): AiObservabilitySnapshot {
   };
 }
 
+function createCompanionCue(cue: CompanionCueInput): CompanionCue {
+  return {
+    id: `companion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ...cue,
+  };
+}
+
 async function loadRuntimeDiagnostics(bridge: NonNullable<ReturnType<typeof getBridge>>) {
   const [aiRuntimeSummary, aiObservability, codexAuth] = await Promise.all([
     bridge.getAiRuntimeSummary(),
@@ -156,6 +189,7 @@ function extractAppState(state: AppStore): AppState {
 
 export const useAppStore = create<AppStore>((set, get) => ({
   ...createEmptyAppState(),
+  companionCue: null,
   codexAuth: createDefaultCodexAuthStatus(),
   aiRuntimeSummary: [],
   aiObservability: createEmptyAiObservability(),
@@ -753,5 +787,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     const aiObservability = await bridge.getAiObservability();
     set((state) => ({ ...state, aiObservability, hydrated: true, hydrationError: null }));
+  },
+  publishCompanionCue: (cue) => {
+    const nextCue = createCompanionCue(cue);
+    if (companionCueTimeout) {
+      globalThis.clearTimeout(companionCueTimeout);
+    }
+
+    set({ companionCue: nextCue });
+    companionCueTimeout = globalThis.setTimeout(() => {
+      set((state) => (state.companionCue?.id === nextCue.id ? { companionCue: null } : {}));
+      companionCueTimeout = null;
+    }, companionCueDurationMs);
+  },
+  clearCompanionCue: () => {
+    if (companionCueTimeout) {
+      globalThis.clearTimeout(companionCueTimeout);
+      companionCueTimeout = null;
+    }
+
+    set({ companionCue: null });
   },
 }));

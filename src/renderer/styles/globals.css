@@ -379,6 +379,13 @@ select {
     border-color: rgba(109, 122, 148, 0.18);
   }
 
+  .desktop-companion-panel[data-cue-active='true'] {
+    box-shadow:
+      18px 22px 42px rgba(161, 173, 188, 0.36),
+      -12px -12px 28px rgba(255, 255, 255, 0.94),
+      0 0 0 1px rgba(255, 255, 255, 0.26);
+  }
+
   .desktop-companion-mode-pill {
     display: inline-flex;
     align-items: center;
@@ -594,6 +601,28 @@ select {
   }
 
   .desktop-companion-presence-value {
+    margin-top: 0.35rem;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .desktop-companion-link {
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    background: rgba(255, 255, 255, 0.78);
+    padding: 0.75rem 0.85rem;
+  }
+
+  .desktop-companion-link-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #718096;
+  }
+
+  .desktop-companion-link-value {
     margin-top: 0.35rem;
     font-size: 0.92rem;
     font-weight: 600;

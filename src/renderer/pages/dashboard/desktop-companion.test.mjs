@@ -20,6 +20,8 @@ test('desktop companion defines reminder, celebration, and status-feedback dutie
   assert.match(companionSource, /dashboard\.priorityAction/);
   assert.match(companionSource, /dashboard\.scheduling/);
   assert.match(companionSource, /todayPlan\?\.steps/);
+  assert.match(companionSource, /companionCue/);
+  assert.match(companionSource, /最近联动/);
 });
 
 test('desktop companion maps each duty mode to explicit motion and expression states', () => {
@@ -47,4 +49,6 @@ test('desktop companion stays wired into shell navigation and change capture act
   assert.match(companionSource, /desktop-companion-brow/);
   assert.match(companionSource, /desktop-companion-presence-card/);
   assert.match(companionSource, /data-duty=/);
+  assert.match(companionSource, /data-cue-active=/);
+  assert.match(companionSource, /data-linked-source=/);
 });

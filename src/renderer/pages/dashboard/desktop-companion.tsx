@@ -35,6 +35,9 @@ type CompanionBrief = {
   chips: string[];
   actionLabel: string;
   actionPageId: string;
+  cueSource?: string;
+  cueSourceLabel?: string;
+  cueSourceDetail?: string;
 };
 
 const companionDuties = [
@@ -128,17 +131,41 @@ function buildCelebrationBrief(activeDraft: LearningPlanDraft | null): Companion
   });
 }
 
+function buildCueBrief(
+  cue: NonNullable<ReturnType<typeof useAppStore.getState>['companionCue']>,
+): CompanionBrief {
+  return withPresence({
+    mode: cue.mode,
+    label: cue.label,
+    title: cue.title,
+    detail: cue.detail,
+    note: cue.note,
+    chips: cue.chips,
+    actionLabel: cue.actionLabel,
+    actionPageId: cue.actionPageId,
+    cueSource: cue.source,
+    cueSourceLabel: cue.sourceLabel,
+    cueSourceDetail: cue.label,
+  });
+}
+
 function buildCompanionBrief({
   currentPage,
   dashboard,
   activeGoalTitle,
   activeDraft,
+  companionCue,
 }: {
   currentPage: string;
   dashboard: ReturnType<typeof useAppStore.getState>['dashboard'];
   activeGoalTitle: string;
   activeDraft: LearningPlanDraft | null;
+  companionCue: ReturnType<typeof useAppStore.getState>['companionCue'];
 }): CompanionBrief {
+  if (companionCue) {
+    return buildCueBrief(companionCue);
+  }
+
   const nextOnboardingStep = dashboard.onboarding.steps.find((step) => step.status !== 'complete') ?? dashboard.onboarding.steps[0];
   if (dashboard.onboarding.active) {
     return withPresence({
@@ -253,6 +280,7 @@ export function DesktopCompanion({
   onPageChange,
 }: DesktopCompanionProps) {
   const dashboard = useAppStore((state) => state.dashboard);
+  const companionCue = useAppStore((state) => state.companionCue);
   const goals = useAppStore((state) => state.goals);
   const plan = useAppStore((state) => state.plan);
   const activeGoal = getActiveGoal(goals, plan.activeGoalId);
@@ -262,11 +290,17 @@ export function DesktopCompanion({
     dashboard,
     activeGoalTitle: activeGoal?.title ?? '先完成第一轮建档',
     activeDraft,
+    companionCue,
   });
 
   return (
     <div className="desktop-companion-shell hidden xl:block" aria-live="polite">
-      <div className="desktop-companion-panel" data-mode={brief.mode}>
+      <div
+        className="desktop-companion-panel"
+        data-mode={brief.mode}
+        data-cue-active={brief.cueSource ? 'true' : 'false'}
+        data-linked-source={brief.cueSource ?? 'dashboard'}
+      >
         <div className="flex items-start gap-4">
           <div
             className={cn('desktop-companion-avatar', `is-${brief.mode}`)}
@@ -299,6 +333,13 @@ export function DesktopCompanion({
             <div className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">JARVIS Companion</div>
             <div className="mt-2 text-lg font-semibold leading-7 text-slate-950">{brief.title}</div>
             <Muted className="mt-3 text-sm leading-6 text-slate-700">{brief.detail}</Muted>
+            {brief.cueSourceLabel ? (
+              <div className="desktop-companion-link mt-3">
+                <div className="desktop-companion-link-label">最近联动</div>
+                <div className="desktop-companion-link-value">{brief.cueSourceLabel}</div>
+                <div className="mt-1 text-xs leading-5 text-slate-600">{brief.cueSourceDetail}</div>
+              </div>
+            ) : null}
           </div>
         </div>
 

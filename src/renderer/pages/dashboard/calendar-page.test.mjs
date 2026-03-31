@@ -31,4 +31,7 @@ test('calendar page renders the weekly scheduling preview, delayed carry-over, a
   assert.match(calendarPageSource, /calendar-flow-surface|calendar-flow-block|calendar-flow-note/);
   assert.match(calendarPageSource, /日历已重排|时间块流向/);
   assert.match(calendarPageSource, /requestAnimationFrame|setFlowingDayLabels/);
+  assert.match(calendarPageSource, /publishCompanionCue/);
+  assert.match(calendarPageSource, /sourceLabel: '日历页联动'/);
+  assert.match(calendarPageSource, /角色状态反馈/);
 });

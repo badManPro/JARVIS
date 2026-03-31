@@ -62,6 +62,7 @@ export function TodayPage({
   const updateTodayPlanStepStatus = useAppStore((state) => state.updateTodayPlanStepStatus);
   const saveTodayPlanningContext = useAppStore((state) => state.saveTodayPlanningContext);
   const generateTodayPlan = useAppStore((state) => state.generateTodayPlan);
+  const publishCompanionCue = useAppStore((state) => state.publishCompanionCue);
   const activeGoal = getActiveGoal(goals, plan.activeGoalId);
   const activeDraft = getActiveDraft(plan);
   const primaryRisk = dashboard.riskSignals[0] ?? null;
@@ -95,6 +96,35 @@ export function TodayPage({
   const { active: planRefreshActive, trigger: triggerPlanRefresh } = useTransientHighlight();
   const { active: focusShiftActive, trigger: triggerFocusShift } = useTransientHighlight();
   const { active: tomorrowCandidateActive, trigger: triggerTomorrowCandidate } = useTransientHighlight();
+
+  function publishTodayCue({
+    mode,
+    label,
+    title,
+    detail,
+    chips,
+    actionLabel = '查看今日执行',
+  }: {
+    mode: 'reminder' | 'celebration' | 'status';
+    label: string;
+    title: string;
+    detail: string;
+    chips: string[];
+    actionLabel?: string;
+  }) {
+    publishCompanionCue({
+      source: 'today',
+      sourceLabel: '今日页联动',
+      mode,
+      label,
+      title,
+      detail,
+      note: '角色会优先跟随今日页的生成结果和步骤反馈切换动作，但不会把自己做成新的执行入口。',
+      chips,
+      actionLabel,
+      actionPageId: 'today',
+    });
+  }
 
   useEffect(() => {
     setAvailableDuration(activeDraft?.todayContext.availableDuration ?? '');
@@ -179,6 +209,18 @@ export function TodayPage({
           activeGoal.title,
         ],
       }));
+      publishTodayCue({
+        mode: 'status',
+        label: '角色状态反馈',
+        title: todayPlanState.status === 'ready' ? '角色已同步今日页刷新后的新步骤流' : '角色已同步今日页生成出的第一条执行流',
+        detail: '它会把视线停在当前最该开始的步骤上，同时保留主目标连续推进和延期候选的解释。',
+        chips: [
+          availableDuration || profile.timeBudget || dashboard.duration,
+          studyWindow || profile.bestStudyWindow || '待填写学习窗口',
+          activeGoal.title,
+        ],
+        actionLabel: '继续今日执行',
+      });
     } catch (error) {
       setNotice(createFeedbackMessage({
         label: '生成失败',
@@ -217,6 +259,14 @@ export function TodayPage({
             tone: 'neutral',
             chips: [step.duration],
           }));
+          publishTodayCue({
+            mode: 'reminder',
+            label: '角色提醒',
+            title: `角色已把当前焦点对齐到「${step.title}」`,
+            detail: '它会继续盯住这一步，直到你完成、延期或跳过，再把注意力切到新的可执行动作。',
+            chips: [step.duration, activeGoal?.title ?? '当前主目标'],
+            actionLabel: '继续当前步骤',
+          });
           break;
         case 'done':
           triggerFocusShift();
@@ -229,6 +279,16 @@ export function TodayPage({
             tone: 'success',
             chips: nextFocusStep ? ['自动切焦', nextFocusStep.duration] : ['今日清空'],
           }));
+          publishTodayCue({
+            mode: 'celebration',
+            label: '角色庆祝',
+            title: nextFocusStep ? `角色已跟上切焦节奏：下一步是「${nextFocusStep.title}」` : '角色已确认今天这一轮步骤全部处理完成',
+            detail: nextFocusStep
+              ? '完成反馈已经同步到桌面角色，它会用庆祝状态确认推进感，同时把注意力收回新的下一步。'
+              : '完成反馈已经同步到桌面角色，它会停在庆祝状态确认今天的产出，而不是再制造新的动作分支。',
+            chips: nextFocusStep ? ['步骤已完成', nextFocusStep.duration] : ['今日清空', step.duration],
+            actionLabel: '查看下一步',
+          });
           setReflectionContext({
             taskTitle: step.title,
             status,
@@ -246,6 +306,16 @@ export function TodayPage({
             tone: 'warning',
             chips: ['明天候选区', '压缩继续'],
           }));
+          publishTodayCue({
+            mode: 'reminder',
+            label: '角色提醒',
+            title: '角色已盯住顺延动作，并把注意力切到新的可执行步骤',
+            detail: nextFocusStep
+              ? `「${step.title}」已进入明天候选区，桌面角色会先提醒你当前改为推进「${nextFocusStep.title}」。`
+              : `「${step.title}」已进入明天候选区，桌面角色会保留提醒状态，等待新的可执行时间块。`,
+            chips: nextFocusStep ? ['明天候选区', nextFocusStep.duration] : ['明天候选区', '等待新时间块'],
+            actionLabel: '查看顺延结果',
+          });
           setReflectionContext({
             taskTitle: step.title,
             status,
@@ -260,6 +330,14 @@ export function TodayPage({
             tone: 'warning',
             chips: ['等待补回', '自动重排'],
           }));
+          publishTodayCue({
+            mode: 'status',
+            label: '角色状态反馈',
+            title: nextFocusStep ? `角色已同步跳过后的新顺序：先做「${nextFocusStep.title}」` : '角色已同步跳过后的链路重排结果',
+            detail: '跳过反馈会先解释系统为什么保留当前最小可执行顺序，再回到常规陪伴层状态。',
+            chips: nextFocusStep ? ['等待补回', nextFocusStep.duration] : ['等待补回', '自动重排'],
+            actionLabel: '查看重排结果',
+          });
           setReflectionContext({
             taskTitle: step.title,
             status,

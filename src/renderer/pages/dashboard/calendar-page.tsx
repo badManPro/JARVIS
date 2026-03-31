@@ -98,6 +98,7 @@ function summarizeChangedDays(weeklyPlan: DashboardWeeklyScheduleDay[], changedD
 
 export function CalendarPage() {
   const scheduling = useAppStore((state) => state.dashboard.scheduling);
+  const publishCompanionCue = useAppStore((state) => state.publishCompanionCue);
   const [scheduleNotice, setScheduleNotice] = useState<FeedbackMessage | null>(null);
   const [flowingDayLabels, setFlowingDayLabels] = useState<string[]>([]);
   const [flowingPlacementKeys, setFlowingPlacementKeys] = useState<string[]>([]);
@@ -173,6 +174,26 @@ export function CalendarPage() {
         secondaryShare ? '副目标补位已同步' : '主目标连续块已锁定',
       ].filter((item): item is string => Boolean(item)),
     }));
+    publishCompanionCue({
+      source: 'calendar',
+      sourceLabel: '日历页联动',
+      mode: 'status',
+      label: '角色状态反馈',
+      title: affectedBlockCount
+        ? `角色已同步 ${affectedBlockCount} 个时间块的最新流向`
+        : '角色已同步本周排程的刷新结果',
+      detail: flowHighlights.length
+        ? `它会把重排原因压缩成一句解释：${flowHighlights.join('；')}`
+        : '它会解释主目标连续块、副目标补位块和延期补回为什么落在当前这些窗口。',
+      note: '角色在日历页只负责解释排程变化，不会把自己做成新的日程编辑入口。',
+      chips: [
+        changedDayLabels.length ? `${changedDayLabels.length} 天发生重排` : '本周排程已刷新',
+        changedPlacementKeys.length || removedPlacementCount ? `延期补回 ${changedPlacementKeys.length + removedPlacementCount}` : '无新增延期补回',
+        secondaryShare ? '副目标补位已同步' : '主目标连续块已锁定',
+      ],
+      actionLabel: '查看当前排程',
+      actionPageId: 'calendar',
+    });
 
     if (flowFrameRef.current !== null) {
       globalThis.cancelAnimationFrame(flowFrameRef.current);
