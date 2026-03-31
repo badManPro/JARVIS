@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const source = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/page-data.ts'),
-  'utf8',
-);
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
+const source = fs.readFileSync(path.resolve(currentDir, 'page-data.ts'), 'utf8');
 
 test('page definitions keep the dashboard-oriented primary navigation and add calendar scheduling', () => {
   assert.match(source, /id:\s*'today'/);

@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const source = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard-content.tsx'),
-  'utf8',
-);
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
+const source = fs.readFileSync(path.resolve(currentDir, 'dashboard-content.tsx'), 'utf8');
 
 test('dashboard-content delegates each dashboard surface to extracted page modules', () => {
   assert.match(source, /from ['"]@\/pages\/dashboard\/coach-drawer['"]/);

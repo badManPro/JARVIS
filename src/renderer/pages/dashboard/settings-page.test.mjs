@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const settingsPagePath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/settings-page.tsx');
-const advancedPanelPath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/advanced-settings-panel.tsx');
-const appStorePath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/store/app-store.ts');
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
+const settingsPagePath = path.resolve(currentDir, 'settings-page.tsx');
+const advancedPanelPath = path.resolve(currentDir, 'advanced-settings-panel.tsx');
+const appStorePath = path.resolve(currentDir, '../../store/app-store.ts');
 
 const settingsPageSource = fs.readFileSync(settingsPagePath, 'utf8');
 const appStoreSource = fs.readFileSync(appStorePath, 'utf8');

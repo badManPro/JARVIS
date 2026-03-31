@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const todayPagePath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/today-page.tsx');
-const pathPagePath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/path-page.tsx');
-const reflectionSheetPath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/reflection-sheet.tsx');
-const appStorePath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/store/app-store.ts');
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
+const todayPagePath = path.resolve(currentDir, 'today-page.tsx');
+const pathPagePath = path.resolve(currentDir, 'path-page.tsx');
+const reflectionSheetPath = path.resolve(currentDir, 'reflection-sheet.tsx');
+const appStorePath = path.resolve(currentDir, '../../store/app-store.ts');
 
 const todayPageSource = fs.readFileSync(todayPagePath, 'utf8');
 const pathPageSource = fs.readFileSync(pathPagePath, 'utf8');

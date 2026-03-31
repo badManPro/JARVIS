@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ArrowRight, Bot, CircleAlert } from 'lucide-react';
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
 import { pages, type PageDefinition } from '@/pages/page-data';
+import { DesktopCompanion } from '@/pages/dashboard/desktop-companion';
 import { CoachDrawer, PageContent } from '@/pages/dashboard-content';
 import { useAppStore } from '@/store/app-store';
 
@@ -113,7 +114,7 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
           </Card>
         </aside>
 
-        <main className="min-w-0 flex-1 lg:min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+        <main className="min-w-0 flex-1 lg:min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto xl:pr-[24rem]">
           <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-sm font-medium uppercase tracking-[0.18em] text-slate-500">{activePage.title}</div>
@@ -135,6 +136,7 @@ export function AppShell({ currentPage, onPageChange }: AppShellProps) {
         </main>
       </div>
 
+      <DesktopCompanion currentPage={currentPage} onOpenCoach={() => setCoachOpen(true)} onPageChange={onPageChange} />
       <CoachDrawer open={coachOpen} onClose={() => setCoachOpen(false)} onPageChange={onPageChange} />
     </div>
   );

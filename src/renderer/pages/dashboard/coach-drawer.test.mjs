@@ -2,25 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
 const coachDrawerSource = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/coach-drawer.tsx'),
+  path.resolve(currentDir, 'coach-drawer.tsx'),
   'utf8',
 );
 const profilePageSource = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/profile-page.tsx'),
+  path.resolve(currentDir, 'profile-page.tsx'),
   'utf8',
 );
 const appShellSource = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/layouts/app-shell.tsx'),
+  path.resolve(currentDir, '../../layouts/app-shell.tsx'),
   'utf8',
 );
 const appStoreSource = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/store/app-store.ts'),
+  path.resolve(currentDir, '../../store/app-store.ts'),
   'utf8',
 );
 const bridgeSource = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/shared/bridge.ts'),
+  path.resolve(currentDir, '../../../shared/bridge.ts'),
   'utf8',
 );
 
