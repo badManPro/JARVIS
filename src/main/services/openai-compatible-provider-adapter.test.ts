@@ -37,6 +37,16 @@ function createInstrumentGoal() {
   } as never;
 }
 
+function createFitnessGoal() {
+  return {
+    ...seedState.goals[0],
+    title: '力量训练增肌入门',
+    baseline: '卧推和深蹲动作容易变形，缺少稳定训练记录。',
+    successMetric: '连续 4 周记录每周 3 次训练重量',
+    domain: 'fitness',
+  } as never;
+}
+
 test('OpenAiCompatibleProviderAdapter includes reflection context in profile extraction prompts', async () => {
   let requestBody: { messages?: Array<{ content?: string }> } = {};
   const adapter = new OpenAiCompatibleProviderAdapter({
@@ -264,4 +274,63 @@ test('OpenAiCompatibleProviderAdapter includes instrument-specific prompt guidan
   assert.match(combinedPrompt, /示范对照|节拍器慢练|录音回听/);
   assert.match(combinedPrompt, /当前识别乐器：吉他/);
   assert.match(combinedPrompt, /调音|热身|分段重复/);
+});
+
+test('OpenAiCompatibleProviderAdapter includes fitness-specific prompt guidance in plan and daily generation prompts', async () => {
+  const prompts: string[] = [];
+  const adapter = new OpenAiCompatibleProviderAdapter({
+    fetchFn: async (_input, init) => {
+      const requestBody = JSON.parse(String(init?.body));
+      prompts.push(requestBody.messages?.[1]?.content ?? '');
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: requestBody.messages?.[1]?.content?.includes('"date":"')
+                  ? '{"date":"2026-03-31","status":"ready","todayGoal":"完成一次力量训练闭环","deliverable":"记录今天的重量、次数和恢复安排","estimatedDuration":"40 分钟","milestoneRef":"第 1 周：校准力量训练起点","steps":[{"title":"热身并检查动作标准","detail":"先做热身组，再核对深蹲动作轨迹","duration":"8 分钟"}],"resources":[{"title":"基础力量动作库与安全提示","url":"","reason":"先对照动作标准和安全要点"}],"practice":[{"title":"完成 1 次主训练闭环","detail":"完成主训练组并记录重量和 RPE","output":"1 条训练记录 + 1 条恢复安排"}],"generatedFromContext":{"availableDuration":"今天 40 分钟","studyWindow":"今晚 20:00 - 20:40","note":"今天先把热身和记录习惯跑顺"}}'
+                  : '{"title":"力量训练草案","summary":"围绕热身、主训练组和恢复安排推进","basis":["先校准动作标准"],"stages":[{"title":"阶段 1","outcome":"校准训练起点","progress":"进行中"}],"milestones":[{"title":"第 1 周：校准力量训练起点","focus":"固定热身和动作标准","outcome":"形成可记录的训练闭环","status":"current"},{"title":"第 2 周：稳定主训练组","focus":"连续记录重量和次数","outcome":"训练负荷可对比","status":"upcoming"},{"title":"第 3 周：纳入恢复安排","focus":"把恢复节奏写进计划","outcome":"训练更可持续","status":"upcoming"}],"tasks":[{"title":"完成热身和动作标准检查","duration":"15 分钟","note":"先热身再进主训练","status":"todo"}]}',
+              },
+            },
+          ],
+        }),
+      } as unknown as Response;
+    },
+  });
+
+  await adapter.execute({
+    provider: createProvider(),
+    request: {
+      capability: 'plan_generation',
+      goal: createFitnessGoal(),
+      profile: seedState.profile,
+      currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
+    },
+  });
+
+  await adapter.execute({
+    provider: createProvider(),
+    request: {
+      capability: 'daily_plan_generation',
+      goal: createFitnessGoal(),
+      profile: seedState.profile,
+      currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
+      todayContext: {
+        availableDuration: '今天 40 分钟',
+        studyWindow: '今晚 20:00 - 20:40',
+        note: '今天先把热身和记录习惯跑顺',
+        updatedAt: '2026-03-31T10:00:00.000Z',
+      },
+    },
+  });
+
+  const combinedPrompt = prompts.join('\n');
+  assert.match(combinedPrompt, /目标领域：健身/);
+  assert.match(combinedPrompt, /动作库|训练模板|安全提示/);
+  assert.match(combinedPrompt, /热身|动作标准|主训练组/);
+  assert.match(combinedPrompt, /组数|次数|重量|配速|RPE|恢复/);
+  assert.match(combinedPrompt, /当前识别训练方向：力量训练/);
 });

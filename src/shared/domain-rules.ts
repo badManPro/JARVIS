@@ -50,6 +50,18 @@ type InstrumentTopic = {
   keywords: string[];
 };
 
+type FitnessTopic = {
+  label: string;
+  foundationTitle: string;
+  foundationUrl: string;
+  warmupHint: string;
+  sessionFocus: string;
+  intensityHint: string;
+  recoveryHint: string;
+  validationHint: string;
+  keywords: string[];
+};
+
 const defaultProgrammingTopic: ProgrammingTopic = {
   label: '当前技术栈',
   docTitle: '当前技术栈官方文档',
@@ -166,6 +178,65 @@ const instrumentTopics: InstrumentTopic[] = [
   },
 ];
 
+const defaultFitnessTopic: FitnessTopic = {
+  label: '综合体能',
+  foundationTitle: '基础动作库与安全提示',
+  foundationUrl: '',
+  warmupHint: '先做 5-8 分钟低强度热身，并用空手或轻重量确认动作轨迹再进入正式训练',
+  sessionFocus: '围绕 1 个主训练动作或 1 组短间歇训练完成今天的主训练组',
+  intensityHint: '记录组数、次数、重量/配速和主观强度（RPE），先保证动作稳定再加量',
+  recoveryHint: '训练后安排 3-5 分钟收操拉伸，并明确明天是主动恢复、轻练还是休息',
+  validationHint: '保留一条训练记录，确认今天的动作标准、负荷和恢复安排都清楚',
+  keywords: [],
+};
+
+const fitnessTopics: FitnessTopic[] = [
+  {
+    label: '力量训练',
+    foundationTitle: '基础力量动作库与安全提示',
+    foundationUrl: '',
+    warmupHint: '先做关节活动和空手/空杠热身组，再进入正式重量训练',
+    sessionFocus: '围绕 1-2 个复合动作完成主训练组，避免同一节里塞太多动作',
+    intensityHint: '记录每组的重量、次数和 RPE，动作稳定前不要急着加重量',
+    recoveryHint: '训练后做肩髋腿放松，补水并给目标肌群留出恢复日',
+    validationHint: '保留组数、次数、重量和 RPE 记录，作为下次加量依据',
+    keywords: ['力量训练', '增肌', '深蹲', '卧推', '硬拉', '杠铃', '哑铃', '引体向上', 'bench', 'squat', 'deadlift', 'pull-up', '肌肉'],
+  },
+  {
+    label: '跑步 / 心肺',
+    foundationTitle: '跑步动作与配速基础',
+    foundationUrl: '',
+    warmupHint: '先快走或慢跑 5-8 分钟，再做踝髋激活和轻量加速跑',
+    sessionFocus: '围绕 1 段稳态跑或 1 轮间歇跑完成今天的主训练',
+    intensityHint: '记录距离、配速、心率或体感强度，避免一开始就冲到失控',
+    recoveryHint: '结束后做小腿和髋部放松，观察呼吸与疲劳恢复情况',
+    validationHint: '保留距离、配速和体感强度记录，确认本次负荷是否合适',
+    keywords: ['跑步', '慢跑', '马拉松', '配速', '5k', '10k', '心肺', '有氧', 'cardio', 'run', 'running'],
+  },
+  {
+    label: '自重训练',
+    foundationTitle: '自重动作示范与进阶模板',
+    foundationUrl: '',
+    warmupHint: '先激活肩、髋和核心，再用低次数试做一轮动作',
+    sessionFocus: '围绕 2-3 个自重动作完成循环训练，控制动作质量优先于速度',
+    intensityHint: '记录每轮次数、完成轮数和动作是否变形，必要时及时降级',
+    recoveryHint: '训练后拉伸肩胸和髋腿，根据第二天酸痛决定是否降量',
+    validationHint: '保留轮数、次数和动作质量备注，作为下次进阶依据',
+    keywords: ['俯卧撑', '平板支撑', '波比', '自重', '徒手', '居家健身', '核心', 'burpee', 'push-up', 'pushup', 'plank'],
+  },
+  {
+    label: '瑜伽 / 灵活性',
+    foundationTitle: '拉伸与灵活性动作库',
+    foundationUrl: '',
+    warmupHint: '先做轻柔呼吸和关节活动，避免冷状态直接压伸',
+    sessionFocus: '围绕 1 组灵活性序列或瑜伽流完成今天训练',
+    intensityHint: '记录停留时长、呼吸节奏和左右侧差异，不要只追求幅度',
+    recoveryHint: '结束后补水，并避免同部位连续高强度拉伸',
+    validationHint: '保留序列完成情况和身体感受，判断是否需要继续放松或休息',
+    keywords: ['瑜伽', '拉伸', 'mobility', '柔韧', '柔韧性', '开肩', '开髋', '伸展'],
+  },
+];
+
 function inferProgrammingTopic(goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric'>) {
   const combined = [goal.title, goal.baseline, goal.successMetric].join(' ').toLowerCase();
   return programmingTopics.find((topic) => topic.keywords.some((keyword) => combined.includes(keyword))) ?? defaultProgrammingTopic;
@@ -174,6 +245,11 @@ function inferProgrammingTopic(goal: Pick<LearningGoal, 'title' | 'baseline' | '
 function inferInstrumentTopic(goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric'>) {
   const combined = [goal.title, goal.baseline, goal.successMetric].join(' ').toLowerCase();
   return instrumentTopics.find((topic) => topic.keywords.some((keyword) => combined.includes(keyword))) ?? defaultInstrumentTopic;
+}
+
+function inferFitnessTopic(goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric'>) {
+  const combined = [goal.title, goal.baseline, goal.successMetric].join(' ').toLowerCase();
+  return fitnessTopics.find((topic) => topic.keywords.some((keyword) => combined.includes(keyword))) ?? defaultFitnessTopic;
 }
 
 function buildProgrammingPromptLines(goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric'>) {
@@ -213,6 +289,21 @@ function buildInstrumentPromptLines(goal: Pick<LearningGoal, 'title' | 'baseline
   return lines;
 }
 
+function buildFitnessPromptLines(goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric'>) {
+  const topic = inferFitnessTopic(goal);
+  return [
+    '目标领域：健身',
+    '健身执行规则：先做热身和动作标准校准，再按“主训练组 -> 记录组数/次数/重量/配速/RPE -> 收操拉伸 -> 恢复安排”组织计划。',
+    '健身资源建议：优先推荐动作库、训练模板、热身/收操和安全提示，不要只给泛泛课程名。',
+    '健身任务原子：热身、动作示范核对、主训练组、记录组数/次数/重量/配速/心率/RPE、收操拉伸、恢复安排。',
+    `当前识别训练方向：${topic.label}`,
+    `今日训练焦点：${topic.sessionFocus}。`,
+    `强度记录要求：${topic.intensityHint}。`,
+    `恢复校验方式：${topic.recoveryHint}。`,
+    `优先资源入口：${topic.foundationTitle}${topic.foundationUrl ? ` ${topic.foundationUrl}` : ''}`,
+  ];
+}
+
 export function buildGoalDomainPromptLines(goal: DomainPromptGoal) {
   switch (normalizeLearningGoalDomain(goal.domain)) {
     case 'programming':
@@ -220,10 +311,7 @@ export function buildGoalDomainPromptLines(goal: DomainPromptGoal) {
     case 'instrument':
       return buildInstrumentPromptLines(goal);
     case 'fitness':
-      return [
-        '目标领域：健身',
-        '健身专属执行规则仍待补齐，当前先沿用通用计划结构，但仍需优先保证动作安全、负荷渐进和恢复节奏。',
-      ];
+      return buildFitnessPromptLines(goal);
     case 'general':
     default:
       return ['目标领域：通用'];
@@ -354,6 +442,68 @@ export function buildInstrumentPlanTemplate(
   };
 }
 
+export function buildFitnessPlanTemplate(
+  goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric'>,
+  profile: Pick<UserProfile, 'bestStudyWindow'>,
+): DomainPlanTemplate {
+  const topic = inferFitnessTopic(goal);
+  const windowHint = profile.bestStudyWindow || '你最容易稳定投入的学习窗口';
+
+  return {
+    summary: `健身主线「${goal.title}」会先校准 ${topic.label} 的热身、动作标准和起始负荷，再通过主训练组记录与恢复安排逐步靠近“${goal.successMetric}”。`,
+    basis: [
+      `健身领域优先把「${topic.warmupHint}」变成每次开始前的固定动作。`,
+      `训练任务要明确主训练组和记录方式：${topic.intensityHint}。`,
+      `默认把任务控制在 ${windowHint} 内完成一次热身 -> 主训练 -> 收操恢复的闭环。`,
+    ],
+    stages: [
+      { title: '阶段 1：校准热身、动作标准与起点', outcome: `完成 ${topic.label} 的热身流程和动作标准检查，并确认当前起始负荷`, progress: '进行中' },
+      { title: '阶段 2：稳定主训练组与强度记录', outcome: '围绕 1 组主训练动作或间歇任务稳定记录组数、次数、重量/配速与 RPE', progress: '未开始' },
+      { title: '阶段 3：收束恢复节奏并验证结果', outcome: `围绕“${goal.successMetric}”沉淀可复盘的训练记录和恢复安排`, progress: '未开始' },
+    ],
+    milestones: [
+      {
+        title: `第 1 周：校准 ${topic.label} 起点`,
+        focus: '固定热身、动作标准和起始负荷，避免每次训练都从混乱开始',
+        outcome: '知道今天该怎么热身、该练哪组动作，以及当前起点负荷',
+        status: 'current',
+      },
+      {
+        title: '第 2 周：稳定主训练闭环',
+        focus: '围绕 1 组主训练动作或间歇任务建立连续记录',
+        outcome: '形成可对比的组数、次数、重量/配速或 RPE 记录',
+        status: 'upcoming',
+      },
+      {
+        title: '第 3 周：把恢复节奏纳入计划',
+        focus: `围绕「${goal.title}」记录疲劳、酸痛和恢复安排，避免只堆训练量`,
+        outcome: '得到 1 套兼顾训练推进和恢复节奏的最小训练闭环',
+        status: 'upcoming',
+      },
+    ],
+    tasks: [
+      {
+        title: `完成 ${topic.label} 热身和动作标准检查`,
+        duration: '15 分钟',
+        status: 'todo',
+        note: topic.warmupHint,
+      },
+      {
+        title: '完成 1 轮主训练组并记录强度',
+        duration: '25 分钟',
+        status: 'todo',
+        note: `${topic.sessionFocus}。${topic.intensityHint}。`,
+      },
+      {
+        title: '收操拉伸并写下恢复安排',
+        duration: '10 分钟',
+        status: 'todo',
+        note: `${topic.recoveryHint}。${topic.validationHint}。`,
+      },
+    ],
+  };
+}
+
 export function buildDomainPlanTemplate(
   goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric' | 'domain'>,
   profile: Pick<UserProfile, 'bestStudyWindow'>,
@@ -363,8 +513,9 @@ export function buildDomainPlanTemplate(
       return buildProgrammingPlanTemplate(goal, profile);
     case 'instrument':
       return buildInstrumentPlanTemplate(goal, profile);
-    case 'general':
     case 'fitness':
+      return buildFitnessPlanTemplate(goal, profile);
+    case 'general':
     default:
       return null;
   }
@@ -477,6 +628,62 @@ export function buildInstrumentTodayPlanTemplate(
   };
 }
 
+export function buildFitnessTodayPlanTemplate(
+  goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric'>,
+  draft: Pick<LearningPlanDraft, 'todayContext' | 'tasks'>,
+  profile: Pick<UserProfile, 'timeBudget'>,
+): DomainTodayPlanTemplate {
+  const topic = inferFitnessTopic(goal);
+  const estimatedDuration = draft.todayContext.availableDuration || draft.tasks[0]?.duration || profile.timeBudget || '30 分钟';
+
+  return {
+    todayGoal: `围绕「${goal.title}」完成一次可记录的 ${topic.label} 训练闭环`,
+    deliverable: '记录今天的组数/次数/重量/配速/RPE，并写下 1 条恢复安排',
+    estimatedDuration,
+    steps: [
+      {
+        title: '先热身并核对动作标准',
+        detail: topic.warmupHint,
+        duration: '8 分钟',
+      },
+      {
+        title: '完成今天的主训练组并记录强度',
+        detail: `${topic.sessionFocus}；${topic.intensityHint}`,
+        duration: '15 分钟',
+      },
+      {
+        title: '收操拉伸并写下恢复备注',
+        detail: topic.recoveryHint,
+        duration: draft.tasks[1]?.duration || draft.tasks[0]?.duration || estimatedDuration,
+      },
+    ],
+    resources: [
+      {
+        title: topic.foundationTitle,
+        url: topic.foundationUrl,
+        reason: '先对照动作示范和安全提示，避免动作变形或负荷上头。',
+      },
+      {
+        title: '训练记录表 / 计时器',
+        url: '',
+        reason: '把组数、次数、重量、配速或 RPE 记下来，下一次才知道是否该加量。',
+      },
+      {
+        title: '收操拉伸与恢复提醒',
+        url: '',
+        reason: '训练结束后安排放松和恢复，避免把疲劳直接带进下一次训练。',
+      },
+    ].filter((resource) => resource.title || resource.url),
+    practice: [
+      {
+        title: '完成 1 次主训练闭环',
+        detail: '按热身 -> 主训练组 -> 收操的顺序完成，过程中记录强度与动作质量。',
+        output: '1 条训练记录（组数/次数/重量/配速/RPE）+ 1 条恢复安排',
+      },
+    ],
+  };
+}
+
 export function buildDomainTodayPlanTemplate(
   goal: Pick<LearningGoal, 'title' | 'baseline' | 'successMetric' | 'domain'>,
   draft: Pick<LearningPlanDraft, 'todayContext' | 'tasks'>,
@@ -487,8 +694,9 @@ export function buildDomainTodayPlanTemplate(
       return buildProgrammingTodayPlanTemplate(goal, draft, profile);
     case 'instrument':
       return buildInstrumentTodayPlanTemplate(goal, draft, profile);
-    case 'general':
     case 'fitness':
+      return buildFitnessTodayPlanTemplate(goal, draft, profile);
+    case 'general':
     default:
       return null;
   }

@@ -61,6 +61,39 @@ test('createPlanDraft uses instrument-specific fallback guidance for instrument 
   assert.match(draft.summary, /乐器|节拍器|录音|慢练/);
 });
 
+test('inferLearningGoalDomain detects fitness goals from common fitness keywords', () => {
+  const domain = inferLearningGoalDomain({
+    title: '力量训练增肌入门',
+    baseline: '深蹲和卧推动作不稳定，重量记录也不连续。',
+    successMetric: '连续 4 周稳定记录每周 3 次力量训练数据。',
+  });
+
+  assert.equal(domain, 'fitness');
+});
+
+test('createPlanDraft uses fitness-specific fallback guidance for fitness goals', () => {
+  const fitnessGoal = {
+    ...seedState.goals[0],
+    title: '力量训练增肌入门',
+    baseline: '深蹲和卧推动作不稳定，热身经常跳过。',
+    successMetric: '连续 4 周稳定记录每周 3 次力量训练数据',
+    domain: 'fitness',
+  } as never;
+
+  const draft = createPlanDraft(fitnessGoal, seedState.profile);
+
+  assert.equal(draft.tasks.length >= 3, true);
+  assert.equal(
+    draft.tasks.some((task) => /热身|动作标准|收操/.test(`${task.title} ${task.note}`)),
+    true,
+  );
+  assert.equal(
+    draft.tasks.some((task) => /组数|次数|重量|RPE|恢复/.test(`${task.title} ${task.note}`)),
+    true,
+  );
+  assert.match(draft.summary, /健身|训练|恢复|动作标准/);
+});
+
 test('buildGoalDomainPromptLines includes instrument-specific guidance for instrument goals', () => {
   const lines = buildGoalDomainPromptLines({
     title: '吉他弹唱入门',
@@ -72,4 +105,18 @@ test('buildGoalDomainPromptLines includes instrument-specific guidance for instr
   assert.equal(lines.some((line) => /目标领域：乐器/.test(line)), true);
   assert.equal(lines.some((line) => /节拍器慢练|录音回听|调音/.test(line)), true);
   assert.equal(lines.some((line) => /当前识别乐器：吉他/.test(line)), true);
+});
+
+test('buildGoalDomainPromptLines includes fitness-specific guidance for fitness goals', () => {
+  const lines = buildGoalDomainPromptLines({
+    title: '力量训练增肌入门',
+    baseline: '卧推和深蹲动作容易变形，缺少稳定记录。',
+    successMetric: '连续 4 周记录每周 3 次训练重量',
+    domain: 'fitness',
+  });
+
+  assert.equal(lines.some((line) => /目标领域：健身/.test(line)), true);
+  assert.equal(lines.some((line) => /热身|动作标准|主训练组/.test(line)), true);
+  assert.equal(lines.some((line) => /组数|次数|重量|RPE|恢复/.test(line)), true);
+  assert.equal(lines.some((line) => /当前识别训练方向：力量训练/.test(line)), true);
 });

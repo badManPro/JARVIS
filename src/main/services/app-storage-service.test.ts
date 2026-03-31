@@ -972,6 +972,38 @@ test('completeInitialOnboarding infers instrument domain for instrument goals', 
   assert.match(result.state.plan.drafts[0]?.summary ?? '', /乐器|节拍器|录音|慢练/);
 });
 
+test('completeInitialOnboarding infers fitness domain for fitness goals', async () => {
+  const payload: CompleteInitialOnboardingPayload = {
+    goalTitle: '力量训练增肌入门',
+    baseline: '卧推和深蹲动作容易变形，热身和训练记录不稳定。',
+    timeBudget: '工作日 40 分钟，周末 1 小时',
+    bestStudyWindow: '工作日晚间 20:00 - 20:45',
+    pacePreference: '',
+    ageBracket: '',
+    gender: '',
+    personalityTraits: [],
+    mbti: '',
+    motivationStyle: '',
+    stressResponse: '',
+    feedbackPreference: '',
+    cycle: '6 周',
+  };
+  const { service } = createHarness({
+    snapshotState: createEmptyAppState(),
+    aiExecute: async () => {
+      throw new Error('DeepSeek 当前无法执行 plan_generation：缺少 Secret。');
+    },
+  });
+
+  service.initialize();
+
+  const result = await service.completeInitialOnboarding(payload);
+  const activeGoal = result.state.goals.find((goal) => goal.id === result.state.plan.activeGoalId);
+
+  assert.equal((activeGoal as typeof activeGoal & { domain?: string })?.domain, 'fitness');
+  assert.match(result.state.plan.drafts[0]?.summary ?? '', /健身|训练|恢复|动作标准/);
+});
+
 test('saveTodayPlanningContext stores daily-only overrides without mutating the long-term profile and marks the current daily plan stale', () => {
   const { service } = createHarness();
   const initialState = service.initialize();
@@ -1162,6 +1194,52 @@ test('generateTodayPlan falls back to instrument-specific daily guidance when AI
   );
   assert.equal(
     activeDraft.todayPlan.practice.some((item) => /录音|节拍|音准|动作/.test(item.output)),
+    true,
+  );
+});
+
+test('generateTodayPlan falls back to fitness-specific daily guidance when AI generation fails', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => {
+      throw new Error('DeepSeek 当前无法执行 daily_plan_generation：缺少 Secret。');
+    },
+  });
+
+  const initialState = service.initialize();
+  const activeGoal = initialState.goals.find((goal) => goal.id === initialState.plan.activeGoalId);
+  assert.ok(activeGoal);
+
+  service.upsertLearningGoal({
+    ...activeGoal,
+    title: '力量训练增肌入门',
+    baseline: '卧推和深蹲动作容易变形，热身不稳定。',
+    successMetric: '连续 4 周记录每周 3 次力量训练重量',
+    domain: 'fitness',
+  } as never);
+  service.saveTodayPlanningContext({
+    goalId: initialState.plan.activeGoalId,
+    availableDuration: '今天 40 分钟',
+    studyWindow: '今晚 20:00 - 20:40',
+    note: '今天先把热身、主训练组和训练记录跑顺',
+  });
+
+  const nextState = await service.generateTodayPlan({
+    goalId: initialState.plan.activeGoalId,
+  });
+
+  const activeDraft = nextState.plan.drafts.find((draft) => draft.goalId === nextState.plan.activeGoalId);
+
+  assert.ok(activeDraft?.todayPlan);
+  assert.equal(
+    activeDraft.todayPlan.resources.some((resource) => /动作|训练模板|恢复|安全提示/.test(`${resource.title} ${resource.reason}`)),
+    true,
+  );
+  assert.equal(
+    activeDraft.todayPlan.steps.some((step) => /热身|动作标准|主训练组|拉伸|恢复/.test(`${step.title} ${step.detail}`)),
+    true,
+  );
+  assert.equal(
+    activeDraft.todayPlan.practice.some((item) => /组数|次数|重量|RPE|恢复/.test(`${item.detail} ${item.output}`)),
     true,
   );
 });

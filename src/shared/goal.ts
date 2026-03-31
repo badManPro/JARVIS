@@ -74,11 +74,48 @@ const instrumentDomainKeywords = [
   '节拍器',
 ];
 
+const fitnessDomainKeywords = [
+  '健身',
+  '力量训练',
+  '增肌',
+  '减脂',
+  '燃脂',
+  '体能',
+  '跑步',
+  '慢跑',
+  '马拉松',
+  '配速',
+  '有氧',
+  '心肺',
+  'hiit',
+  'tabata',
+  '深蹲',
+  '卧推',
+  '硬拉',
+  '杠铃',
+  '哑铃',
+  '引体向上',
+  '俯卧撑',
+  '平板支撑',
+  '波比',
+  '自重',
+  '徒手',
+  '居家健身',
+  '核心',
+  '瑜伽',
+  '拉伸',
+  '柔韧',
+  'mobility',
+  'cardio',
+  'run',
+  'running',
+];
+
 export const learningGoalDomainOptions: Array<{ value: LearningGoalDomain; label: string }> = [
   { value: 'general', label: '通用' },
   { value: 'programming', label: '编程' },
   { value: 'instrument', label: '乐器' },
-  { value: 'fitness', label: '健身（待细化）' },
+  { value: 'fitness', label: '健身' },
 ];
 
 export function normalizeLearningGoalRole(role?: string): LearningGoalRole {
@@ -111,6 +148,10 @@ export function inferLearningGoalDomain(goal: Partial<Pick<LearningGoalInput, 't
 
   if (instrumentDomainKeywords.some((keyword) => combined.includes(keyword))) {
     return 'instrument' as const;
+  }
+
+  if (fitnessDomainKeywords.some((keyword) => combined.includes(keyword))) {
+    return 'fitness' as const;
   }
 
   return 'general' as const;
