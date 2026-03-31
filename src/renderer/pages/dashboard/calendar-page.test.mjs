@@ -11,7 +11,8 @@ test('calendar page renders the weekly scheduling preview, delayed carry-over, a
   const calendarPageSource = fs.readFileSync(calendarPagePath, 'utf8');
 
   assert.match(calendarPageSource, /dashboard\.scheduling|state\) => state\.dashboard\.scheduling/);
-  assert.match(calendarPageSource, /todayPlan\.tomorrowCandidates|tomorrowCandidates/);
+  assert.match(calendarPageSource, /weeklyPlan/);
+  assert.match(calendarPageSource, /delayedPlacements/);
   assert.match(calendarPageSource, /一周时间块/);
   assert.match(calendarPageSource, /周一|周二|周三|周四|周五|周六|周日/);
   assert.match(calendarPageSource, /主目标优先占位/);
@@ -21,4 +22,6 @@ test('calendar page renders the weekly scheduling preview, delayed carry-over, a
   assert.match(calendarPageSource, /guardrail/);
   assert.match(calendarPageSource, /calendarHint/);
   assert.match(calendarPageSource, /冲突时/);
+  assert.match(calendarPageSource, /remainingAnchorMinutes|remainingSupportMinutes/);
+  assert.match(calendarPageSource, /assignedLane|movedReason/);
 });

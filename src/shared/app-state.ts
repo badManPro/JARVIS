@@ -371,6 +371,43 @@ export type DashboardGoalSchedulingItem = {
   focusLabel: string;
 };
 
+export type DashboardDelayedPlacement = {
+  stepId: string;
+  title: string;
+  detail: string;
+  duration: string;
+  durationMinutes: number;
+  statusNote: string;
+  goalId: string;
+  goalTitle: string;
+  goalRole: LearningGoalRole;
+  strategyLabel: string;
+  assignedDayLabel: string;
+  assignedLane: DashboardSchedulingLane;
+  movedFromDayLabel?: string;
+  movedReason?: string;
+  overflowMinutes: number;
+};
+
+export type DashboardWeeklyScheduleDay = {
+  label: string;
+  anchorGoalId: string;
+  anchorGoalTitle: string;
+  supportGoalId: string | null;
+  supportGoalTitle: string;
+  supportGoalRole: LearningGoalRole | null;
+  supportGoalFocusLabel: string;
+  anchorShare: number;
+  supportShare: number;
+  anchorMinutes: number;
+  supportMinutes: number;
+  remainingAnchorMinutes: number;
+  remainingSupportMinutes: number;
+  anchorCarryovers: DashboardDelayedPlacement[];
+  supportCarryovers: DashboardDelayedPlacement[];
+  note: string;
+};
+
 export type DashboardGoalScheduling = {
   primaryGoalId: string;
   primaryGoalTitle: string;
@@ -379,6 +416,8 @@ export type DashboardGoalScheduling = {
   calendarHint: string;
   delayedCandidateCount: number;
   allocations: DashboardGoalSchedulingItem[];
+  delayedPlacements: DashboardDelayedPlacement[];
+  weeklyPlan: DashboardWeeklyScheduleDay[];
 };
 
 export type AppState = {
@@ -582,6 +621,8 @@ function createDashboardSkeleton(): AppState['dashboard'] {
       calendarHint: '日历排程需要至少一个主目标后才会生成。',
       delayedCandidateCount: 0,
       allocations: [],
+      delayedPlacements: [],
+      weeklyPlan: [],
     },
   };
 }
@@ -1508,7 +1549,7 @@ function buildDashboardOnboarding(
 function buildExecutionDerivedState(state: AppState) {
   const activeGoal = getActiveConversationGoal(state.goals, state.plan.activeGoalId);
   const activeDraft = getActiveConversationDraft(state.plan);
-  const scheduling = buildDashboardGoalScheduling(state.goals, state.plan);
+  const scheduling = buildDashboardGoalScheduling(state.goals, state.plan, state.profile.timeBudget);
   const tasks = (activeDraft?.tasks ?? []).map((task) => normalizePlanTask(task));
   const summary = buildTaskStatusSummary(tasks);
   const totalMinutes = summary.doneTasks.reduce((minutes, task) => minutes + parseTaskDurationMinutes(task.duration), 0);
