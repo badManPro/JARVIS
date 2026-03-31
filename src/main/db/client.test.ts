@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { createDatabase } from './client.js';
+import { LATEST_DATABASE_SCHEMA_VERSION } from './migrations.js';
 
 function getSchemaVersion(sqlite: Database.Database) {
   const row = sqlite.pragma('user_version', { simple: true });
@@ -19,7 +20,7 @@ function createTempDbFile() {
 test('createDatabase sets the latest schema version for a fresh database', () => {
   const { sqlite } = createDatabase(':memory:');
 
-  assert.equal(getSchemaVersion(sqlite), 5);
+  assert.equal(getSchemaVersion(sqlite), LATEST_DATABASE_SCHEMA_VERSION);
 
   sqlite.close();
 });
@@ -58,9 +59,10 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
   const planTaskColumns = migrated.prepare('PRAGMA table_info(plan_tasks)').all() as Array<{ name: string }>;
   const learningPlanDraftColumns = migrated.prepare('PRAGMA table_info(learning_plan_drafts)').all() as Array<{ name: string }>;
   const learningPlanColumns = migrated.prepare('PRAGMA table_info(learning_plans)').all() as Array<{ name: string }>;
+  const learningGoalColumns = migrated.prepare('PRAGMA table_info(learning_goals)').all() as Array<{ name: string }>;
   const userProfileColumns = migrated.prepare('PRAGMA table_info(user_profiles)').all() as Array<{ name: string }>;
 
-  assert.equal(getSchemaVersion(migrated), 5);
+  assert.equal(getSchemaVersion(migrated), LATEST_DATABASE_SCHEMA_VERSION);
   assert.deepEqual(
     planTaskColumns.map((column) => column.name).sort(),
     [
@@ -93,6 +95,23 @@ test('createDatabase upgrades a legacy database to the latest schema version', (
   assert.deepEqual(
     learningPlanColumns.map((column) => column.name),
     ['id', 'active_goal_id', 'updated_at'],
+  );
+  assert.deepEqual(
+    learningGoalColumns.map((column) => column.name).sort(),
+    [
+      'baseline',
+      'cycle',
+      'domain',
+      'id',
+      'motivation',
+      'priority',
+      'role',
+      'schedule_weight',
+      'status',
+      'success_metric',
+      'title',
+      'updated_at',
+    ].sort(),
   );
   assert.deepEqual(
     userProfileColumns.map((column) => column.name).sort(),
