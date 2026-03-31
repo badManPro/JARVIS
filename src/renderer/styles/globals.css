@@ -157,6 +157,55 @@ select {
   }
 }
 
+@keyframes companion-lean-in {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  22% {
+    transform: translate(-4px, -2px) rotate(-2.6deg);
+  }
+
+  48% {
+    transform: translate(2px, -6px) rotate(1.4deg);
+  }
+
+  76% {
+    transform: translate(-2px, -1px) rotate(-0.8deg);
+  }
+}
+
+@keyframes companion-celebrate-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  24% {
+    transform: translateY(-11px) scale(1.04);
+  }
+
+  55% {
+    transform: translateY(1px) scale(0.985);
+  }
+
+  78% {
+    transform: translateY(-4px) scale(1.02);
+  }
+}
+
+@keyframes companion-hover {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  50% {
+    transform: translateY(-6px) rotate(1.2deg);
+  }
+}
+
 @keyframes companion-orbit {
   0% {
     transform: rotate(0deg);
@@ -358,6 +407,7 @@ select {
     box-shadow:
       12px 12px 24px rgba(182, 194, 208, 0.32),
       -10px -10px 22px rgba(255, 255, 255, 0.92);
+    transform-origin: center bottom;
     animation: companion-bob 3.6s ease-in-out infinite;
   }
 
@@ -369,6 +419,18 @@ select {
     background: linear-gradient(145deg, rgba(244, 252, 247, 0.98), rgba(221, 241, 230, 0.96));
   }
 
+  .desktop-companion-avatar[data-motion='lean-in'] {
+    animation: companion-lean-in 2.8s ease-in-out infinite;
+  }
+
+  .desktop-companion-avatar[data-motion='bounce'] {
+    animation: companion-celebrate-hop 1.9s ease-in-out infinite;
+  }
+
+  .desktop-companion-avatar[data-motion='hover'] {
+    animation: companion-hover 3.4s ease-in-out infinite;
+  }
+
   .desktop-companion-orbit {
     position: absolute;
     inset: 0.55rem;
@@ -376,6 +438,21 @@ select {
     border-radius: 9999px;
     opacity: 0.72;
     animation: companion-orbit 8s linear infinite;
+  }
+
+  .desktop-companion-avatar[data-motion='lean-in'] .desktop-companion-orbit {
+    inset: 0.45rem;
+    opacity: 0.82;
+  }
+
+  .desktop-companion-avatar[data-motion='bounce'] .desktop-companion-orbit {
+    inset: 0.35rem;
+    opacity: 0.9;
+    animation-duration: 4.8s;
+  }
+
+  .desktop-companion-avatar[data-motion='hover'] .desktop-companion-orbit {
+    animation-duration: 7.2s;
   }
 
   .desktop-companion-face {
@@ -390,6 +467,24 @@ select {
     border-radius: 1.25rem;
     background: rgba(255, 255, 255, 0.78);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  }
+
+  .desktop-companion-brows {
+    display: flex;
+    gap: 0.55rem;
+    margin-bottom: -0.15rem;
+  }
+
+  .desktop-companion-brow {
+    width: 0.85rem;
+    height: 0.14rem;
+    border-radius: 9999px;
+    background: rgba(74, 84, 101, 0.72);
+    transform-origin: center;
+    transition:
+      transform 220ms ease,
+      opacity 220ms ease,
+      width 220ms ease;
   }
 
   .desktop-companion-eyes {
@@ -407,21 +502,102 @@ select {
   }
 
   .desktop-companion-mouth {
-    width: 1.15rem;
-    height: 0.55rem;
+    width: 1.2rem;
+    height: 0.48rem;
     border-bottom: 0.18rem solid #2f3645;
     border-radius: 0 0 9999px 9999px;
   }
 
-  .desktop-companion-mouth.is-alert {
-    width: 0.9rem;
+  .desktop-companion-avatar[data-expression='alert'] .desktop-companion-face {
+    background: rgba(255, 252, 250, 0.86);
+  }
+
+  .desktop-companion-avatar[data-expression='alert'] .desktop-companion-brow:first-child {
+    transform: rotate(18deg);
+  }
+
+  .desktop-companion-avatar[data-expression='alert'] .desktop-companion-brow:last-child {
+    transform: rotate(-18deg);
+  }
+
+  .desktop-companion-avatar[data-expression='alert'] .desktop-companion-eye {
+    width: 0.56rem;
+    height: 0.96rem;
+  }
+
+  .desktop-companion-avatar[data-expression='alert'] .desktop-companion-mouth {
+    width: 0.96rem;
     height: 0.05rem;
   }
 
-  .desktop-companion-mouth.is-happy {
+  .desktop-companion-avatar[data-expression='cheerful'] .desktop-companion-face {
+    background: rgba(255, 255, 255, 0.86);
+  }
+
+  .desktop-companion-avatar[data-expression='cheerful'] .desktop-companion-brow {
+    width: 0.72rem;
+    opacity: 0.42;
+    transform: translateY(-0.08rem);
+  }
+
+  .desktop-companion-avatar[data-expression='cheerful'] .desktop-companion-eye {
+    width: 0.72rem;
+    height: 0.42rem;
+    background: transparent;
+    border-top: 0.18rem solid #2f3645;
+    border-radius: 9999px;
+  }
+
+  .desktop-companion-avatar[data-expression='cheerful'] .desktop-companion-mouth {
     width: 1.4rem;
     height: 0.72rem;
     border-bottom-width: 0.22rem;
+  }
+
+  .desktop-companion-avatar[data-expression='steady'] .desktop-companion-brow {
+    width: 0.76rem;
+    opacity: 0.58;
+    transform: translateY(-0.04rem);
+  }
+
+  .desktop-companion-avatar[data-expression='steady'] .desktop-companion-eye {
+    width: 0.48rem;
+    height: 0.72rem;
+    opacity: 0.9;
+  }
+
+  .desktop-companion-avatar[data-expression='steady'] .desktop-companion-mouth {
+    width: 1.24rem;
+    height: 0.42rem;
+    border-bottom-color: #4b5668;
+  }
+
+  .desktop-companion-presence {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .desktop-companion-presence-card {
+    border-radius: 1.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    background: rgba(255, 255, 255, 0.76);
+    padding: 0.8rem 0.9rem;
+  }
+
+  .desktop-companion-presence-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #718096;
+  }
+
+  .desktop-companion-presence-value {
+    margin-top: 0.35rem;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #0f172a;
   }
 
   .desktop-companion-duty {

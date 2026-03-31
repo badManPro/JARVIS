@@ -14,12 +14,24 @@ type DesktopCompanionProps = {
 
 type CompanionMode = 'reminder' | 'celebration' | 'status';
 
+type CompanionMotion = 'lean-in' | 'bounce' | 'hover';
+
+type CompanionExpression = 'alert' | 'cheerful' | 'steady';
+
+type CompanionPresence = {
+  motion: CompanionMotion;
+  motionLabel: string;
+  expression: CompanionExpression;
+  expressionLabel: string;
+};
+
 type CompanionBrief = {
   mode: CompanionMode;
   label: string;
   title: string;
   detail: string;
   note: string;
+  presence: CompanionPresence;
   chips: string[];
   actionLabel: string;
   actionPageId: string;
@@ -42,6 +54,34 @@ const companionDuties = [
     detail: '解释系统为什么重排、为什么建议当前动作。',
   },
 ];
+
+const companionPresenceByMode: Record<CompanionMode, CompanionPresence> = {
+  reminder: {
+    motion: 'lean-in',
+    motionLabel: '前倾提醒',
+    expression: 'alert',
+    expressionLabel: '警觉聚焦',
+  },
+  celebration: {
+    motion: 'bounce',
+    motionLabel: '轻跳庆祝',
+    expression: 'cheerful',
+    expressionLabel: '开心微笑',
+  },
+  status: {
+    motion: 'hover',
+    motionLabel: '悬停同步',
+    expression: 'steady',
+    expressionLabel: '平静确认',
+  },
+};
+
+function withPresence(brief: Omit<CompanionBrief, 'presence'>): CompanionBrief {
+  return {
+    ...brief,
+    presence: companionPresenceByMode[brief.mode],
+  };
+}
 
 function getPageTitle(pageId: string) {
   return pages.find((page) => page.id === pageId)?.title ?? '当前页面';
@@ -68,7 +108,7 @@ function buildCelebrationBrief(activeDraft: LearningPlanDraft | null): Companion
 
   const nextFocusStep = getFocusTodayPlanStep(activeDraft);
 
-  return {
+  return withPresence({
     mode: 'celebration',
     label: '角色庆祝',
     title: nextFocusStep
@@ -85,7 +125,7 @@ function buildCelebrationBrief(activeDraft: LearningPlanDraft | null): Companion
     ],
     actionLabel: '查看今日执行',
     actionPageId: 'today',
-  };
+  });
 }
 
 function buildCompanionBrief({
@@ -101,7 +141,7 @@ function buildCompanionBrief({
 }): CompanionBrief {
   const nextOnboardingStep = dashboard.onboarding.steps.find((step) => step.status !== 'complete') ?? dashboard.onboarding.steps[0];
   if (dashboard.onboarding.active) {
-    return {
+    return withPresence({
       mode: 'reminder',
       label: '角色提醒',
       title: `先完成：${nextOnboardingStep?.actionLabel ?? '开始建档'}`,
@@ -114,12 +154,12 @@ function buildCompanionBrief({
       ],
       actionLabel: nextOnboardingStep?.actionLabel ?? '开始建档',
       actionPageId: nextOnboardingStep?.pageId ?? 'today',
-    };
+    });
   }
 
   const primaryRisk = dashboard.riskSignals[0] ?? null;
   if (primaryRisk?.level === 'high') {
-    return {
+    return withPresence({
       mode: 'reminder',
       label: '角色提醒',
       title: primaryRisk.title,
@@ -132,11 +172,11 @@ function buildCompanionBrief({
       ],
       actionLabel: '处理当前风险',
       actionPageId: resolveRiskPageId(primaryRisk),
-    };
+    });
   }
 
   if (dashboard.priorityAction.kind === 'start') {
-    return {
+    return withPresence({
       mode: 'reminder',
       label: '角色提醒',
       title: dashboard.priorityAction.title,
@@ -149,7 +189,7 @@ function buildCompanionBrief({
       ],
       actionLabel: `前往${getPageTitle(currentPage)}`,
       actionPageId: currentPage,
-    };
+    });
   }
 
   const celebrationBrief = buildCelebrationBrief(activeDraft);
@@ -159,7 +199,7 @@ function buildCompanionBrief({
 
   const primaryAllocation = dashboard.scheduling.allocations.find((allocation) => allocation.role === 'main') ?? null;
   if (dashboard.scheduling.allocations.length) {
-    return {
+    return withPresence({
       mode: 'status',
       label: '角色状态反馈',
       title: currentPage === 'calendar'
@@ -176,10 +216,10 @@ function buildCompanionBrief({
       ],
       actionLabel: currentPage === 'calendar' ? '查看当前排程' : `前往${getPageTitle('calendar')}`,
       actionPageId: 'calendar',
-    };
+    });
   }
 
-  return {
+  return withPresence({
     mode: 'status',
     label: '角色状态反馈',
     title: dashboard.priorityAction.title,
@@ -192,7 +232,7 @@ function buildCompanionBrief({
     ],
     actionLabel: `回到${getPageTitle(currentPage)}`,
     actionPageId: currentPage,
-  };
+  });
 }
 
 function CompanionModeIcon({ mode }: { mode: CompanionMode }) {
@@ -228,14 +268,23 @@ export function DesktopCompanion({
     <div className="desktop-companion-shell hidden xl:block" aria-live="polite">
       <div className="desktop-companion-panel" data-mode={brief.mode}>
         <div className="flex items-start gap-4">
-          <div className={cn('desktop-companion-avatar', `is-${brief.mode}`)} aria-hidden="true">
+          <div
+            className={cn('desktop-companion-avatar', `is-${brief.mode}`)}
+            data-motion={brief.presence.motion}
+            data-expression={brief.presence.expression}
+            aria-hidden="true"
+          >
             <span className="desktop-companion-orbit" />
             <div className="desktop-companion-face">
+              <div className="desktop-companion-brows">
+                <span className="desktop-companion-brow" />
+                <span className="desktop-companion-brow" />
+              </div>
               <div className="desktop-companion-eyes">
                 <span className="desktop-companion-eye" />
                 <span className="desktop-companion-eye" />
               </div>
-              <span className={cn('desktop-companion-mouth', brief.mode === 'reminder' && 'is-alert', brief.mode === 'celebration' && 'is-happy')} />
+              <span className="desktop-companion-mouth" />
             </div>
           </div>
 
@@ -259,6 +308,17 @@ export function DesktopCompanion({
               {chip}
             </Badge>
           ))}
+        </div>
+
+        <div className="desktop-companion-presence mt-4">
+          <div className="desktop-companion-presence-card">
+            <div className="desktop-companion-presence-label">当前动作</div>
+            <div className="desktop-companion-presence-value">{brief.presence.motionLabel}</div>
+          </div>
+          <div className="desktop-companion-presence-card">
+            <div className="desktop-companion-presence-label">当前表情</div>
+            <div className="desktop-companion-presence-value">{brief.presence.expressionLabel}</div>
+          </div>
         </div>
 
         <div className="mt-4 space-y-2">

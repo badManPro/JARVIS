@@ -22,6 +22,18 @@ test('desktop companion defines reminder, celebration, and status-feedback dutie
   assert.match(companionSource, /todayPlan\?\.steps/);
 });
 
+test('desktop companion maps each duty mode to explicit motion and expression states', () => {
+  assert.match(companionSource, /const companionPresenceByMode/);
+  assert.match(companionSource, /motion: 'lean-in'/);
+  assert.match(companionSource, /motion: 'bounce'/);
+  assert.match(companionSource, /motion: 'hover'/);
+  assert.match(companionSource, /expression: 'alert'/);
+  assert.match(companionSource, /expression: 'cheerful'/);
+  assert.match(companionSource, /expression: 'steady'/);
+  assert.match(companionSource, /当前动作/);
+  assert.match(companionSource, /当前表情/);
+});
+
 test('desktop companion stays wired into shell navigation and change capture actions', () => {
   assert.match(companionSource, /currentPage: string/);
   assert.match(companionSource, /onOpenCoach: \(\) => void/);
@@ -30,5 +42,9 @@ test('desktop companion stays wired into shell navigation and change capture act
   assert.match(companionSource, /onClick=\{onOpenCoach\}/);
   assert.match(companionSource, /desktop-companion-panel/);
   assert.match(companionSource, /desktop-companion-avatar/);
+  assert.match(companionSource, /data-motion=\{brief\.presence\.motion\}/);
+  assert.match(companionSource, /data-expression=\{brief\.presence\.expression\}/);
+  assert.match(companionSource, /desktop-companion-brow/);
+  assert.match(companionSource, /desktop-companion-presence-card/);
   assert.match(companionSource, /data-duty=/);
 });
