@@ -18,7 +18,7 @@ import {
   taskStatusLabel,
   textareaClassName,
 } from '@/pages/dashboard/shared';
-import type { LearningPlanDependencyStrategy, LearningPlanDraft, TaskStatus, TodayPlanStep } from '@shared/app-state';
+import type { LearningPlanDraft, TaskStatus, TodayPlanDependencyStrategy, TodayPlanStep } from '@shared/app-state';
 
 type TodayPlanDisplayState =
   | { status: 'missing'; plan: null }

@@ -9,6 +9,11 @@ const signalExitCodes = {
   SIGINT: 130,
   SIGTERM: 143,
 };
+const electronPackageCandidates = [
+  path.resolve(workspaceRoot, 'node_modules/electron'),
+  path.resolve(workspaceRoot, 'node_modules/.ignored/electron'),
+  path.resolve(workspaceRoot, 'node_modules/.ignored_electron'),
+];
 
 let requestedSignal = null;
 let activeChild = null;
@@ -30,13 +35,7 @@ process.on('SIGTERM', () => {
 });
 
 function resolveElectronCommand() {
-  const packageCandidates = [
-    path.resolve(workspaceRoot, 'node_modules/electron'),
-    path.resolve(workspaceRoot, 'node_modules/.ignored/electron'),
-    path.resolve(workspaceRoot, 'node_modules/.ignored_electron'),
-  ];
-
-  for (const packageDir of packageCandidates) {
+  for (const packageDir of electronPackageCandidates) {
     const pathFile = path.join(packageDir, 'path.txt');
     if (!fs.existsSync(pathFile)) {
       continue;
@@ -57,6 +56,17 @@ function resolveElectronCommand() {
     command: npmCommand,
     args: ['exec', 'electron', '--', '.'],
   };
+}
+
+function resolveElectronInstaller() {
+  for (const packageDir of electronPackageCandidates) {
+    const installScriptPath = path.join(packageDir, 'install.js');
+    if (fs.existsSync(installScriptPath)) {
+      return installScriptPath;
+    }
+  }
+
+  return null;
 }
 
 function run(command, args, options = {}) {
@@ -104,12 +114,20 @@ function run(command, args, options = {}) {
 
 async function main() {
   let launchError = null;
-  const electronCommand = resolveElectronCommand();
 
   backupCurrentBinary();
   await run(npmCommand, ['run', 'rebuild:native:electron']);
 
   try {
+    let electronCommand = resolveElectronCommand();
+    const electronInstallerPath = resolveElectronInstaller();
+
+    if (electronInstallerPath && electronCommand.command === npmCommand) {
+      console.warn('Electron runtime missing from node_modules; running install.js to restore it before launch.');
+      await run(process.execPath, [electronInstallerPath]);
+      electronCommand = resolveElectronCommand();
+    }
+
     await run(
       npmCommand,
       ['exec', 'wait-on', '--', 'tcp:5173', 'dist-electron/src/main/index.js'],
