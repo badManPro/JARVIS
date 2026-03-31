@@ -70,6 +70,7 @@ test('AiService routes plan_generation to the configured provider and forwards r
     goal: seedState.goals[0],
     profile: seedState.profile,
     currentDraft: seedState.plan.drafts[0],
+    scheduling: seedState.dashboard.scheduling,
   });
 
   assert.equal(adapterCalls.length, 1);

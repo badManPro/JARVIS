@@ -109,6 +109,22 @@ function formatReflectionContext(
   ].filter(Boolean) as string[];
 }
 
+function formatSchedulingContext(
+  scheduling: Extract<AiRequest, { capability: 'plan_generation' | 'daily_plan_generation' }>['scheduling'],
+  currentGoalId: string,
+) {
+  const otherGoals = scheduling.allocations.filter((allocation) => allocation.goalId !== currentGoalId);
+
+  return [
+    `调度预览：${scheduling.headline}`,
+    `调度守则：${scheduling.guardrail}`,
+    `日历前置输入：${scheduling.calendarHint}`,
+    otherGoals.length
+      ? `其他目标：${otherGoals.map((allocation) => `${allocation.title}（${allocation.role}，${allocation.scheduledShare}%）`).join('；')}`
+      : '其他目标：当前没有副目标补位项。',
+  ];
+}
+
 export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capability: 'plan_generation' }>) {
   return [
     '你是一个学习规划助手。请只输出 JSON，不要输出 Markdown。',
@@ -117,6 +133,8 @@ export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capabili
     '额外要求：milestones 固定输出 3 条，按周里程碑组织，title 请直接写成“第 1 周：...”这类形式。',
     '额外要求：学习约束决定任务强度和节奏；年龄阶段、性格与 MBTI 只影响表达方式、拆解粒度、提醒方式，不要基于性别做任何强决策。',
     `目标名称：${request.goal.title}`,
+    `当前目标角色：${request.goal.role}`,
+    `当前目标调度权重：${request.goal.scheduleWeight}`,
     `目标动机：${request.goal.motivation}`,
     `当前基础：${request.goal.baseline}`,
     `目标周期：${request.goal.cycle}`,
@@ -138,6 +156,7 @@ export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capabili
     `反馈语气：${request.profile.feedbackTone || '暂无'}`,
     `自动调整边界：${request.profile.autonomyPreference || '暂无'}`,
     request.currentDraft ? `当前草案摘要：${request.currentDraft.summary}` : '当前没有既有草案。',
+    ...formatSchedulingContext(request.scheduling, request.goal.id),
   ].join('\n');
 }
 
@@ -148,6 +167,8 @@ export function buildDailyPlanGenerationPrompt(request: Extract<AiRequest, { cap
     '要求：中文；输出必须可直接执行；steps 2-5 条；resources 1-3 条；practice 1-3 条。',
     '必须显式给出：时间块、学习步骤、资源、练习、今日产出。资源可以为空 URL，但标题和推荐理由必须具体。',
     `目标名称：${request.goal.title}`,
+    `当前目标角色：${request.goal.role}`,
+    `当前目标调度权重：${request.goal.scheduleWeight}`,
     `当前基础：${request.goal.baseline}`,
     `当前粗版计划：${request.currentDraft.summary}`,
     `当前周里程碑：${request.currentDraft.milestones.map((milestone) => `${milestone.title}｜${milestone.focus}`).join('；') || '暂无'}`,
@@ -160,6 +181,7 @@ export function buildDailyPlanGenerationPrompt(request: Extract<AiRequest, { cap
     `规划倾向：${request.profile.planningStyle || '先确认主线，再拆到当天动作'}`,
     `决策支持：${request.profile.decisionSupportLevel || '系统直接给出下一步'}`,
     `自动调整边界：${request.profile.autonomyPreference || '小调整自动执行，大调整先确认'}`,
+    ...formatSchedulingContext(request.scheduling, request.goal.id),
   ].join('\n');
 }
 

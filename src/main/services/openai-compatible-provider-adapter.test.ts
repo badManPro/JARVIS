@@ -91,6 +91,44 @@ test('OpenAiCompatibleProviderAdapter includes reflection context in plan adjust
   assert.match(prompt, /把每次任务压缩到 30-45 分钟/);
 });
 
+test('OpenAiCompatibleProviderAdapter includes main-goal continuity scheduling context in plan generation prompts', async () => {
+  let requestBody: { messages?: Array<{ content?: string }> } = {};
+  const adapter = new OpenAiCompatibleProviderAdapter({
+    fetchFn: async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: '{"title":"AI 主线草案","summary":"保持主线连续推进","basis":["主目标优先"],"stages":[{"title":"阶段 1","outcome":"完成主线起步","progress":"进行中"}],"milestones":[{"title":"第 1 周：稳定主线投入","focus":"先保障主目标","outcome":"形成主线连续性","status":"current"},{"title":"第 2 周：副目标补位","focus":"利用剩余时间补位","outcome":"副目标不过度打断主线","status":"upcoming"},{"title":"第 3 周：收束本轮成果","focus":"回到主线交付","outcome":"得到最小成果","status":"upcoming"}],"tasks":[{"title":"主线任务","duration":"30 分钟","note":"先保主线","status":"todo"}]}',
+              },
+            },
+          ],
+        }),
+      } as unknown as Response;
+    },
+  });
+
+  await adapter.execute({
+    provider: createProvider(),
+    request: {
+      capability: 'plan_generation',
+      goal: seedState.goals[0],
+      profile: seedState.profile,
+      currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
+    },
+  });
+
+  const prompt = requestBody.messages?.[1]?.content ?? '';
+  assert.match(prompt, /当前目标角色：main/);
+  assert.match(prompt, /主目标优先占位 70%/);
+  assert.match(prompt, /副目标补位/);
+  assert.match(prompt, /形成稳定的技术复盘输出习惯/);
+});
+
 test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan generation requests', async () => {
   let requestBody: { messages?: Array<{ content?: string }> } = {};
   const adapter = new OpenAiCompatibleProviderAdapter({
@@ -118,6 +156,7 @@ test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan ge
       goal: seedState.goals[0],
       profile: seedState.profile,
       currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
       todayContext: {
         availableDuration: '今天 30 分钟',
         studyWindow: '今晚 20:30 - 21:00',
@@ -135,6 +174,9 @@ test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan ge
   assert.match(prompt, /练习/);
   assert.match(prompt, /今日产出/);
   assert.match(prompt, /今天 30 分钟/);
+  assert.match(prompt, /当前目标角色：main/);
+  assert.match(prompt, /主目标优先占位 70%/);
+  assert.match(prompt, /副目标补位/);
   assert.equal(result.plan.todayGoal, '完成 Python 虚拟环境和 print/input 语法入门');
   assert.equal(result.plan.resources[0]?.title, 'Python 官方教程');
 });

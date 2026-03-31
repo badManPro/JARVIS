@@ -1,3 +1,5 @@
+import { buildDashboardGoalScheduling } from './scheduling.js';
+
 export type ProviderId = 'openai' | 'codex' | 'glm' | 'kimi' | 'deepseek' | 'custom';
 export type GoalStatus = 'active' | 'paused' | 'completed';
 export type LearningGoalRole = 'main' | 'secondary';
@@ -356,6 +358,29 @@ export type DashboardOnboardingState = {
   };
 };
 
+export type DashboardSchedulingLane = 'anchor' | 'support';
+
+export type DashboardGoalSchedulingItem = {
+  goalId: string;
+  title: string;
+  role: LearningGoalRole;
+  lane: DashboardSchedulingLane;
+  rawWeight: number;
+  scheduledShare: number;
+  delayedCandidateCount: number;
+  focusLabel: string;
+};
+
+export type DashboardGoalScheduling = {
+  primaryGoalId: string;
+  primaryGoalTitle: string;
+  headline: string;
+  guardrail: string;
+  calendarHint: string;
+  delayedCandidateCount: number;
+  allocations: DashboardGoalSchedulingItem[];
+};
+
 export type AppState = {
   profile: UserProfile;
   dashboard: {
@@ -370,6 +395,7 @@ export type AppState = {
     priorityAction: DashboardPriorityAction;
     riskSignals: DashboardRiskSignal[];
     onboarding: DashboardOnboardingState;
+    scheduling: DashboardGoalScheduling;
   };
   goals: LearningGoal[];
   plan: LearningPlanState;
@@ -547,6 +573,15 @@ function createDashboardSkeleton(): AppState['dashboard'] {
       completedCount: 0,
       totalCount: 4,
       steps: [],
+    },
+    scheduling: {
+      primaryGoalId: '',
+      primaryGoalTitle: '',
+      headline: '先创建主目标，系统才会生成调度预览。',
+      guardrail: '当前还没有可持续推进的主线，暂时无法安排主副目标占位。',
+      calendarHint: '日历排程需要至少一个主目标后才会生成。',
+      delayedCandidateCount: 0,
+      allocations: [],
     },
   };
 }
@@ -1141,6 +1176,7 @@ function buildPriorityAction(
   summary: ReturnType<typeof buildTaskStatusSummary>,
   defaultReflectionEntry: ReflectionEntry,
   onboarding: DashboardOnboardingState,
+  scheduling: DashboardGoalScheduling,
   conversationTags: string[],
   now: Date,
 ): DashboardPriorityAction {
@@ -1161,7 +1197,7 @@ function buildPriorityAction(
       kind: 'review',
       title: '重新生成今日计划',
       detail: '仅今天有效的时间块或节奏已变化，旧的学习步骤、资源和练习建议已过期。',
-      reason: '先按当天上下文重排，再开始执行，可以减少计划与现实的落差。',
+      reason: `先按当天上下文重排，再开始执行，可以减少计划与现实的落差。${scheduling.guardrail}`,
       duration: draft?.todayContext.availableDuration || todayPlanState.plan?.estimatedDuration || '10 分钟',
     };
   }
@@ -1171,7 +1207,7 @@ function buildPriorityAction(
       kind: 'start',
       title: '生成今日计划',
       detail: '先根据仅今天有效的时间块，生成学习步骤、资源、练习和今日产出。',
-      reason: '粗版路径已经准备好，但今天的细版执行安排仍未生成。',
+      reason: `粗版路径已经准备好，但今天的细版执行安排仍未生成。${scheduling.guardrail}`,
       duration: draft?.todayContext.availableDuration || '10 分钟',
     };
   }
@@ -1184,7 +1220,9 @@ function buildPriorityAction(
         kind: isInProgress ? 'continue' : 'start',
         title: `${isInProgress ? '继续当前步骤' : '开始当前步骤'}：${focusStep.title}`,
         detail: focusStep.statusNote?.trim() || focusStep.detail || todayPlanState.plan.deliverable || `当前阶段：${stageTitle}`,
-        reason: '今天的步骤级执行单已经准备好，先推进当前焦点动作，再决定是否需要调整后续步骤。',
+        reason: scheduling.allocations.length > 1
+          ? '今天的步骤级执行单已经准备好，先推进当前主目标的连续动作；副目标会在剩余时间补位。'
+          : '今天的步骤级执行单已经准备好，先把这条主线稳定推进。',
         duration: focusStep.duration || todayPlanState.plan.estimatedDuration || '30 分钟',
       };
     }
@@ -1205,8 +1243,8 @@ function buildPriorityAction(
       title: `${isInProgress ? '继续推进' : '开始执行'}：${focusTask.title}`,
       detail: focusTask.statusNote?.trim() || focusTask.note.trim() || `当前阶段：${stageTitle}`,
       reason: isInProgress
-        ? '该任务已在进行中，先完成当前上下文能降低切换成本。'
-        : `这是 ${stageTitle} 当前最直接的下一步。`,
+        ? '该任务已在进行中，先完成当前主目标上下文能降低切换成本。'
+        : `这是 ${stageTitle} 当前最直接的下一步，先保证主目标不断线。`,
       duration: focusTask.duration || '15 分钟',
       taskId: focusTask.id,
     };
@@ -1310,13 +1348,34 @@ function buildReflectionRiskSignals(entries: ReflectionEntry[]): DashboardRiskSi
   return signals;
 }
 
+function buildSchedulingRiskSignals(scheduling: DashboardGoalScheduling): DashboardRiskSignal[] {
+  const primaryAllocation = scheduling.allocations.find((allocation) => allocation.role === 'main');
+  const hasSecondaryGoals = scheduling.allocations.some((allocation) => allocation.role === 'secondary');
+
+  if (!primaryAllocation || !hasSecondaryGoals || primaryAllocation.delayedCandidateCount === 0) {
+    return [];
+  }
+
+  return [
+    {
+      id: 'main-goal-continuity',
+      level: 'high',
+      title: '主目标连续推进受阻',
+      detail: `${scheduling.primaryGoalTitle} 已有 ${primaryAllocation.delayedCandidateCount} 个延期步骤待补回，继续切换副目标会放大主线断档。`,
+      action: `先补回主目标，再把剩余 ${100 - primaryAllocation.scheduledShare}% 时间留给副目标补位。`,
+    },
+  ];
+}
+
 function buildDashboardRiskSignals(
   summary: ReturnType<typeof buildTaskStatusSummary>,
   reflectionEntries: ReflectionEntry[],
   priorityAction: DashboardPriorityAction,
   onboarding: DashboardOnboardingState,
+  scheduling: DashboardGoalScheduling,
 ): DashboardRiskSignal[] {
   const combined = [
+    ...buildSchedulingRiskSignals(scheduling),
     ...buildTaskRiskSignals(summary),
     ...buildReflectionRiskSignals(reflectionEntries),
   ];
@@ -1340,7 +1399,7 @@ function buildDashboardRiskSignals(
         id: 'focus-discipline',
         level: 'low',
         title: '当前无明显风险',
-        detail: '执行节奏整体稳定，主要风险是任务切换过多打断连续性。',
+        detail: `${scheduling.headline}。当前主要风险是任务切换过多打断连续性。`,
         action: priorityAction.title,
       },
     ];
@@ -1449,6 +1508,7 @@ function buildDashboardOnboarding(
 function buildExecutionDerivedState(state: AppState) {
   const activeGoal = getActiveConversationGoal(state.goals, state.plan.activeGoalId);
   const activeDraft = getActiveConversationDraft(state.plan);
+  const scheduling = buildDashboardGoalScheduling(state.goals, state.plan);
   const tasks = (activeDraft?.tasks ?? []).map((task) => normalizePlanTask(task));
   const summary = buildTaskStatusSummary(tasks);
   const totalMinutes = summary.doneTasks.reduce((minutes, task) => minutes + parseTaskDurationMinutes(task.duration), 0);
@@ -1464,8 +1524,8 @@ function buildExecutionDerivedState(state: AppState) {
   });
   const defaultReflectionEntry = reflectionEntries.find((entry) => entry.period === DEFAULT_REFLECTION_PERIOD) ?? reflectionEntries[0] ?? createEmptyReflectionEntry(DEFAULT_REFLECTION_PERIOD);
   const onboarding = buildDashboardOnboarding(state, activeDraft, recentTaskExecutions);
-  const priorityAction = buildPriorityAction(activeDraft, focusTask, stageTitle, summary, defaultReflectionEntry, onboarding, state.conversation.tags, now);
-  const riskSignals = buildDashboardRiskSignals(summary, reflectionEntries, priorityAction, onboarding);
+  const priorityAction = buildPriorityAction(activeDraft, focusTask, stageTitle, summary, defaultReflectionEntry, onboarding, scheduling, state.conversation.tags, now);
+  const riskSignals = buildDashboardRiskSignals(summary, reflectionEntries, priorityAction, onboarding, scheduling);
   const alerts = riskSignals.map((signal) => `${signal.title}：${signal.detail}`);
   const nextActions = onboarding.active && !summary.total
     ? [
@@ -1498,6 +1558,7 @@ function buildExecutionDerivedState(state: AppState) {
       priorityAction,
       riskSignals,
       onboarding,
+      scheduling,
     },
     reflection: {
       ...state.reflection,
@@ -2945,6 +3006,7 @@ const baseSeedState: AppState = {
       totalCount: 4,
       steps: [],
     },
+    scheduling: createDashboardSkeleton().scheduling,
   },
   goals: [
     {

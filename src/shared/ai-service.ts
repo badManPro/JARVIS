@@ -41,6 +41,7 @@ export type AiPlanGenerationRequest = {
   goal: LearningGoal;
   profile: UserProfile;
   currentDraft?: LearningPlanDraft | null;
+  scheduling: AppState['dashboard']['scheduling'];
 };
 
 export type AiDailyPlanGenerationRequest = {
@@ -48,6 +49,7 @@ export type AiDailyPlanGenerationRequest = {
   goal: LearningGoal;
   profile: UserProfile;
   currentDraft: LearningPlanDraft;
+  scheduling: AppState['dashboard']['scheduling'];
   todayContext: LearningPlanDraft['todayContext'];
 };
 

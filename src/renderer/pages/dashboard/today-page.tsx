@@ -42,6 +42,11 @@ export function TodayPage({
   const activeGoal = getActiveGoal(goals, plan.activeGoalId);
   const activeDraft = getActiveDraft(plan);
   const primaryRisk = dashboard.riskSignals[0] ?? null;
+  const scheduling = dashboard.scheduling;
+  const primaryAllocation = scheduling.allocations.find((allocation) => allocation.goalId === activeGoal?.id) ?? scheduling.allocations[0] ?? null;
+  const secondaryShare = scheduling.allocations
+    .filter((allocation) => allocation.role === 'secondary')
+    .reduce((sum, allocation) => sum + allocation.scheduledShare, 0);
   const todayPlanState = resolveTodayPlanDisplayState(activeDraft);
   const focusStep = todayPlanState.status === 'ready' || todayPlanState.status === 'stale'
     ? getFocusTodayPlanStep(activeDraft)
@@ -234,6 +239,22 @@ export function TodayPage({
           <div className="rounded-[1.35rem] border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
             {notice}
           </div>
+        ) : null}
+
+        {!dashboard.onboarding.active && primaryAllocation ? (
+          <Card>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="bg-slate-900 text-white">主目标连续推进</Badge>
+              <Badge className="bg-white/90 text-slate-700">主目标优先占位 {primaryAllocation.scheduledShare}%</Badge>
+              {secondaryShare ? <Badge className="bg-white/90 text-slate-700">副目标补位 {secondaryShare}%</Badge> : null}
+              <Badge className="bg-white/90 text-slate-700">延期候选 {scheduling.delayedCandidateCount}</Badge>
+            </div>
+            <Muted className="mt-3 text-sm leading-6">{scheduling.guardrail}</Muted>
+            <div className="mt-4 rounded-[1.2rem] bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+              <div className="font-medium text-slate-900">{scheduling.headline}</div>
+              <div className="mt-2">{scheduling.calendarHint}</div>
+            </div>
+          </Card>
         ) : null}
 
         <div className="grid gap-5 xl:grid-cols-[1.18fr,0.82fr]">

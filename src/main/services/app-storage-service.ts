@@ -50,6 +50,7 @@ import type { CompleteInitialOnboardingPayload, CompleteInitialOnboardingResult,
 import { createPlanDraft, createPlanSnapshot, ensurePlanDrafts, getNextSnapshotVersion } from '../../shared/plan-draft.js';
 import type { ProviderConfigInput } from '../../shared/provider-config.js';
 import { normalizeSecretInput, toSafeProviderConfig } from '../../shared/provider-config.js';
+import { buildDashboardGoalScheduling } from '../../shared/scheduling.js';
 import { AiRequestLogRepository } from '../repositories/ai-request-log-repository.js';
 import { AppStateRepository } from '../repositories/app-state-repository.js';
 import { EntitiesRepository } from '../repositories/entities-repository.js';
@@ -196,6 +197,7 @@ export class AppStorageService {
       : [...snapshot.goals, nextGoal];
     const scheduledGoals = resolveGoalScheduling(nextGoals, goalId);
     const ensuredPlanState = ensurePlanDrafts(scheduledGoals.goals, { ...snapshot.plan, activeGoalId: scheduledGoals.activeGoalId }, nextProfile);
+    const scheduling = buildDashboardGoalScheduling(scheduledGoals.goals, ensuredPlanState);
     const baseDraft = ensuredPlanState.drafts.find((draft) => draft.goalId === goalId) ?? createPlanDraft(nextGoal, nextProfile);
     const routedProvider = this.describeRoutedProvider(snapshot.settings, 'plan_generation');
 
@@ -210,6 +212,7 @@ export class AppStorageService {
         goal: nextGoal,
         profile: nextProfile,
         currentDraft: null,
+        scheduling,
       }, (value) => {
         if (value.capability !== 'plan_generation') {
           throw new Error('计划生成返回了意外结果。');
@@ -428,6 +431,7 @@ export class AppStorageService {
       throw new Error('目标对应的粗版计划不存在，无法生成今日计划。');
     }
 
+    const scheduling = buildDashboardGoalScheduling(snapshot.goals, snapshot.plan);
     const routedProvider = this.describeRoutedProvider(snapshot.settings, 'daily_plan_generation');
     let nextPlan = this.buildFallbackTodayPlan(goal, draft, snapshot.profile);
 
@@ -437,6 +441,7 @@ export class AppStorageService {
         goal,
         profile: snapshot.profile,
         currentDraft: draft,
+        scheduling,
         todayContext: draft.todayContext,
       }, (value) => {
         if (value.capability !== 'daily_plan_generation') {
@@ -532,11 +537,13 @@ export class AppStorageService {
     const nextSnapshotVersion = getNextSnapshotVersion(snapshot.plan.snapshots, goalId);
     const archivedSnapshot = createPlanSnapshot(archivedDraft, nextSnapshotVersion);
     const providerId = snapshot.settings.routing.planGeneration;
+    const scheduling = buildDashboardGoalScheduling(snapshot.goals, snapshot.plan);
     const request = {
       capability: 'plan_generation',
       goal: targetGoal,
       profile: snapshot.profile,
       currentDraft: previousDraft,
+      scheduling,
     } satisfies Extract<AiRequest, { capability: 'plan_generation' }>;
 
     let result: AiPlanGenerationResult;

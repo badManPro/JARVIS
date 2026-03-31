@@ -12,7 +12,7 @@ import {
   updatePlanTaskStatus,
   updateConversationActionPreviewReview,
 } from './app-state.js';
-import { resolveGoalScheduling } from './goal.js';
+import { buildGoalScheduleAllocations, resolveGoalScheduling } from './goal.js';
 
 test('resolveConversationState records source metadata and creation time for new action previews', () => {
   const before = Date.now();
@@ -598,4 +598,66 @@ test('resolveGoalScheduling enforces one main goal and stable schedule weights',
   assert.equal(result.goals.find((goal) => goal.id === 'goal-main')?.scheduleWeight, 70);
   assert.equal(result.goals.find((goal) => goal.id === 'goal-side')?.role, 'secondary');
   assert.equal(result.goals.find((goal) => goal.id === 'goal-side')?.scheduleWeight, 100);
+});
+
+test('buildGoalScheduleAllocations protects a stable main-goal share when secondary goals are heavier', () => {
+  const result = buildGoalScheduleAllocations([
+    {
+      id: 'goal-main',
+      title: '主线目标',
+      motivation: '保持连续推进',
+      baseline: '已有起点',
+      cycle: '8 周',
+      successMetric: '完成主线交付',
+      priority: 'P1',
+      status: 'active',
+      role: 'main',
+      scheduleWeight: 30,
+    },
+    {
+      id: 'goal-side-a',
+      title: '副线目标 A',
+      motivation: '补位推进',
+      baseline: '刚开始',
+      cycle: '4 周',
+      successMetric: '形成稳定副线节奏',
+      priority: 'P2',
+      status: 'active',
+      role: 'secondary',
+      scheduleWeight: 40,
+    },
+    {
+      id: 'goal-side-b',
+      title: '副线目标 B',
+      motivation: '补位推进',
+      baseline: '刚开始',
+      cycle: '4 周',
+      successMetric: '形成稳定副线节奏',
+      priority: 'P2',
+      status: 'active',
+      role: 'secondary',
+      scheduleWeight: 30,
+    },
+  ], 'goal-main');
+
+  const mainAllocation = result.allocations.find((allocation) => allocation.id === 'goal-main');
+  const secondaryTotal = result.allocations
+    .filter((allocation) => allocation.role === 'secondary')
+    .reduce((sum, allocation) => sum + allocation.scheduledShare, 0);
+
+  assert.equal(result.activeGoalId, 'goal-main');
+  assert.equal(mainAllocation?.lane, 'anchor');
+  assert.equal(mainAllocation?.scheduledShare, 60);
+  assert.equal(secondaryTotal, 40);
+  assert.equal(result.allocations.every((allocation) => allocation.scheduledShare > 0), true);
+});
+
+test('seedState exposes a calendar-ready scheduling preview centered on the main goal', () => {
+  assert.equal(seedState.dashboard.scheduling.primaryGoalId, seedState.plan.activeGoalId);
+  assert.match(seedState.dashboard.scheduling.headline, /主目标.*优先占位/);
+  assert.match(seedState.dashboard.scheduling.guardrail, /副目标.*补位/);
+  assert.match(seedState.dashboard.scheduling.calendarHint, /日历排程/);
+  assert.equal(seedState.dashboard.scheduling.allocations[0]?.goalId, seedState.plan.activeGoalId);
+  assert.equal(seedState.dashboard.scheduling.allocations[0]?.scheduledShare, 70);
+  assert.equal(seedState.dashboard.scheduling.allocations[1]?.scheduledShare, 30);
 });

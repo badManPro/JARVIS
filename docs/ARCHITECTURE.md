@@ -117,7 +117,7 @@ Renderer 先按以下状态切分：
    - 结构化保存 `daily / weekly / stage` 三个复盘周期的手动输入
    - 当前保存偏差说明、难度匹配、时间分配、自评、复盘结论和后续动作
 
-当前主进程会在 `load/save` 时把 `profile / goals / plan drafts / reflection.entries / settings` 同步到规范化表，并把 `conversation` 的会话态写回 `app_snapshots`；`dashboard / reflection` 会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；其中首页首屏会进一步把这些信号整理成 `priorityAction` 与 `riskSignals`，直接回答“现在先做什么”和“当前主要风险是什么”。这意味着 `app_snapshots` 已不再承担整份 Zustand 状态兜底，只保留仍未拆表的对话域。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路。
+当前主进程会在 `load/save` 时把 `profile / goals / plan drafts / reflection.entries / settings` 同步到规范化表，并把 `conversation` 的会话态写回 `app_snapshots`；`dashboard / reflection` 会在 hydrate 时根据 `plan_tasks` 的真实执行状态派生摘要，并叠加 `reflection_entries` 的手动输入；其中首页首屏会进一步把这些信号整理成 `priorityAction`、`riskSignals` 与 `scheduling`，直接回答“现在先做什么”“当前主要风险是什么”和“主副目标如何分配时间”。这意味着 `app_snapshots` 已不再承担整份 Zustand 状态兜底，只保留仍未拆表的对话域。`profile_extraction` 与 `plan_adjustment` 现都会显式携带 `reflection` 上下文，让复盘结果真正进入建议生成链路；`plan_generation` 与 `daily_plan_generation` 现也会显式消费主副目标调度预览，保证粗版路径与今日细版继续围绕当前主目标推进。
 
 SQLite schema 的演进现在也走显式版本管理：`createDatabase()` 启动时会读取 `PRAGMA user_version`，按顺序执行 migration runner，把旧 schema 升级到当前支持版本，而不再继续依赖散落在初始化代码中的临时条件分支。除此之外，主进程还会在状态 load/save 边界执行关键一致性归一化，修复 stale plan snapshot 引用和指向缺失 provider 的 route，避免结构化真源被局部脏数据拖偏。
 
@@ -158,7 +158,7 @@ Preload 当前暴露：
 - `getAiRuntimeSummary`
 - `getAiObservability`
 
-这意味着当前已经具备十四类真实交互：
+这意味着当前已经具备十五类真实交互：
 1. 用户画像关键字段通过 `saveUserProfile` 写入本地 SQLite
 2. 目标关键字段通过 `upsertLearningGoal` 完成新建 / 编辑，并把 `role / scheduleWeight` 一起落到 `learning_goals`
 3. 目标切换通过 `setActiveGoal` 同步更新 `active_goal_id` 与唯一主目标角色，并让计划页直接读取该目标对应的独立草案
@@ -166,13 +166,14 @@ Preload 当前暴露：
 5. 计划页通过 `saveLearningPlanDraft` 支持草案手动保存
 6. 计划页通过 `updatePlanTaskStatus` 支持对单个任务执行开始 / 完成 / 跳过 / 延后，并立即刷新首页与复盘输入
 7. 复盘页通过 `saveReflectionEntry` 按日 / 周 / 阶段写入结构化复盘输入，并立即刷新建议区与后续 AI 上下文
-8. 计划页通过 `regenerateLearningPlanDraft` 走 `plan_generation`，并在重生成前归档快照
+8. 计划页通过 `regenerateLearningPlanDraft` 走 `plan_generation`，并在重生成前归档快照；请求会额外携带主副目标调度预览，保证粗版路径继续围绕主目标
 9. 对话页通过 `runProfileExtraction` 走 `profile_extraction`，并同时携带当前对话与结构化复盘上下文，把模型返回 suggestions 回流到 action preview
-10. 计划页通过 `generatePlanAdjustmentSuggestions` 走 `plan_adjustment`，并把当前草案、画像约束与复盘反馈一并交给模型，再把调整建议回流到对话预览
-11. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态；整个批量应用过程现已纳入事务保护
-12. 设置页与配置页可通过 `saveAppState` / `upsertProviderConfig` / `getAiRuntimeSummary` 更新路由并直接查看每个 capability 当前命中的 Provider、模型、健康状态和阻塞原因
-13. 设置页可通过 `runProviderHealthCheck` 对单个 Provider 触发真实连通性探测，并把结果回写到 `provider_configs.health_status`
-14. 设置页可通过 `getAiObservability` 查看 capability 请求总览与最近请求日志，并在真实 capability 调用后立即刷新
+10. 今日页通过 `generateTodayPlan` 走 `daily_plan_generation`，并携带“主目标优先占位、副目标补位”的调度上下文，确保当天细版仍优先保护主线连续推进
+11. 计划页通过 `generatePlanAdjustmentSuggestions` 走 `plan_adjustment`，并把当前草案、画像约束与复盘反馈一并交给模型，再把调整建议回流到对话预览
+12. 对话页通过 `applyAcceptedConversationActionPreviews` 把已接受且可执行的 preview 写入画像、目标、计划实体，并回写最新会话状态；整个批量应用过程现已纳入事务保护
+13. 设置页与配置页可通过 `saveAppState` / `upsertProviderConfig` / `getAiRuntimeSummary` 更新路由并直接查看每个 capability 当前命中的 Provider、模型、健康状态和阻塞原因
+14. 设置页可通过 `runProviderHealthCheck` 对单个 Provider 触发真实连通性探测，并把结果回写到 `provider_configs.health_status`
+15. 设置页可通过 `getAiObservability` 查看 capability 请求总览与最近请求日志，并在真实 capability 调用后立即刷新
 
 当前对话页额外具备一层“先审核、再应用”的结构化映射：
 - `conversation.suggestions` 仍保留原始自然语言建议，但现在既可以来自本地 seed，也可以来自 `profile_extraction` / `plan_adjustment`

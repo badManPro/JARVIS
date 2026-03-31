@@ -21,6 +21,7 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
   const removeLearningGoal = useAppStore((state) => state.removeLearningGoal);
   const setActiveGoal = useAppStore((state) => state.setActiveGoal);
   const regenerateLearningPlanDraft = useAppStore((state) => state.regenerateLearningPlanDraft);
+  const scheduling = useAppStore((state) => state.dashboard.scheduling);
   const activeGoal = getActiveGoal(goals, plan.activeGoalId);
   const activeDraft = getActiveDraft(plan);
   const milestones = activeDraft?.milestones ?? [];
@@ -164,6 +165,33 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
           </Card>
 
           <div className="space-y-5">
+            <Card>
+              <SectionTitle>调度预览</SectionTitle>
+              <Muted className="mt-2">先保主目标连续推进，再让副目标补位；这组结果会直接作为后续日历排程输入。</Muted>
+              <div className="mt-4 rounded-[1.2rem] bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+                <div className="font-medium text-slate-900">{scheduling.headline}</div>
+                <div className="mt-2">{scheduling.guardrail}</div>
+                <div className="mt-2">{scheduling.calendarHint}</div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {scheduling.allocations.map((allocation) => (
+                  <div key={allocation.goalId} className="rounded-[1.2rem] border border-slate-200 bg-white/85 px-4 py-4 text-sm leading-6 text-slate-700">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="font-medium text-slate-900">{allocation.title}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge className={allocation.role === 'main' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}>
+                          {allocation.role === 'main' ? `主目标优先占位 ${allocation.scheduledShare}%` : `副目标补位 ${allocation.scheduledShare}%`}
+                        </Badge>
+                        <Badge className="bg-slate-100 text-slate-700">原始权重 {allocation.rawWeight}</Badge>
+                        <Badge className="bg-slate-100 text-slate-700">延期候选 {allocation.delayedCandidateCount}</Badge>
+                      </div>
+                    </div>
+                    <div className="mt-2">{allocation.focusLabel}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
             <Card>
               <SectionTitle>当前关键节点</SectionTitle>
               {currentMilestone ? (

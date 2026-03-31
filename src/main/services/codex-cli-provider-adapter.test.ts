@@ -53,6 +53,7 @@ test('CodexCliProviderAdapter parses JSON responses for plan generation', async 
       goal: seedState.goals[0],
       profile: seedState.profile,
       currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
     },
   });
 
@@ -74,6 +75,7 @@ test('CodexCliProviderAdapter parses JSON responses for daily plan generation', 
       goal: seedState.goals[0],
       profile: seedState.profile,
       currentDraft: seedState.plan.drafts[0],
+      scheduling: seedState.dashboard.scheduling,
       todayContext: {
         availableDuration: '今天 30 分钟',
         studyWindow: '今晚 20:30 - 21:00',

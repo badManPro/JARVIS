@@ -12,6 +12,9 @@ test('today page exposes daily-only planning context controls and structured dai
   assert.match(todayPageSource, /仅今天有效/);
   assert.match(todayPageSource, /generateTodayPlan/);
   assert.match(todayPageSource, /saveTodayPlanningContext/);
+  assert.match(todayPageSource, /主目标连续推进/);
+  assert.match(todayPageSource, /主目标优先占位/);
+  assert.match(todayPageSource, /副目标补位/);
   assert.match(todayPageSource, /当前步骤|当前焦点/);
   assert.match(todayPageSource, /学习步骤|steps/);
   assert.match(todayPageSource, /开始|完成|延期|跳过/);
