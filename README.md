@@ -7,14 +7,14 @@
 ## 当前阶段
 当前判断：
 - 当前阶段：`Phase 3 / 主副目标与日历调度`
-- 当前进度估算：约 `64%`
-- 当前唯一下一任务：`Phase 3 / Task 3 / 新增日历排程页`
+- 当前进度估算：约 `70%`
+- 当前唯一下一任务：`Phase 3 / Task 4 / 把延期任务与剩余时间重新映射到一周排程`
 
 已完成：
 - 更细化的页面信息架构文档
 - Electron + React + TypeScript 客户端最小骨架
 - Tailwind / shadcn/ui 基础配置
-- 首页 / 学习计划 / 目标 / 对话 / 用户画像 / 复盘 / 设置 七个页面的最小导航与内容骨架
+- 首页 / 学习计划 / 目标 / 对话 / 用户画像 / 复盘 / 日历 / 设置 八个页面的最小导航与内容骨架
 - Zustand 驱动的前端状态层，并已通过 preload bridge 从 SQLite 初始化
 - SQLite + Drizzle 的本地持久化基础（app snapshot + provider secret）
 - 面向 C 端客户端优先的界面原则文档
@@ -42,6 +42,7 @@
 - 学习路径页现可明确区分主目标 / 副目标，并展示后续日历调度会使用的目标权重
 - 首页 / 今日页 / 学习路径页现会展示统一的“主目标优先占位、副目标补位”调度预览，并把延期候选数量暴露给后续日历排程
 - `plan_generation` / `daily_plan_generation` prompt 现会显式携带主副目标调度上下文，确保粗版路径和今日细版都优先服务当前主目标的连续推进
+- 日历页现已直接消费主副目标调度预览与延期候选，渲染一周时间块、补回窗口和“系统为什么这样安排”的解释区
 
 ## 技术栈
 - Electron
@@ -97,7 +98,8 @@ learning-companion/
 4. 对话
 5. 用户画像
 6. 复盘
-7. 设置
+7. 日历
+8. 设置
 
 ## 本地开发
 ### 1. 安装依赖
@@ -146,7 +148,7 @@ npm run dist:win
 - Zustand 业务状态层：profile / goals / plan drafts / conversation / settings
 - SQLite + Drizzle 基础存储：`app_snapshots` 保存对话会话快照，`app_settings` / `provider_configs` / `model_routing` 保存设置运行时，`provider_secrets` 单独保存 Provider secret
 - `learning_plan_drafts` + `plan_stages` + `plan_tasks` 已承接按目标归属的计划草案结构
-- 七个页面的真实内容骨架与跨页面上下文展示
+- 八个页面的真实内容骨架与跨页面上下文展示
 - 设置页中的多模型 Provider 列表与路由策略展示（仅显示 masked key preview / hasSecret）
 - 对话页中的建议动作预览卡片，会基于当前状态把字符串建议回填为结构化 action preview，并支持“审核后统一应用”到真实实体
 - 可继续扩展为更细粒度实体表、迁移脚本与统一 AI 调度流程
@@ -185,13 +187,14 @@ npm run dist:win
 - 今日细版计划现已升级为带 `id / status / statusNote / statusUpdatedAt` 的步骤级执行结构
 - 今日页现已围绕 `todayPlan.steps` 工作，支持 `开始 / 完成 / 延期 / 跳过`
 - 完成当前步骤后会自动切到下一步，延期步骤会自动进入“明天候选区”
+- 日历页现会把主目标连续块、副目标补位和延期补回并入同一周视图，解释系统如何安排这一周
 - 今日步骤状态现已通过 renderer → preload → main → SQLite 持久化，并在重启后恢复
 - 当前尚未提供版本回滚、目标排序、`reflection_summary` 业务接入以及更细粒度的 tracing / metrics
 
 ## 下一步建议
-1. `Phase 3 / Task 3`：新增日历排程页，承接延期和一周时间块重排
-2. `Phase 3 / Task 4`：把延期任务与剩余时间重新映射到一周排程
-3. `Phase 4 / Task 1`：深做编程、乐器、健身三类领域规则
+1. `Phase 3 / Task 4`：把延期任务与剩余时间重新映射到一周排程
+2. `Phase 4 / Task 1`：深做编程、乐器、健身三类领域规则
+3. `Phase 5 / Task 1`：为关键状态流转补强反馈和轻动效
 
 ## 当前推荐下一任务
-- `Phase 3 / Task 3`：新增日历排程页
+- `Phase 3 / Task 4`：把延期任务与剩余时间重新映射到一周排程

@@ -13,10 +13,12 @@ test('dashboard-content delegates each dashboard surface to extracted page modul
   assert.match(source, /from ['"]@\/pages\/dashboard\/today-page['"]/);
   assert.match(source, /from ['"]@\/pages\/dashboard\/path-page['"]/);
   assert.match(source, /from ['"]@\/pages\/dashboard\/profile-page['"]/);
+  assert.match(source, /from ['"]@\/pages\/dashboard\/calendar-page['"]/);
   assert.match(source, /from ['"]@\/pages\/dashboard\/settings-page['"]/);
   assert.match(source, /case 'today':\s*return <TodayPage onOpenCoach=\{onOpenCoach\} onPageChange=\{onPageChange\} \/>;/s);
   assert.match(source, /case 'path':\s*return <PathPage onOpenCoach=\{onOpenCoach\} \/>;/s);
   assert.match(source, /case 'profile':\s*return <ProfilePage \/>;/s);
+  assert.match(source, /case 'calendar':\s*return <CalendarPage \/>;/s);
   assert.match(source, /case 'settings':\s*return <SettingsPage onPageChange=\{onPageChange\} \/>;/s);
 });
 
@@ -24,5 +26,6 @@ test('dashboard-content no longer keeps page implementations inline', () => {
   assert.doesNotMatch(source, /function TodayContent\(/);
   assert.doesNotMatch(source, /function PathContent\(/);
   assert.doesNotMatch(source, /function ProfileContent\(/);
+  assert.doesNotMatch(source, /function CalendarContent\(/);
   assert.doesNotMatch(source, /function SettingsContent\(/);
 });

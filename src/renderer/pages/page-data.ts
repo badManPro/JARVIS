@@ -1,4 +1,4 @@
-import { BookOpenCheck, Layers3, Settings, Sparkles, UserRound } from 'lucide-react';
+import { BookOpenCheck, CalendarRange, Layers3, Settings, Sparkles, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type PageDefinition = {
@@ -28,6 +28,12 @@ export const pages: PageDefinition[] = [
     icon: UserRound,
   },
   {
+    id: 'calendar',
+    title: '日历',
+    description: '查看系统如何安排这一周的学习时间块。',
+    icon: CalendarRange,
+  },
+  {
     id: 'settings',
     title: '设置',
     description: '基础偏好与 Codex 连接。',
@@ -39,5 +45,6 @@ export const primaryActionPageId = 'today';
 export const defaultStartPageId = 'today';
 export const pathPageId = 'path';
 export const profilePageId = 'profile';
+export const calendarPageId = 'calendar';
 export const settingsPageId = 'settings';
 export const onboardingPageIcon = BookOpenCheck;

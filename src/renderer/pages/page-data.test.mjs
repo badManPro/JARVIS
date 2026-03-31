@@ -8,10 +8,11 @@ const source = fs.readFileSync(
   'utf8',
 );
 
-test('page definitions are reduced to the dashboard-oriented primary navigation', () => {
+test('page definitions keep the dashboard-oriented primary navigation and add calendar scheduling', () => {
   assert.match(source, /id:\s*'today'/);
   assert.match(source, /id:\s*'path'/);
   assert.match(source, /id:\s*'profile'/);
+  assert.match(source, /id:\s*'calendar'/);
   assert.match(source, /id:\s*'settings'/);
   assert.doesNotMatch(source, /id:\s*'goals'/);
   assert.doesNotMatch(source, /id:\s*'conversation'/);

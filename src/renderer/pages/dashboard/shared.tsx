@@ -17,7 +17,7 @@ export const secondaryButtonClassName = 'neo-button inline-flex items-center jus
 export const dangerButtonClassName = 'neo-button neo-button-danger inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60';
 export const ghostButtonClassName = 'inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-white/70 hover:text-slate-900';
 export const sectionCardClassName = 'space-y-4 rounded-[1.75rem] border border-white/70 bg-white/82 p-5 shadow-[0_24px_60px_rgba(15,23,42,0.06)]';
-export const startPageOptions = ['今日', '学习路径', '学习档案', '设置'];
+export const startPageOptions = ['今日', '学习路径', '学习档案', '日历', '设置'];
 export const themeOptions = ['跟随系统', '浅色', '深色'];
 export const presetChipClassName = (active: boolean) => [
   'rounded-full border px-3 py-2 text-sm transition',
@@ -39,6 +39,7 @@ export function normalizeStartPageLabel(value: string) {
     case '今日':
     case '学习路径':
     case '学习档案':
+    case '日历':
       return value;
     default:
       return '今日';

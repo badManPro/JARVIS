@@ -12,6 +12,7 @@ const startPageMap: Record<string, string> = {
   对话: 'today',
   用户画像: 'profile',
   学习档案: 'profile',
+  日历: 'calendar',
   复盘: 'today',
   设置: 'settings',
 };
@@ -23,6 +24,7 @@ const legacyPageMap: Record<string, string> = {
   conversation: 'today',
   reflection: 'today',
   profile: 'profile',
+  calendar: 'calendar',
   settings: 'settings',
 };
 

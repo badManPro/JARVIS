@@ -1,3 +1,4 @@
+import { CalendarPage } from '@/pages/dashboard/calendar-page';
 import type { PageDefinition } from '@/pages/page-data';
 import { PathPage } from '@/pages/dashboard/path-page';
 import { ProfilePage } from '@/pages/dashboard/profile-page';
@@ -22,6 +23,8 @@ export function PageContent({
       return <PathPage onOpenCoach={onOpenCoach} />;
     case 'profile':
       return <ProfilePage />;
+    case 'calendar':
+      return <CalendarPage />;
     case 'settings':
       return <SettingsPage onPageChange={onPageChange} />;
     default:
