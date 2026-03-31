@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, Bot, Clock3, LoaderCircle, Sparkles, Target } from 'lucide-react';
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
+import { cn } from '@/lib/utils';
+import {
+  FeedbackBanner,
+  type FeedbackMessage,
+  StagedFeedbackPanel,
+  createFeedbackMessage,
+  useTransientHighlight,
+} from '@/pages/dashboard/feedback-effects';
 import { useAppStore } from '@/store/app-store';
 import { ReflectionSheet } from '@/pages/dashboard/reflection-sheet';
 import {
@@ -24,6 +32,21 @@ type TodayPlanDisplayState =
   | { status: 'missing'; plan: null }
   | { status: 'stale'; plan: NonNullable<LearningPlanDraft['todayPlan']> }
   | { status: 'ready'; plan: NonNullable<LearningPlanDraft['todayPlan']> };
+
+const todayPlanGenerationStages = [
+  {
+    label: '吸收今天的时间块',
+    detail: '先读取时长、学习窗口和临时备注，锁定今天真正可执行的边界。',
+  },
+  {
+    label: '重排主线与延期候选',
+    detail: '优先保证主目标推进，再处理顺延步骤和后续依赖的最小重排。',
+  },
+  {
+    label: '装配步骤、资源与产出',
+    detail: '把当前步骤、资源入口、练习和今日交付物整理成同一份细版执行流。',
+  },
+];
 
 export function TodayPage({
   onOpenCoach,
@@ -62,12 +85,16 @@ export function TodayPage({
   const [todayNote, setTodayNote] = useState('');
   const [savingContext, setSavingContext] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [executingStepId, setExecutingStepId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<FeedbackMessage | null>(null);
   const [reflectionContext, setReflectionContext] = useState<{
     taskTitle: string;
     status: Exclude<TaskStatus, 'todo' | 'in_progress'>;
   } | null>(null);
   const [reflectionNotice, setReflectionNotice] = useState<string | null>(null);
+  const { active: planRefreshActive, trigger: triggerPlanRefresh } = useTransientHighlight();
+  const { active: focusShiftActive, trigger: triggerFocusShift } = useTransientHighlight();
+  const { active: tomorrowCandidateActive, trigger: triggerTomorrowCandidate } = useTransientHighlight();
 
   useEffect(() => {
     setAvailableDuration(activeDraft?.todayContext.availableDuration ?? '');
@@ -77,7 +104,12 @@ export function TodayPage({
 
   async function handleSaveTodayContext() {
     if (!activeGoal) {
-      setNotice('当前没有主目标，无法保存今日上下文。');
+      setNotice(createFeedbackMessage({
+        label: '无法保存',
+        title: '当前没有主目标，不能单独保存今天的上下文',
+        detail: '请先完成建档或回到学习路径页确认当前主目标，再回来填写今天的限制条件。',
+        tone: 'danger',
+      }));
       return;
     }
 
@@ -91,9 +123,23 @@ export function TodayPage({
         studyWindow,
         note: todayNote,
       });
-      setNotice('仅今天有效的设置已保存。');
+      setNotice(createFeedbackMessage({
+        label: '今日上下文已保存',
+        title: '系统会在下一次细版生成里优先采用这组今天限定条件',
+        detail: '这次保存只影响今天的细版计划，不会改动长期画像或主线节奏。',
+        tone: 'neutral',
+        chips: [
+          availableDuration || profile.timeBudget || '沿用默认时长',
+          studyWindow || profile.bestStudyWindow || '沿用默认窗口',
+        ],
+      }));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '保存今日设置失败。');
+      setNotice(createFeedbackMessage({
+        label: '保存失败',
+        title: '今天的上下文没有写入成功',
+        detail: error instanceof Error ? error.message : '保存今日设置失败。',
+        tone: 'danger',
+      }));
     } finally {
       setSavingContext(false);
     }
@@ -101,7 +147,12 @@ export function TodayPage({
 
   async function handleGenerateTodayPlan() {
     if (!activeGoal) {
-      setNotice('当前没有主目标，无法生成今日计划。');
+      setNotice(createFeedbackMessage({
+        label: '无法生成',
+        title: '当前没有主目标，不能生成今天的细版计划',
+        detail: '先通过建档或学习路径页确认主目标，再让系统按今天的时间块生成执行步骤。',
+        tone: 'danger',
+      }));
       return;
     }
 
@@ -116,9 +167,25 @@ export function TodayPage({
         note: todayNote,
       });
       await generateTodayPlan({ goalId: activeGoal.id });
-      setNotice(todayPlanState.status === 'ready' ? '今日详细计划已重新生成。' : '今日详细计划已生成。');
+      triggerPlanRefresh();
+      setNotice(createFeedbackMessage({
+        label: todayPlanState.status === 'ready' ? '今日计划已刷新' : '今日计划已生成',
+        title: todayPlanState.status === 'ready' ? '系统已按新的时间块重新编排细版步骤' : '系统已整理出今天可直接执行的步骤流',
+        detail: '当前步骤、资源、练习和今日产出已经同步刷新，你可以直接开始推进。',
+        tone: 'success',
+        chips: [
+          availableDuration || profile.timeBudget || dashboard.duration,
+          studyWindow || profile.bestStudyWindow || '待填写学习窗口',
+          activeGoal.title,
+        ],
+      }));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '生成今日计划失败。');
+      setNotice(createFeedbackMessage({
+        label: '生成失败',
+        title: '今日细版计划没有生成成功',
+        detail: error instanceof Error ? error.message : '生成今日计划失败。',
+        tone: 'danger',
+      }));
     } finally {
       setGenerating(false);
     }
@@ -129,42 +196,87 @@ export function TodayPage({
       return;
     }
 
-    const nextState = await updateTodayPlanStepStatus({
-      draftId: activeDraft.id,
-      stepId: step.id,
-      status,
-      statusNote: getStepStatusNote(step, status),
-    });
-    const nextDraft = nextState.plan.drafts.find((draft) => draft.id === activeDraft.id) ?? null;
-    const nextFocusStep = getFocusTodayPlanStep(nextDraft);
+    setExecutingStepId(step.id);
 
-    switch (status) {
-      case 'in_progress':
-        setNotice(`已开始当前步骤：${step.title}`);
-        break;
-      case 'done':
-        setNotice(nextFocusStep ? `已完成当前步骤，下一步已切到「${nextFocusStep.title}」。` : '今天的步骤已全部处理完成。');
-        setReflectionContext({
-          taskTitle: step.title,
-          status,
-        });
-        break;
-      case 'delayed':
-        setNotice('已移入明天候选区；系统已把后续步骤切到“压缩继续”并自动重排。');
-        setReflectionContext({
-          taskTitle: step.title,
-          status,
-        });
-        break;
-      case 'skipped':
-        setNotice('已跳过当前步骤；系统已把受影响步骤标记为“等待补回”，并自动重排后续顺序。');
-        setReflectionContext({
-          taskTitle: step.title,
-          status,
-        });
-        break;
-      default:
-        break;
+    try {
+      const nextState = await updateTodayPlanStepStatus({
+        draftId: activeDraft.id,
+        stepId: step.id,
+        status,
+        statusNote: getStepStatusNote(step, status),
+      });
+      const nextDraft = nextState.plan.drafts.find((draft) => draft.id === activeDraft.id) ?? null;
+      const nextFocusStep = getFocusTodayPlanStep(nextDraft);
+
+      switch (status) {
+        case 'in_progress':
+          setNotice(createFeedbackMessage({
+            label: '步骤已开始',
+            title: `当前焦点已经切到「${step.title}」`,
+            detail: '这一步会保持在最前面，直到你将它标记为完成、延期或跳过。',
+            tone: 'neutral',
+            chips: [step.duration],
+          }));
+          break;
+        case 'done':
+          triggerFocusShift();
+          setNotice(createFeedbackMessage({
+            label: '步骤已完成',
+            title: nextFocusStep ? `下一步已自动上浮：${nextFocusStep.title}` : '今天的步骤已全部处理完成',
+            detail: nextFocusStep
+              ? '系统已经把新的可执行步骤顶到焦点位，你可以无缝继续推进。'
+              : '接下来可以回看今日产出，或者处理明天候选区里的顺延项。',
+            tone: 'success',
+            chips: nextFocusStep ? ['自动切焦', nextFocusStep.duration] : ['今日清空'],
+          }));
+          setReflectionContext({
+            taskTitle: step.title,
+            status,
+          });
+          break;
+        case 'delayed':
+          triggerFocusShift();
+          triggerTomorrowCandidate();
+          setNotice(createFeedbackMessage({
+            label: '步骤已顺延',
+            title: '已顺延到明天候选区，系统同步重排了今天剩余步骤',
+            detail: nextFocusStep
+              ? `新的当前步骤是「${nextFocusStep.title}」，后续链路会以“压缩继续”方式保持推进。`
+              : '当前已没有可继续的步骤，建议回看今日产出或等待新的时间块。',
+            tone: 'warning',
+            chips: ['明天候选区', '压缩继续'],
+          }));
+          setReflectionContext({
+            taskTitle: step.title,
+            status,
+          });
+          break;
+        case 'skipped':
+          triggerFocusShift();
+          setNotice(createFeedbackMessage({
+            label: '步骤已跳过',
+            title: nextFocusStep ? `系统已切到仍可继续的下一步：${nextFocusStep.title}` : '当前步骤已跳过，后续链路已重排完成',
+            detail: '受影响的步骤会被标成“等待补回”，系统会保留今天还能继续推进的最小顺序。',
+            tone: 'warning',
+            chips: ['等待补回', '自动重排'],
+          }));
+          setReflectionContext({
+            taskTitle: step.title,
+            status,
+          });
+          break;
+        default:
+          break;
+      }
+    } catch (error) {
+      setNotice(createFeedbackMessage({
+        label: '流转失败',
+        title: '当前步骤状态没有更新成功',
+        detail: error instanceof Error ? error.message : '状态流转失败，请稍后再试。',
+        tone: 'danger',
+      }));
+    } finally {
+      setExecutingStepId(null);
     }
   }
 
@@ -228,6 +340,14 @@ export function TodayPage({
           </div>
         </Card>
 
+        <StagedFeedbackPanel
+          active={generating}
+          label={todayPlanState.status === 'ready' ? '细版刷新中' : '细版生成中'}
+          title="系统正在把今天的限制重排成可执行步骤"
+          description="先吃掉今天的时间约束，再按主目标、延期候选和资源入口拼出一条今天就能执行的动作链。"
+          stages={todayPlanGenerationStages}
+        />
+
         {todayPlanState.status === 'stale' ? (
           <div className="rounded-[1.35rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
             <div className="font-medium">计划已过期</div>
@@ -236,9 +356,7 @@ export function TodayPage({
         ) : null}
 
         {notice ? (
-          <div className="rounded-[1.35rem] border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            {notice}
-          </div>
+          <FeedbackBanner message={notice} />
         ) : null}
 
         {!dashboard.onboarding.active && primaryAllocation ? (
@@ -343,14 +461,14 @@ export function TodayPage({
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[1.05fr,0.95fr]">
-          <Card>
+          <Card className={cn(planRefreshActive && 'feedback-target-surface is-active')}>
             <SectionTitle>学习步骤</SectionTitle>
             {todayPlanState.status === 'ready' || todayPlanState.status === 'stale' ? (
               <div className="mt-5 space-y-5">
                 <div>
                   <div className="text-xs uppercase tracking-[0.16em] text-slate-500">当前步骤</div>
                   {focusStep ? (
-                    <div className="mt-3 rounded-[1.5rem] bg-slate-950 px-5 py-5 text-white">
+                    <div className={cn('feedback-focus-card mt-3 rounded-[1.5rem] bg-slate-950 px-5 py-5 text-white', focusShiftActive && 'is-shifting')}>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge className={taskStatusBadgeClassName(focusStep.status)}>{taskStatusLabel(focusStep.status)}</Badge>
                         <Badge className="bg-white/10 text-white">{focusStep.duration}</Badge>
@@ -359,6 +477,7 @@ export function TodayPage({
                             {dependencyStrategyLabel(focusStep.dependencyStrategy)}
                           </Badge>
                         ) : null}
+                        {focusShiftActive ? <Badge className="bg-white/10 text-white">下一步已自动上浮</Badge> : null}
                       </div>
                       <div className="mt-4 text-xl font-semibold tracking-[-0.04em]">{focusStep.title}</div>
                       <div className="mt-3 text-sm leading-6 text-white/80">{focusStep.detail}</div>
@@ -368,12 +487,44 @@ export function TodayPage({
                       {todayPlanState.status === 'ready' ? (
                         <div className="mt-5 flex flex-wrap gap-3">
                           {focusStep.status !== 'in_progress' ? (
-                            <button type="button" className={primaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'in_progress')}>开始</button>
+                            <button
+                              type="button"
+                              className={primaryButtonClassName}
+                              onClick={() => void markTodayStep(focusStep, 'in_progress')}
+                              disabled={executingStepId === focusStep.id}
+                            >
+                              {executingStepId === focusStep.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                              {executingStepId === focusStep.id ? '处理中…' : '开始'}
+                            </button>
                           ) : (
-                            <button type="button" className={primaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'done')}>完成</button>
+                            <button
+                              type="button"
+                              className={primaryButtonClassName}
+                              onClick={() => void markTodayStep(focusStep, 'done')}
+                              disabled={executingStepId === focusStep.id}
+                            >
+                              {executingStepId === focusStep.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                              {executingStepId === focusStep.id ? '处理中…' : '完成'}
+                            </button>
                           )}
-                          <button type="button" className={secondaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'delayed')}>延期</button>
-                          <button type="button" className={secondaryButtonClassName} onClick={() => void markTodayStep(focusStep, 'skipped')}>跳过</button>
+                          <button
+                            type="button"
+                            className={secondaryButtonClassName}
+                            onClick={() => void markTodayStep(focusStep, 'delayed')}
+                            disabled={executingStepId === focusStep.id}
+                          >
+                            {executingStepId === focusStep.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                            延期
+                          </button>
+                          <button
+                            type="button"
+                            className={secondaryButtonClassName}
+                            onClick={() => void markTodayStep(focusStep, 'skipped')}
+                            disabled={executingStepId === focusStep.id}
+                          >
+                            {executingStepId === focusStep.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                            跳过
+                          </button>
                         </div>
                       ) : (
                         <div className="mt-5 rounded-[1rem] bg-white/10 px-3 py-3 text-xs leading-5 text-white/75">
@@ -427,7 +578,7 @@ export function TodayPage({
           </Card>
 
           <div className="space-y-5">
-            <Card>
+            <Card className={cn(planRefreshActive && 'feedback-target-surface is-active')}>
               <SectionTitle>资源</SectionTitle>
               <div className="mt-4 space-y-3">
                 {todayPlanState.status === 'ready' || todayPlanState.status === 'stale' ? todayPlanState.plan.resources.map((resource) => (
@@ -440,7 +591,7 @@ export function TodayPage({
               </div>
             </Card>
 
-            <Card>
+            <Card className={cn(planRefreshActive && 'feedback-target-surface is-active')}>
               <SectionTitle>练习</SectionTitle>
               <div className="mt-4 space-y-3">
                 {todayPlanState.status === 'ready' || todayPlanState.status === 'stale' ? todayPlanState.plan.practice.map((item) => (
@@ -456,7 +607,7 @@ export function TodayPage({
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[0.9fr,1.1fr]">
-          <Card>
+          <Card className={cn(planRefreshActive && 'feedback-target-surface is-active')}>
             <SectionTitle>今日产出</SectionTitle>
             {todayPlanState.status === 'ready' || todayPlanState.status === 'stale' ? (
               <div className="mt-4 space-y-3">
@@ -475,7 +626,7 @@ export function TodayPage({
             )}
           </Card>
 
-          <Card>
+          <Card className={cn(tomorrowCandidateActive && 'feedback-target-surface is-active')}>
             <SectionTitle>明天候选区</SectionTitle>
             <Muted className="mt-2">延期步骤会自动顺延到这里；如果它影响了今天后续链路，系统会在今日页把下游步骤切到压缩继续、等待补回或自动重排。</Muted>
             <div className="mt-5 space-y-3">

@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const todayPageSource = fs.readFileSync(
-  path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/today-page.tsx'),
-  'utf8',
-);
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
+const todayPagePath = path.resolve(currentDir, 'today-page.tsx');
+const todayPageSource = fs.readFileSync(todayPagePath, 'utf8');
 
 test('today page exposes daily-only planning context controls and structured daily plan sections', () => {
   assert.match(todayPageSource, /仅今天有效/);
@@ -25,4 +26,8 @@ test('today page exposes daily-only planning context controls and structured dai
   assert.match(todayPageSource, /练习|practice/);
   assert.match(todayPageSource, /今日产出|deliverable/);
   assert.match(todayPageSource, /计划已过期|stale/);
+  assert.match(todayPageSource, /StagedFeedbackPanel/);
+  assert.match(todayPageSource, /系统正在把今天的限制重排成可执行步骤/);
+  assert.match(todayPageSource, /下一步已自动上浮|feedback-focus-card/);
+  assert.match(todayPageSource, /明天候选区|feedback-target-surface/);
 });

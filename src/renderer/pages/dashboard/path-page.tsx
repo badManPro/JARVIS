@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Bot, Flag, LoaderCircle, RotateCcw, Trash2 } from 'lucide-react';
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
+import { cn } from '@/lib/utils';
+import {
+  FeedbackBanner,
+  type FeedbackMessage,
+  StagedFeedbackPanel,
+  createFeedbackMessage,
+  useTransientHighlight,
+} from '@/pages/dashboard/feedback-effects';
 import { useAppStore } from '@/store/app-store';
 import { ReflectionSheet } from '@/pages/dashboard/reflection-sheet';
 import type { LearningGoal } from '@shared/app-state';
@@ -14,6 +22,21 @@ import {
   taskStatusBadgeClassName,
   taskStatusLabel,
 } from '@/pages/dashboard/shared';
+
+const roughPlanGenerationStages = [
+  {
+    label: '回收当前路径快照',
+    detail: '先保留当前粗版结果作为上下文，再读取最新目标和阶段边界。',
+  },
+  {
+    label: '重排周里程碑与关键节点',
+    detail: '重新组织当前周里程碑、主线推进顺序和阶段验收点。',
+  },
+  {
+    label: '刷新最近任务与调度预览',
+    detail: '把新的关键动作、最近任务和日历调度输入同步回路径页。',
+  },
+];
 
 export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
   const conversation = useAppStore((state) => state.conversation);
@@ -33,10 +56,11 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
   const roughPlanStale = conversation.tags.includes('rough-plan-stale');
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [reflectionNotice, setReflectionNotice] = useState<string | null>(null);
-  const [goalNotice, setGoalNotice] = useState<string | null>(null);
+  const [goalNotice, setGoalNotice] = useState<FeedbackMessage | null>(null);
   const [goalPendingDeletionId, setGoalPendingDeletionId] = useState<string | null>(null);
   const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const { active: pathRefreshActive, trigger: triggerPathRefresh } = useTransientHighlight();
   const goalPendingDeletion = goals.find((goal) => goal.id === goalPendingDeletionId) ?? null;
   const deletionPreview = useMemo(
     () => (goalPendingDeletion ? buildGoalDeletionPreview(goals, plan, goalPendingDeletion.id) : null),
@@ -55,14 +79,34 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
       await removeLearningGoal(deletionPreview.goal.id);
       setGoalPendingDeletionId(null);
       if (deletionPreview.deletingActiveGoal && deletionPreview.nextActiveGoal) {
-        setGoalNotice(`目标已删除，关联计划草案与版本快照也已清理。当前主目标已切换为「${deletionPreview.nextActiveGoal.title}」。`);
+        setGoalNotice(createFeedbackMessage({
+          label: '目标已删除',
+          title: `关联路径已清理，当前主目标切换为「${deletionPreview.nextActiveGoal.title}」`,
+          detail: '系统已经同步移除这个目标的草案和历史快照，主线会自动切到新的当前目标。',
+          tone: 'warning',
+        }));
       } else if (deletionPreview.deletingActiveGoal) {
-        setGoalNotice('目标已删除，关联计划草案与版本快照也已清理。当前已无主目标，请先新建一个学习方向。');
+        setGoalNotice(createFeedbackMessage({
+          label: '目标已删除',
+          title: '关联路径已清理，当前已经没有主目标',
+          detail: '请先新建一个学习方向，或回到建档流程重新确认长期主线。',
+          tone: 'warning',
+        }));
       } else {
-        setGoalNotice('目标已删除，关联计划草案与版本快照也已清理。');
+        setGoalNotice(createFeedbackMessage({
+          label: '目标已删除',
+          title: '这个目标以及它绑定的路径数据已经一起清理',
+          detail: '当前主目标保持不变，只移除了这个目标自己的草案和历史快照。',
+          tone: 'warning',
+        }));
       }
     } catch (error) {
-      setGoalNotice(error instanceof Error ? error.message : '目标删除失败');
+      setGoalNotice(createFeedbackMessage({
+        label: '删除失败',
+        title: '目标没有删除成功',
+        detail: error instanceof Error ? error.message : '目标删除失败。',
+        tone: 'danger',
+      }));
     } finally {
       setDeletingGoalId(null);
     }
@@ -70,6 +114,12 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
 
   async function handleRegenerateRoughPlan() {
     if (!activeGoal) {
+      setGoalNotice(createFeedbackMessage({
+        label: '无法刷新',
+        title: '当前没有主目标，不能重新生成粗版路径',
+        detail: '请先确认主目标，系统才能围绕同一条长期主线刷新周里程碑和关键节点。',
+        tone: 'danger',
+      }));
       return;
     }
 
@@ -80,9 +130,24 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
         goalId: activeGoal.id,
         snapshotDraft: activeDraft ?? null,
       });
-      setGoalNotice('粗版计划已重新生成，新的周里程碑和关键节点已刷新。');
+      triggerPathRefresh();
+      setGoalNotice(createFeedbackMessage({
+        label: '粗版路径已刷新',
+        title: '新的周里程碑、关键节点和最近任务已经同步更新',
+        detail: '系统已基于当前主目标重新整理长期主线，你可以继续查看周节奏，或回到今日页生成新的细版执行。',
+        tone: 'success',
+        chips: [
+          activeGoal.title,
+          '周里程碑已刷新',
+        ],
+      }));
     } catch (error) {
-      setGoalNotice(error instanceof Error ? error.message : '粗版计划重生成失败。');
+      setGoalNotice(createFeedbackMessage({
+        label: '刷新失败',
+        title: '粗版路径没有重新生成成功',
+        detail: error instanceof Error ? error.message : '粗版计划重生成失败。',
+        tone: 'danger',
+      }));
     } finally {
       setRegenerating(false);
     }
@@ -124,6 +189,14 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
           </div>
         </Card>
 
+        <StagedFeedbackPanel
+          active={regenerating}
+          label="粗版刷新中"
+          title="系统正在刷新这条长期学习主线"
+          description="先保留当前快照，再按最新目标状态重排周里程碑、关键节点和最近任务，避免路径和执行页脱节。"
+          stages={roughPlanGenerationStages}
+        />
+
         {roughPlanStale ? (
           <div className="rounded-[1.35rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
             <div className="font-medium">粗版路径已过期</div>
@@ -132,13 +205,11 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
         ) : null}
 
         {goalNotice ? (
-          <div className="rounded-[1.35rem] border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            {goalNotice}
-          </div>
+          <FeedbackBanner message={goalNotice} />
         ) : null}
 
         <div className="grid gap-5 xl:grid-cols-[1.2fr,0.8fr]">
-          <Card>
+          <Card className={cn(pathRefreshActive && 'feedback-target-surface is-active')}>
             <div className="flex items-center gap-2">
               <Flag className="h-5 w-5 text-slate-500" />
               <SectionTitle>周里程碑</SectionTitle>
@@ -194,7 +265,7 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
               </div>
             </Card>
 
-            <Card>
+            <Card className={cn(pathRefreshActive && 'feedback-target-surface is-active')}>
               <SectionTitle>当前关键节点</SectionTitle>
               {currentMilestone ? (
                 <div className="mt-4 space-y-3">
@@ -221,7 +292,7 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
               ) : null}
             </Card>
 
-            <Card>
+            <Card className={cn(pathRefreshActive && 'feedback-target-surface is-active')}>
               <SectionTitle>重要检查点</SectionTitle>
               <div className="mt-4 space-y-3">
                 {(activeDraft?.stages ?? []).map((stage) => (
@@ -238,7 +309,7 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[1fr,1fr]">
-          <Card>
+          <Card className={cn(pathRefreshActive && 'feedback-target-surface is-active')}>
             <SectionTitle>最近任务</SectionTitle>
             <Muted className="mt-2">最近任务保留为辅助信息，真正的日执行请去今日页生成细版计划。</Muted>
             <div className="mt-5 space-y-3">

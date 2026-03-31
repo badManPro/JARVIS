@@ -76,6 +76,76 @@ select {
   color: var(--neo-foreground-strong);
 }
 
+@keyframes feedback-slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes feedback-sheen {
+  0% {
+    transform: translateX(-115%);
+  }
+
+  55%,
+  100% {
+    transform: translateX(115%);
+  }
+}
+
+@keyframes feedback-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.82;
+  }
+
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+}
+
+@keyframes feedback-focus-lift {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 rgba(242, 122, 87, 0);
+  }
+
+  45% {
+    transform: translateY(-6px);
+    box-shadow: 0 22px 44px rgba(242, 122, 87, 0.22);
+  }
+
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 rgba(242, 122, 87, 0);
+  }
+}
+
+@keyframes feedback-target-pulse {
+  0% {
+    box-shadow: 0 0 0 rgba(242, 122, 87, 0);
+    transform: translateY(0);
+  }
+
+  35% {
+    box-shadow: 0 18px 40px rgba(242, 122, 87, 0.16);
+    transform: translateY(-3px);
+  }
+
+  100% {
+    box-shadow: 0 0 0 rgba(242, 122, 87, 0);
+    transform: translateY(0);
+  }
+}
+
 @layer components {
   .neo-panel {
     border: 1px solid var(--neo-border);
@@ -217,6 +287,176 @@ select {
       inset 8px 8px 16px rgba(191, 202, 215, 0.48),
       inset -8px -8px 16px rgba(255, 255, 255, 0.94),
       0 0 0 4px rgba(242, 122, 87, 0.12);
+  }
+
+  .feedback-stage-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    border-radius: 1.9rem;
+    background: linear-gradient(145deg, rgba(255, 252, 248, 0.98), rgba(236, 242, 250, 0.96));
+    box-shadow:
+      16px 16px 36px rgba(183, 195, 208, 0.26),
+      -12px -12px 28px rgba(255, 255, 255, 0.84);
+    padding: 1.4rem;
+    animation: feedback-slide-up 280ms ease;
+  }
+
+  .feedback-stage-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.58) 46%, transparent 68%);
+    transform: translateX(-115%);
+    animation: feedback-sheen 2.8s ease-in-out infinite;
+  }
+
+  .feedback-stage-pill {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    align-self: flex-start;
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--neo-foreground-strong);
+    padding: 0.7rem 1rem;
+    box-shadow:
+      8px 8px 20px rgba(182, 194, 208, 0.22),
+      -8px -8px 20px rgba(255, 255, 255, 0.82);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .feedback-stage-progress {
+    position: relative;
+    z-index: 1;
+    height: 0.45rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: rgba(226, 233, 242, 0.85);
+  }
+
+  .feedback-stage-progress-bar {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(242, 122, 87, 0.82), rgba(244, 161, 120, 0.98));
+    box-shadow: 0 6px 18px rgba(242, 122, 87, 0.24);
+    transition: width 320ms ease;
+  }
+
+  .feedback-stage-item {
+    position: relative;
+    z-index: 1;
+    border: 1px solid rgba(255, 255, 255, 0.74);
+    border-radius: 1.3rem;
+    background: rgba(255, 255, 255, 0.64);
+    padding: 1rem;
+    transition:
+      transform 220ms ease,
+      border-color 220ms ease,
+      background 220ms ease,
+      box-shadow 220ms ease;
+  }
+
+  .feedback-stage-item.is-active {
+    border-color: rgba(242, 122, 87, 0.28);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 16px 30px rgba(242, 122, 87, 0.12);
+    transform: translateY(-2px);
+  }
+
+  .feedback-stage-item.is-complete {
+    border-color: rgba(79, 141, 113, 0.22);
+    background: rgba(232, 246, 238, 0.82);
+  }
+
+  .feedback-stage-dot {
+    display: inline-flex;
+    width: 0.72rem;
+    height: 0.72rem;
+    margin-top: 0.2rem;
+    flex: 0 0 auto;
+    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.7);
+  }
+
+  .feedback-stage-dot.is-active {
+    background: rgba(242, 122, 87, 0.95);
+    animation: feedback-pulse 1.2s ease-in-out infinite;
+  }
+
+  .feedback-stage-dot.is-complete {
+    background: rgba(79, 141, 113, 0.88);
+  }
+
+  .feedback-flow-banner {
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    border-radius: 1.35rem;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow:
+      12px 12px 28px rgba(182, 194, 208, 0.2),
+      -10px -10px 22px rgba(255, 255, 255, 0.82);
+    padding: 1rem 1.1rem;
+    animation: feedback-slide-up 240ms ease;
+  }
+
+  .feedback-flow-banner[data-tone='success'] {
+    background: linear-gradient(145deg, rgba(242, 251, 246, 0.96), rgba(232, 246, 238, 0.92));
+  }
+
+  .feedback-flow-banner[data-tone='warning'] {
+    background: linear-gradient(145deg, rgba(255, 248, 236, 0.96), rgba(255, 240, 219, 0.92));
+  }
+
+  .feedback-flow-banner[data-tone='danger'] {
+    background: linear-gradient(145deg, rgba(252, 241, 244, 0.96), rgba(248, 227, 233, 0.92));
+  }
+
+  .feedback-flow-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    flex: 0 0 auto;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--neo-accent-strong);
+    box-shadow:
+      8px 8px 18px rgba(182, 194, 208, 0.16),
+      -8px -8px 18px rgba(255, 255, 255, 0.84);
+  }
+
+  .feedback-flow-banner[data-tone='success'] .feedback-flow-icon {
+    color: var(--neo-success-strong);
+  }
+
+  .feedback-flow-banner[data-tone='warning'] .feedback-flow-icon {
+    color: #b7791f;
+  }
+
+  .feedback-flow-banner[data-tone='danger'] .feedback-flow-icon {
+    color: var(--neo-danger-strong);
+  }
+
+  .feedback-focus-card {
+    transition:
+      transform 260ms ease,
+      box-shadow 260ms ease,
+      background 260ms ease;
+  }
+
+  .feedback-focus-card.is-shifting {
+    animation: feedback-focus-lift 720ms ease;
+  }
+
+  .feedback-target-surface.is-active {
+    animation: feedback-target-pulse 900ms ease;
+    border-color: rgba(242, 122, 87, 0.22);
   }
 }
 
