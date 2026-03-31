@@ -1,6 +1,12 @@
+import { useEffect, useRef, useState } from 'react';
 import { CalendarRange, Clock3, GitBranchPlus, Orbit, Sparkles } from 'lucide-react';
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
+import { cn } from '@/lib/utils';
+import { FeedbackBanner, createFeedbackMessage, type FeedbackMessage } from '@/pages/dashboard/feedback-effects';
 import { useAppStore } from '@/store/app-store';
+import type { DashboardDelayedPlacement, DashboardWeeklyScheduleDay } from '@shared/app-state';
+
+const flowResetDuration = 1800;
 
 function delayedLaneLabel(assignedLane: 'anchor' | 'support') {
   return assignedLane === 'anchor' ? '主目标补回' : '副目标补回';
@@ -10,8 +16,97 @@ function delayedLaneBadgeClassName(assignedLane: 'anchor' | 'support') {
   return assignedLane === 'anchor' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700';
 }
 
+function delayedPlacementKey(candidate: DashboardDelayedPlacement) {
+  return `${candidate.goalId}-${candidate.stepId}`;
+}
+
+function buildWeeklyDaySignature(day: DashboardWeeklyScheduleDay) {
+  return JSON.stringify({
+    anchorGoalTitle: day.anchorGoalTitle,
+    supportGoalId: day.supportGoalId,
+    supportGoalTitle: day.supportGoalTitle,
+    supportGoalFocusLabel: day.supportGoalFocusLabel,
+    anchorShare: day.anchorShare,
+    supportShare: day.supportShare,
+    remainingAnchorMinutes: day.remainingAnchorMinutes,
+    remainingSupportMinutes: day.remainingSupportMinutes,
+    note: day.note,
+    anchorCarryovers: day.anchorCarryovers.map((item) => ({
+      stepId: item.stepId,
+      assignedDayLabel: item.assignedDayLabel,
+      assignedLane: item.assignedLane,
+      movedReason: item.movedReason ?? '',
+      overflowMinutes: item.overflowMinutes,
+    })),
+    supportCarryovers: day.supportCarryovers.map((item) => ({
+      stepId: item.stepId,
+      assignedDayLabel: item.assignedDayLabel,
+      assignedLane: item.assignedLane,
+      movedReason: item.movedReason ?? '',
+      overflowMinutes: item.overflowMinutes,
+    })),
+  });
+}
+
+function buildDelayedPlacementSignature(candidate: DashboardDelayedPlacement) {
+  return JSON.stringify({
+    assignedDayLabel: candidate.assignedDayLabel,
+    assignedLane: candidate.assignedLane,
+    movedReason: candidate.movedReason ?? '',
+    overflowMinutes: candidate.overflowMinutes,
+    strategyLabel: candidate.strategyLabel,
+    statusNote: candidate.statusNote,
+  });
+}
+
+function collectDayFlowReasons(day: DashboardWeeklyScheduleDay) {
+  const movedReasons = [...day.anchorCarryovers, ...day.supportCarryovers]
+    .map((item) => item.movedReason)
+    .filter((reason): reason is string => Boolean(reason));
+  if (movedReasons.length) {
+    return movedReasons.slice(0, 2);
+  }
+
+  const reasons: string[] = [];
+  if (day.anchorCarryovers.length) {
+    reasons.push(`主目标连续块补回 ${day.anchorCarryovers.map((item) => item.title).join('、')}`);
+  }
+  if (day.supportCarryovers.length) {
+    reasons.push(`副目标补位块补回 ${day.supportCarryovers.map((item) => item.title).join('、')}`);
+  }
+
+  return reasons.slice(0, 2);
+}
+
+function summarizeChangedDays(weeklyPlan: DashboardWeeklyScheduleDay[], changedDayLabels: string[]) {
+  return weeklyPlan
+    .filter((day) => changedDayLabels.includes(day.label))
+    .flatMap((day) => {
+      const reasons = collectDayFlowReasons(day);
+      if (reasons.length) {
+        return reasons.map((reason) => `${day.label}：${reason}`);
+      }
+
+      if (day.supportGoalId) {
+        return [`${day.label}：副目标补位切到「${day.supportGoalTitle}」`];
+      }
+
+      return [`${day.label}：主目标连续块保持独占`];
+    })
+    .slice(0, 3);
+}
+
 export function CalendarPage() {
   const scheduling = useAppStore((state) => state.dashboard.scheduling);
+  const [scheduleNotice, setScheduleNotice] = useState<FeedbackMessage | null>(null);
+  const [flowingDayLabels, setFlowingDayLabels] = useState<string[]>([]);
+  const [flowingPlacementKeys, setFlowingPlacementKeys] = useState<string[]>([]);
+  const previousSchedulingRef = useRef<{
+    weeklyPlan: Map<string, string>;
+    delayedPlacements: Map<string, string>;
+  } | null>(null);
+  const flowFrameRef = useRef<number | null>(null);
+  const flowResetRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
   const primaryAllocation = scheduling.allocations.find((allocation) => allocation.role === 'main') ?? null;
   const secondaryShare = scheduling.allocations
@@ -19,6 +114,86 @@ export function CalendarPage() {
     .reduce((sum, allocation) => sum + allocation.scheduledShare, 0);
   const weeklyPlan = scheduling.weeklyPlan;
   const delayedPlacements = scheduling.delayedPlacements;
+  const flowingDaySet = new Set(flowingDayLabels);
+  const flowingPlacementSet = new Set(flowingPlacementKeys);
+
+  useEffect(() => () => {
+    if (flowFrameRef.current !== null) {
+      globalThis.cancelAnimationFrame(flowFrameRef.current);
+    }
+    if (flowResetRef.current) {
+      globalThis.clearTimeout(flowResetRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    const weeklyPlanSnapshot = new Map(weeklyPlan.map((day) => [day.label, buildWeeklyDaySignature(day)]));
+    const delayedPlacementSnapshot = new Map(
+      delayedPlacements.map((candidate) => [delayedPlacementKey(candidate), buildDelayedPlacementSignature(candidate)]),
+    );
+    const previousSnapshot = previousSchedulingRef.current;
+
+    previousSchedulingRef.current = {
+      weeklyPlan: weeklyPlanSnapshot,
+      delayedPlacements: delayedPlacementSnapshot,
+    };
+
+    if (!previousSnapshot) {
+      return;
+    }
+
+    const changedDayLabels = weeklyPlan
+      .filter((day) => previousSnapshot.weeklyPlan.get(day.label) !== weeklyPlanSnapshot.get(day.label))
+      .map((day) => day.label);
+    const changedPlacementKeys = delayedPlacements
+      .filter((candidate) => previousSnapshot.delayedPlacements.get(delayedPlacementKey(candidate)) !== delayedPlacementSnapshot.get(delayedPlacementKey(candidate)))
+      .map((candidate) => delayedPlacementKey(candidate));
+    const removedPlacementCount = Array.from(previousSnapshot.delayedPlacements.keys())
+      .filter((key) => !delayedPlacementSnapshot.has(key))
+      .length;
+
+    if (!changedDayLabels.length && !changedPlacementKeys.length && !removedPlacementCount) {
+      return;
+    }
+
+    const affectedBlockCount = changedDayLabels.length + changedPlacementKeys.length + removedPlacementCount;
+    const flowHighlights = summarizeChangedDays(weeklyPlan, changedDayLabels);
+    setScheduleNotice(createFeedbackMessage({
+      label: '日历已重排',
+      title: affectedBlockCount
+        ? `系统已让 ${affectedBlockCount} 个时间块流向新的可执行窗口`
+        : '系统已刷新本周时间块排程',
+      detail: flowHighlights.length
+        ? flowHighlights.join('；')
+        : '主目标连续块、副目标补位块和延期补回块已经按最新状态重新对齐。',
+      tone: 'success',
+      chips: [
+        changedDayLabels.length ? `${changedDayLabels.length} 天发生重排` : null,
+        changedPlacementKeys.length || removedPlacementCount ? `延期补回 ${changedPlacementKeys.length + removedPlacementCount}` : null,
+        secondaryShare ? '副目标补位已同步' : '主目标连续块已锁定',
+      ].filter((item): item is string => Boolean(item)),
+    }));
+
+    if (flowFrameRef.current !== null) {
+      globalThis.cancelAnimationFrame(flowFrameRef.current);
+    }
+    if (flowResetRef.current) {
+      globalThis.clearTimeout(flowResetRef.current);
+    }
+
+    setFlowingDayLabels([]);
+    setFlowingPlacementKeys([]);
+    flowFrameRef.current = globalThis.requestAnimationFrame(() => {
+      setFlowingDayLabels(changedDayLabels);
+      setFlowingPlacementKeys(changedPlacementKeys);
+      flowFrameRef.current = null;
+    });
+    flowResetRef.current = globalThis.setTimeout(() => {
+      setFlowingDayLabels([]);
+      setFlowingPlacementKeys([]);
+      flowResetRef.current = null;
+    }, flowResetDuration);
+  }, [delayedPlacements, secondaryShare, weeklyPlan]);
 
   if (!primaryAllocation) {
     return (
@@ -73,6 +248,8 @@ export function CalendarPage() {
         </div>
       </Card>
 
+      {scheduleNotice ? <FeedbackBanner message={scheduleNotice} /> : null}
+
       <div className="grid gap-5 xl:grid-cols-[1.3fr,0.7fr]">
         <Card>
           <div className="flex items-center gap-2">
@@ -81,8 +258,19 @@ export function CalendarPage() {
           </div>
           <Muted className="mt-2">从周一到周日，每天先锁住主目标连续块，再决定副目标补位和延期补回占用哪一段剩余时间。</Muted>
           <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-7">
-            {weeklyPlan.map((day) => (
-              <div key={day.label} className="rounded-[1.5rem] border border-white/80 bg-white/82 px-4 py-4 shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+            {weeklyPlan.map((day, index) => {
+              const dayFlowActive = flowingDaySet.has(day.label);
+              const dayFlowReasons = collectDayFlowReasons(day);
+
+              return (
+              <div
+                key={day.label}
+                className={cn(
+                  'calendar-flow-surface rounded-[1.5rem] border border-white/80 bg-white/82 px-4 py-4 shadow-[0_14px_32px_rgba(15,23,42,0.05)]',
+                  dayFlowActive && 'is-active',
+                )}
+                style={dayFlowActive ? { animationDelay: `${index * 70}ms` } : undefined}
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium text-slate-900">{day.label}</div>
                   <Badge
@@ -98,7 +286,10 @@ export function CalendarPage() {
 
                 <div className="mt-4 flex h-64 flex-col gap-2 rounded-[1.25rem] bg-slate-50/90 p-2">
                   <div
-                    className="flex min-h-[5.5rem] flex-col justify-between rounded-[1rem] bg-slate-900 px-3 py-3 text-white shadow-[0_14px_28px_rgba(15,23,42,0.18)]"
+                    className={cn(
+                      'calendar-flow-block flex min-h-[5.5rem] flex-col justify-between rounded-[1rem] bg-slate-900 px-3 py-3 text-white shadow-[0_14px_28px_rgba(15,23,42,0.18)]',
+                      dayFlowActive && 'is-active',
+                    )}
                     style={{ flex: `${Math.max(day.anchorShare, 55)} 1 0%` }}
                   >
                     <div>
@@ -122,9 +313,11 @@ export function CalendarPage() {
 
                   {day.supportShare ? (
                     <div
-                      className={`flex min-h-[4rem] flex-col justify-between rounded-[1rem] px-3 py-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${
-                        day.supportCarryovers.length ? 'bg-rose-50 text-rose-900' : 'bg-white text-slate-700'
-                      }`}
+                      className={cn(
+                        'calendar-flow-block flex min-h-[4rem] flex-col justify-between rounded-[1rem] px-3 py-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]',
+                        day.supportCarryovers.length ? 'bg-rose-50 text-rose-900' : 'bg-white text-slate-700',
+                        dayFlowActive && 'is-active',
+                      )}
                       style={{ flex: `${Math.max(day.supportShare, 18)} 1 0%` }}
                     >
                       <div className="text-xs uppercase tracking-[0.16em] text-slate-500">副目标补位 {day.supportShare}%</div>
@@ -152,8 +345,21 @@ export function CalendarPage() {
                 </div>
 
                 <div className="mt-3 text-xs leading-5 text-slate-500">{day.note}</div>
+                {dayFlowReasons.length ? (
+                  <div className={cn('calendar-flow-note mt-3', dayFlowActive && 'is-active')}>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">时间块流向</div>
+                    <div className="mt-2 space-y-2">
+                      {dayFlowReasons.map((reason) => (
+                        <div key={`${day.label}-${reason}`} className="rounded-[0.95rem] bg-white/72 px-3 py-2 text-xs leading-5 text-slate-600">
+                          {reason}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 
@@ -165,8 +371,19 @@ export function CalendarPage() {
             </div>
             <Muted className="mt-2">延期步骤不会消失，而是优先占用后续时间块；如果当天补位窗口冲突，系统会继续往后挪。</Muted>
             <div className="mt-5 space-y-3">
-              {delayedPlacements.length ? delayedPlacements.map((candidate) => (
-                <div key={`${candidate.goalId}-${candidate.stepId}`} className="rounded-[1.35rem] border border-white/80 bg-white/85 px-4 py-4 text-sm leading-6 text-slate-700">
+              {delayedPlacements.length ? delayedPlacements.map((candidate, index) => {
+                const candidateKey = delayedPlacementKey(candidate);
+                const placementFlowActive = flowingPlacementSet.has(candidateKey);
+
+                return (
+                <div
+                  key={candidateKey}
+                  className={cn(
+                    'calendar-flow-surface rounded-[1.35rem] border border-white/80 bg-white/85 px-4 py-4 text-sm leading-6 text-slate-700',
+                    placementFlowActive && 'is-active',
+                  )}
+                  style={placementFlowActive ? { animationDelay: `${index * 85}ms` } : undefined}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="font-medium text-slate-900">{candidate.title}</div>
                     <div className="flex flex-wrap gap-2">
@@ -180,7 +397,7 @@ export function CalendarPage() {
                   <div className="mt-2">{candidate.goalTitle} · {candidate.duration}</div>
                   <div className="mt-2 text-xs leading-5 text-slate-500">{candidate.statusNote || candidate.detail}</div>
                   {candidate.movedReason ? (
-                    <div className="mt-2 rounded-[1rem] bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                    <div className={cn('calendar-flow-note mt-2 rounded-[1rem] bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600', placementFlowActive && 'is-active')}>
                       冲突时：{candidate.movedReason}
                     </div>
                   ) : null}
@@ -188,7 +405,8 @@ export function CalendarPage() {
                     <div className="mt-2 text-xs leading-5 text-rose-700">当前仍有 {candidate.overflowMinutes} 分钟需要后续继续挪动。</div>
                   ) : null}
                 </div>
-              )) : (
+                );
+              }) : (
                 <div className="rounded-[1.35rem] border border-dashed border-white/80 bg-white/72 px-4 py-5 text-sm leading-6 text-slate-600">
                   当前没有延期候选。系统会直接按主目标优先占位和副目标补位来铺这一周。
                 </div>

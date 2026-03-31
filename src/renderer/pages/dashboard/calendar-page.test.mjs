@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const calendarPagePath = path.resolve('/Users/casper/Documents/project/JARVIS/src/renderer/pages/dashboard/calendar-page.tsx');
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
+const calendarPagePath = path.resolve(currentDir, 'calendar-page.tsx');
 
 test('calendar page renders the weekly scheduling preview, delayed carry-over, and scheduling rationale', () => {
   assert.equal(fs.existsSync(calendarPagePath), true);
@@ -24,4 +27,8 @@ test('calendar page renders the weekly scheduling preview, delayed carry-over, a
   assert.match(calendarPageSource, /冲突时/);
   assert.match(calendarPageSource, /remainingAnchorMinutes|remainingSupportMinutes/);
   assert.match(calendarPageSource, /assignedLane|movedReason/);
+  assert.match(calendarPageSource, /FeedbackBanner/);
+  assert.match(calendarPageSource, /calendar-flow-surface|calendar-flow-block|calendar-flow-note/);
+  assert.match(calendarPageSource, /日历已重排|时间块流向/);
+  assert.match(calendarPageSource, /requestAnimationFrame|setFlowingDayLabels/);
 });
