@@ -3,6 +3,7 @@ import { Bot, Flag, LoaderCircle, RotateCcw, Trash2 } from 'lucide-react';
 import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
 import { useAppStore } from '@/store/app-store';
 import { ReflectionSheet } from '@/pages/dashboard/reflection-sheet';
+import type { LearningGoal } from '@shared/app-state';
 import {
   dangerButtonClassName,
   getActiveDraft,
@@ -101,6 +102,7 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
               <div className="mt-5 flex flex-wrap gap-2">
                 <Badge className="bg-slate-900 text-white">{activeGoal?.cycle ?? '待设置周期'}</Badge>
                 <Badge className="bg-white/90 text-slate-700">{activeGoal?.role === 'main' ? '主目标' : '副目标'}</Badge>
+                <Badge className="bg-white/90 text-slate-700">领域 {goalDomainBadgeLabel(activeGoal?.domain)}</Badge>
                 <Badge className="bg-white/90 text-slate-700">调度权重 {activeGoal?.scheduleWeight ?? 0}</Badge>
                 <Badge className="bg-white/90 text-slate-700">{currentMilestone?.title ?? '等待第一个周里程碑'}</Badge>
                 <Badge className="bg-white/90 text-slate-700">{activeSnapshots.length} 个历史快照</Badge>
@@ -290,6 +292,7 @@ export function PathPage({ onOpenCoach }: { onOpenCoach: () => void }) {
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.status === 'active' ? '进行中' : goal.status === 'paused' ? '暂停' : '已完成'}</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.cycle || '未设置周期'}</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.role === 'main' ? '主目标' : '副目标'}</Badge>
+                      <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>领域 {goalDomainBadgeLabel(goal.domain)}</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>调度权重 {goal.scheduleWeight}</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goalDraftCount} 个计划草案</Badge>
                       <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goalSnapshotCount} 个历史快照</Badge>
@@ -429,4 +432,18 @@ function buildGoalDeletionPreview(
     deletingActiveGoal: plan.activeGoalId === goalId,
     nextActiveGoal: plan.activeGoalId === goalId ? (remainingGoals[0] ?? null) : null,
   };
+}
+
+function goalDomainBadgeLabel(domain?: LearningGoal['domain']) {
+  switch (domain) {
+    case 'programming':
+      return '编程';
+    case 'instrument':
+      return '乐器';
+    case 'fitness':
+      return '健身';
+    case 'general':
+    default:
+      return '通用';
+  }
 }

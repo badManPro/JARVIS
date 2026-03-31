@@ -30,7 +30,7 @@ import type {
 } from '@shared/app-state';
 import type { AiCapabilityObservabilitySummary, AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRequestLogEntry, AiRuntimeSummaryItem } from '@shared/ai-service';
 import { resolveConversationState } from '@shared/app-state';
-import type { LearningGoalInput } from '@shared/goal';
+import { learningGoalDomainOptions, type LearningGoalInput } from '@shared/goal';
 import type { ProviderConfigInput } from '@shared/provider-config';
 
 const providerOptions: Array<{ value: ProviderId; label: string }> = [
@@ -2068,6 +2068,7 @@ const defaultGoalDraft = (): LearningGoalInput => ({
   successMetric: '',
   priority: 'P2',
   status: 'active',
+  domain: 'general',
 });
 
 function GoalsContent() {
@@ -2291,6 +2292,7 @@ function GoalsContent() {
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <Badge className={active ? 'bg-white/10 text-white' : statusBadgeClassName(goal.status)}>{goalStatusLabel(goal.status)}</Badge>
                     <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>{goal.cycle}</Badge>
+                    <Badge className={active ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-700'}>领域 {goalDomainLabel(goal.domain)}</Badge>
                     {goal.id === activeGoalId ? <Badge className={active ? 'bg-emerald-400/20 text-emerald-50' : 'bg-emerald-100 text-emerald-700'}>当前主目标</Badge> : null}
                   </div>
                   <div className={active ? 'mt-3 text-xs text-slate-200' : 'mt-3 text-xs text-slate-500'}>{goalPlanDraft?.title ?? '自动草案待生成'}</div>
@@ -2326,6 +2328,13 @@ function GoalsContent() {
                 <option value="active">进行中</option>
                 <option value="paused">暂停</option>
                 <option value="completed">已完成</option>
+              </select>
+            </Field>
+            <Field label="领域">
+              <select className={inputClassName} value={draft.domain ?? 'general'} onChange={(event) => setDraft((current) => ({ ...current, domain: event.target.value as LearningGoal['domain'] }))}>
+                {learningGoalDomainOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </Field>
             <Field label="学习动机" className="md:col-span-2">
@@ -2386,6 +2395,7 @@ function GoalsContent() {
               <div className="flex flex-wrap gap-2">
                 <Badge className={priorityBadgeClassName(draft.priority)}>{draft.priority}</Badge>
                 <Badge className={statusBadgeClassName(draft.status)}>{goalStatusLabel(draft.status)}</Badge>
+                <Badge className="bg-slate-100 text-slate-700">领域 {goalDomainLabel(draft.domain ?? 'general')}</Badge>
                 {draft.cycle.trim() ? <Badge className="bg-slate-100 text-slate-700">{draft.cycle}</Badge> : null}
               </div>
             </div>
@@ -3029,6 +3039,20 @@ function goalStatusLabel(status: LearningGoal['status']) {
       return '已完成';
     default:
       return status;
+  }
+}
+
+function goalDomainLabel(domain: LearningGoal['domain']) {
+  switch (domain) {
+    case 'programming':
+      return '编程';
+    case 'instrument':
+      return '乐器';
+    case 'fitness':
+      return '健身';
+    case 'general':
+    default:
+      return '通用';
   }
 }
 

@@ -1,4 +1,4 @@
-import type { GoalStatus, LearningGoal, LearningGoalRole } from './app-state.js';
+import type { GoalStatus, LearningGoal, LearningGoalDomain, LearningGoalRole } from './app-state.js';
 
 export const DEFAULT_MAIN_GOAL_WEIGHT = 70;
 export const DEFAULT_SECONDARY_GOAL_WEIGHT = 30;
@@ -15,12 +15,73 @@ export type LearningGoalInput = {
   successMetric: string;
   priority: LearningGoal['priority'];
   status: GoalStatus;
+  domain?: LearningGoalDomain;
   role?: LearningGoalRole;
   scheduleWeight?: number;
 };
 
+const programmingDomainKeywords = [
+  'python',
+  'javascript',
+  'typescript',
+  'react',
+  'vue',
+  'node',
+  'next.js',
+  'nextjs',
+  'api',
+  'sql',
+  '数据库',
+  '前端',
+  '后端',
+  'cli',
+  '脚本',
+  '代码',
+  '编程',
+  '开发',
+  '调试',
+  '算法',
+  'git',
+  'llm',
+  'ai',
+];
+
+export const learningGoalDomainOptions: Array<{ value: LearningGoalDomain; label: string }> = [
+  { value: 'general', label: '通用' },
+  { value: 'programming', label: '编程' },
+  { value: 'instrument', label: '乐器（待细化）' },
+  { value: 'fitness', label: '健身（待细化）' },
+];
+
 export function normalizeLearningGoalRole(role?: string): LearningGoalRole {
   return role === 'secondary' ? 'secondary' : 'main';
+}
+
+export function normalizeLearningGoalDomain(domain?: string): LearningGoalDomain {
+  switch (domain) {
+    case 'programming':
+    case 'instrument':
+    case 'fitness':
+      return domain;
+    case 'general':
+    default:
+      return 'general';
+  }
+}
+
+export function inferLearningGoalDomain(goal: Partial<Pick<LearningGoalInput, 'title' | 'motivation' | 'baseline' | 'successMetric'>>) {
+  const combined = [
+    goal.title,
+    goal.motivation,
+    goal.baseline,
+    goal.successMetric,
+  ].join(' ').toLowerCase();
+
+  if (programmingDomainKeywords.some((keyword) => combined.includes(keyword))) {
+    return 'programming' as const;
+  }
+
+  return 'general' as const;
 }
 
 export function normalizeGoalScheduleWeight(weight: number | undefined, role: LearningGoalRole) {
@@ -44,13 +105,18 @@ export function getMainGoalId<T extends { id: string; role?: LearningGoalRole }>
 
 export function resolveGoalScheduling<T extends {
   id: string;
+  title?: string;
+  motivation?: string;
+  baseline?: string;
+  successMetric?: string;
+  domain?: LearningGoalDomain;
   role?: LearningGoalRole;
   scheduleWeight?: number;
 }>(
   goals: T[],
   preferredMainGoalId?: string,
 ): {
-  goals: Array<T & { role: LearningGoalRole; scheduleWeight: number }>;
+  goals: Array<T & { domain: LearningGoalDomain; role: LearningGoalRole; scheduleWeight: number }>;
   activeGoalId: string;
 } {
   const activeGoalId = getMainGoalId(goals, preferredMainGoalId);
@@ -61,6 +127,7 @@ export function resolveGoalScheduling<T extends {
       const role: LearningGoalRole = goal.id === activeGoalId ? 'main' : 'secondary';
       return {
         ...goal,
+        domain: goal.domain === undefined ? inferLearningGoalDomain(goal) : normalizeLearningGoalDomain(goal.domain),
         role,
         scheduleWeight: normalizeGoalScheduleWeight(goal.scheduleWeight, role),
       };
@@ -71,6 +138,10 @@ export function resolveGoalScheduling<T extends {
 export function buildGoalScheduleAllocations<T extends {
   id: string;
   title: string;
+  motivation?: string;
+  baseline?: string;
+  successMetric?: string;
+  domain?: LearningGoalDomain;
   role?: LearningGoalRole;
   scheduleWeight?: number;
 }>(
@@ -179,4 +250,18 @@ export function buildGoalScheduleAllocations<T extends {
 
 export function goalRoleLabel(role: LearningGoalRole) {
   return role === 'main' ? '主目标' : '副目标';
+}
+
+export function goalDomainLabel(domain: LearningGoalDomain) {
+  switch (domain) {
+    case 'programming':
+      return '编程';
+    case 'instrument':
+      return '乐器';
+    case 'fitness':
+      return '健身';
+    case 'general':
+    default:
+      return '通用';
+  }
 }

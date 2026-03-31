@@ -3,6 +3,7 @@ import { buildDashboardGoalScheduling } from './scheduling.js';
 export type ProviderId = 'openai' | 'codex' | 'glm' | 'kimi' | 'deepseek' | 'custom';
 export type GoalStatus = 'active' | 'paused' | 'completed';
 export type LearningGoalRole = 'main' | 'secondary';
+export type LearningGoalDomain = 'general' | 'programming' | 'instrument' | 'fitness';
 export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'delayed' | 'skipped';
 export type HealthStatus = 'unknown' | 'ready' | 'warning';
 
@@ -64,6 +65,7 @@ export type LearningGoal = {
   successMetric: string;
   priority: 'P1' | 'P2' | 'P3';
   status: GoalStatus;
+  domain: LearningGoalDomain;
   role: LearningGoalRole;
   scheduleWeight: number;
 };
@@ -3059,6 +3061,7 @@ const baseSeedState: AppState = {
       successMetric: '能独立完成一个本地优先的 AI 学习工具 MVP。',
       priority: 'P1',
       status: 'active',
+      domain: 'programming',
       role: 'main',
       scheduleWeight: 70,
     },
@@ -3071,6 +3074,7 @@ const baseSeedState: AppState = {
       successMetric: '每周至少 1 次结构化复盘。',
       priority: 'P2',
       status: 'active',
+      domain: 'general',
       role: 'secondary',
       scheduleWeight: 30,
     },

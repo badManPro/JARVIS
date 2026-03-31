@@ -1,4 +1,5 @@
 import type { AiDailyPlanGenerationResult, AiPlanGenerationResult, AiProfileExtractionResult, AiProviderAdapter, AiProviderRuntimeConfig, AiRequest, AiResult } from '../../shared/ai-service.js';
+import { buildGoalDomainPromptLines } from '../../shared/domain-rules.js';
 
 const reflectionPeriodLabels = {
   daily: '日复盘',
@@ -139,6 +140,7 @@ export function buildPlanGenerationPrompt(request: Extract<AiRequest, { capabili
     `当前基础：${request.goal.baseline}`,
     `目标周期：${request.goal.cycle}`,
     `成功标准：${request.goal.successMetric}`,
+    ...buildGoalDomainPromptLines(request.goal),
     `学习窗口：${request.profile.bestStudyWindow}`,
     `时间预算：${request.profile.timeBudget}`,
     `节奏偏好：${request.profile.pacePreference}`,
@@ -170,6 +172,7 @@ export function buildDailyPlanGenerationPrompt(request: Extract<AiRequest, { cap
     `当前目标角色：${request.goal.role}`,
     `当前目标调度权重：${request.goal.scheduleWeight}`,
     `当前基础：${request.goal.baseline}`,
+    ...buildGoalDomainPromptLines(request.goal),
     `当前粗版计划：${request.currentDraft.summary}`,
     `当前周里程碑：${request.currentDraft.milestones.map((milestone) => `${milestone.title}｜${milestone.focus}`).join('；') || '暂无'}`,
     `长期时间预算：${request.profile.timeBudget}`,

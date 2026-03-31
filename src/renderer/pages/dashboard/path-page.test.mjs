@@ -15,6 +15,8 @@ test('path page foregrounds the rough weekly path and rough-plan regeneration co
   assert.match(pathPageSource, /主目标/);
   assert.match(pathPageSource, /副目标/);
   assert.match(pathPageSource, /调度权重/);
+  assert.match(pathPageSource, /领域/);
+  assert.match(pathPageSource, /编程/);
   assert.match(pathPageSource, /调度预览/);
   assert.match(pathPageSource, /主目标优先占位/);
   assert.match(pathPageSource, /副目标补位/);

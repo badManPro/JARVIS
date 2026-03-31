@@ -318,6 +318,10 @@ function addPlanDraftPlanningColumns(sqlite: Database.Database) {
 function addGoalSchedulingColumns(sqlite: Database.Database) {
   const learningGoalColumns = getTableColumns(sqlite, 'learning_goals');
 
+  if (!learningGoalColumns.some((column) => column.name === 'domain')) {
+    sqlite.exec('ALTER TABLE learning_goals ADD COLUMN domain TEXT NOT NULL DEFAULT \'general\';');
+  }
+
   if (!learningGoalColumns.some((column) => column.name === 'role')) {
     sqlite.exec('ALTER TABLE learning_goals ADD COLUMN role TEXT NOT NULL DEFAULT \'secondary\';');
   }
@@ -367,6 +371,13 @@ const migrations: Migration[] = [
   {
     version: 6,
     name: 'add primary secondary goal scheduling columns',
+    up: (sqlite) => {
+      addGoalSchedulingColumns(sqlite);
+    },
+  },
+  {
+    version: 7,
+    name: 'add goal domain column',
     up: (sqlite) => {
       addGoalSchedulingColumns(sqlite);
     },

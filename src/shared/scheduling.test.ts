@@ -14,6 +14,7 @@ function createGoal(id: string, title: string, role: 'main' | 'secondary', sched
     successMetric: '',
     priority: role === 'main' ? 'P1' : 'P2',
     status: 'active' as const,
+    domain: 'general',
     role,
     scheduleWeight,
   };

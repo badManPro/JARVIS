@@ -17,6 +17,16 @@ function createProvider(): AiProviderRuntimeConfig {
   };
 }
 
+function createProgrammingGoal() {
+  return {
+    ...seedState.goals[0],
+    title: 'Python + AI 应用开发',
+    baseline: '有前端经验，但 Python 和调试基础薄弱。',
+    successMetric: '完成一个可运行的本地 CLI 工具',
+    domain: 'programming',
+  } as never;
+}
+
 test('OpenAiCompatibleProviderAdapter includes reflection context in profile extraction prompts', async () => {
   let requestBody: { messages?: Array<{ content?: string }> } = {};
   const adapter = new OpenAiCompatibleProviderAdapter({
@@ -115,7 +125,7 @@ test('OpenAiCompatibleProviderAdapter includes main-goal continuity scheduling c
     provider: createProvider(),
     request: {
       capability: 'plan_generation',
-      goal: seedState.goals[0],
+      goal: createProgrammingGoal(),
       profile: seedState.profile,
       currentDraft: seedState.plan.drafts[0],
       scheduling: seedState.dashboard.scheduling,
@@ -127,6 +137,10 @@ test('OpenAiCompatibleProviderAdapter includes main-goal continuity scheduling c
   assert.match(prompt, /主目标优先占位 70%/);
   assert.match(prompt, /副目标补位/);
   assert.match(prompt, /形成稳定的技术复盘输出习惯/);
+  assert.match(prompt, /编程/);
+  assert.match(prompt, /官方文档/);
+  assert.match(prompt, /任务原子/);
+  assert.match(prompt, /可运行代码|运行验证/);
 });
 
 test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan generation requests', async () => {
@@ -153,7 +167,7 @@ test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan ge
     provider: createProvider(),
     request: {
       capability: 'daily_plan_generation',
-      goal: seedState.goals[0],
+      goal: createProgrammingGoal(),
       profile: seedState.profile,
       currentDraft: seedState.plan.drafts[0],
       scheduling: seedState.dashboard.scheduling,
@@ -177,6 +191,9 @@ test('OpenAiCompatibleProviderAdapter builds and parses structured daily plan ge
   assert.match(prompt, /当前目标角色：main/);
   assert.match(prompt, /主目标优先占位 70%/);
   assert.match(prompt, /副目标补位/);
+  assert.match(prompt, /编程/);
+  assert.match(prompt, /官方文档/);
+  assert.match(prompt, /可运行代码|运行验证/);
   assert.equal(result.plan.todayGoal, '完成 Python 虚拟环境和 print/input 语法入门');
   assert.equal(result.plan.resources[0]?.title, 'Python 官方教程');
 });

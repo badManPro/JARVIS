@@ -564,6 +564,26 @@ test('upsertLearningGoal keeps the existing main goal when creating a secondary 
   assert.equal((createdGoal as typeof createdGoal & { scheduleWeight?: number })?.scheduleWeight, 30);
 });
 
+test('upsertLearningGoal persists goal domain after reload', () => {
+  const { service, entitiesRepository } = createHarness();
+  const initialState = service.initialize();
+  const activeGoal = initialState.goals.find((goal) => goal.id === initialState.plan.activeGoalId);
+
+  assert.ok(activeGoal);
+
+  service.upsertLearningGoal({
+    ...activeGoal,
+    domain: 'programming',
+  } as never);
+
+  const reloadedState = service.loadAppState();
+  const reloadedGoal = reloadedState.goals.find((goal) => goal.id === activeGoal.id);
+  const persistedGoal = entitiesRepository.loadLearningGoals().find((goal) => goal.id === activeGoal.id);
+
+  assert.equal((reloadedGoal as typeof reloadedGoal & { domain?: string })?.domain, 'programming');
+  assert.equal((persistedGoal as typeof persistedGoal & { domain?: string })?.domain, 'programming');
+});
+
 test('setActiveGoal promotes the target goal to main and demotes the previous main goal', () => {
   const { service } = createHarness();
   const initialState = service.initialize();
@@ -889,6 +909,37 @@ test('completeInitialOnboarding falls back to a template draft when AI plan gene
   );
 });
 
+test('completeInitialOnboarding infers programming domain for programming goals', async () => {
+  const payload: CompleteInitialOnboardingPayload = {
+    goalTitle: 'Python + AI 应用开发',
+    baseline: '有前端经验，但 Python 基础和调试经验不足。',
+    timeBudget: '工作日 30 分钟，周末 2 小时',
+    bestStudyWindow: '工作日晚间 20:30 - 21:15',
+    pacePreference: '',
+    ageBracket: '',
+    gender: '',
+    personalityTraits: [],
+    mbti: '',
+    motivationStyle: '',
+    stressResponse: '',
+    feedbackPreference: '',
+    cycle: '6 周',
+  };
+  const { service } = createHarness({
+    snapshotState: createEmptyAppState(),
+    aiExecute: async () => {
+      throw new Error('DeepSeek 当前无法执行 plan_generation：缺少 Secret。');
+    },
+  });
+
+  service.initialize();
+
+  const result = await service.completeInitialOnboarding(payload);
+  const activeGoal = result.state.goals.find((goal) => goal.id === result.state.plan.activeGoalId);
+
+  assert.equal((activeGoal as typeof activeGoal & { domain?: string })?.domain, 'programming');
+});
+
 test('saveTodayPlanningContext stores daily-only overrides without mutating the long-term profile and marks the current daily plan stale', () => {
   const { service } = createHarness();
   const initialState = service.initialize();
@@ -995,6 +1046,45 @@ test('generateTodayPlan stores a structured daily plan under the active rough dr
   assert.deepEqual(
     (activeDraft?.todayPlan as { tomorrowCandidates?: unknown[] } | undefined)?.tomorrowCandidates ?? [],
     [],
+  );
+});
+
+test('generateTodayPlan falls back to programming-specific daily guidance when AI generation fails', async () => {
+  const { service } = createHarness({
+    aiExecute: async () => {
+      throw new Error('DeepSeek 当前无法执行 daily_plan_generation：缺少 Secret。');
+    },
+  });
+
+  const initialState = service.initialize();
+  const activeGoal = initialState.goals.find((goal) => goal.id === initialState.plan.activeGoalId);
+  assert.ok(activeGoal);
+
+  service.upsertLearningGoal({
+    ...activeGoal,
+    domain: 'programming',
+  } as never);
+  service.saveTodayPlanningContext({
+    goalId: initialState.plan.activeGoalId,
+    availableDuration: '今天 30 分钟',
+    studyWindow: '今晚 20:30 - 21:00',
+    note: '今天先完成一个最小可运行代码结果',
+  });
+
+  const nextState = await service.generateTodayPlan({
+    goalId: initialState.plan.activeGoalId,
+  });
+
+  const activeDraft = nextState.plan.drafts.find((draft) => draft.goalId === nextState.plan.activeGoalId);
+
+  assert.ok(activeDraft?.todayPlan);
+  assert.equal(
+    activeDraft.todayPlan.resources.some((resource) => /官方文档|README|API/.test(`${resource.title} ${resource.reason}`)),
+    true,
+  );
+  assert.equal(
+    activeDraft.todayPlan.practice.some((item) => /代码|脚本|可运行/.test(item.output)),
+    true,
   );
 });
 

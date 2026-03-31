@@ -32,6 +32,7 @@ import { createDefaultCodexAuthStatus } from '@shared/codex-auth';
 import type { LearningGoalInput } from '@shared/goal';
 import {
   DEFAULT_MAIN_GOAL_WEIGHT,
+  inferLearningGoalDomain,
   normalizeGoalScheduleWeight,
   resolveGoalScheduling,
 } from '@shared/goal';
@@ -212,6 +213,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
         successMetric: `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
         priority: 'P1' as const,
         status: 'active' as const,
+        domain: inferLearningGoalDomain({
+          title: payload.goalTitle.trim(),
+          baseline: payload.baseline.trim(),
+          successMetric: `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
+        }),
         role: 'main' as const,
         scheduleWeight: DEFAULT_MAIN_GOAL_WEIGHT,
       };
@@ -300,6 +306,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
             ...existingGoal,
             ...goal,
             id: goalId,
+            domain: goal.domain ?? existingGoal?.domain ?? inferLearningGoalDomain({
+              title: goal.title,
+              motivation: goal.motivation,
+              baseline: goal.baseline,
+              successMetric: goal.successMetric,
+            }),
             role: requestedRole,
             scheduleWeight: normalizeGoalScheduleWeight(goal.scheduleWeight ?? existingGoal?.scheduleWeight, requestedRole),
           };

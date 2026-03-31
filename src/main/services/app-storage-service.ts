@@ -39,9 +39,11 @@ import {
 import type { LearningGoalInput } from '../../shared/goal.js';
 import {
   DEFAULT_MAIN_GOAL_WEIGHT,
+  inferLearningGoalDomain,
   normalizeGoalScheduleWeight,
   resolveGoalScheduling,
 } from '../../shared/goal.js';
+import { buildProgrammingTodayPlanTemplate } from '../../shared/domain-rules.js';
 import {
   buildPlanningConfirmationHighlights,
   derivePlanningConfirmation,
@@ -189,6 +191,11 @@ export class AppStorageService {
       successMetric: existingGoal?.successMetric ?? `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
       priority: existingGoal?.priority ?? 'P1',
       status: 'active' as const,
+      domain: existingGoal?.domain ?? inferLearningGoalDomain({
+        title: payload.goalTitle.trim(),
+        baseline: payload.baseline.trim(),
+        successMetric: existingGoal?.successMetric ?? `完成一个能证明「${payload.goalTitle.trim()}」学习结果的真实成果。`,
+      }),
       role: 'main' as const,
       scheduleWeight: existingGoal?.scheduleWeight ?? DEFAULT_MAIN_GOAL_WEIGHT,
     };
@@ -285,6 +292,12 @@ export class AppStorageService {
       ...existingGoal,
       ...goal,
       id: goalId,
+      domain: goal.domain ?? existingGoal?.domain ?? inferLearningGoalDomain({
+        title: goal.title,
+        motivation: goal.motivation,
+        baseline: goal.baseline,
+        successMetric: goal.successMetric,
+      }),
       role: requestedRole,
       scheduleWeight: normalizeGoalScheduleWeight(
         goal.scheduleWeight ?? existingGoal?.scheduleWeight,
@@ -1114,15 +1127,22 @@ export class AppStorageService {
   ): NonNullable<LearningPlanDraft['todayPlan']> {
     const firstMilestone = draft.milestones[0];
     const firstTask = draft.tasks[0];
+    const programmingTemplate = goal.domain === 'programming'
+      ? buildProgrammingTodayPlanTemplate(goal as AppState['goals'][number], draft, profile)
+      : null;
 
     return {
       date: new Date().toISOString().slice(0, 10),
       status: 'ready' as const,
-      todayGoal: firstTask?.title || `围绕「${goal.title}」完成今天的最小闭环`,
-      deliverable: '完成一个能证明今天已推进的最小成果',
-      estimatedDuration: draft.todayContext.availableDuration || firstTask?.duration || profile.timeBudget || '30 分钟',
+      todayGoal: programmingTemplate?.todayGoal ?? firstTask?.title ?? `围绕「${goal.title}」完成今天的最小闭环`,
+      deliverable: programmingTemplate?.deliverable ?? '完成一个能证明今天已推进的最小成果',
+      estimatedDuration: programmingTemplate?.estimatedDuration
+        ?? draft.todayContext.availableDuration
+        ?? firstTask?.duration
+        ?? profile.timeBudget
+        ?? '30 分钟',
       milestoneRef: firstMilestone?.title || '本周里程碑',
-      steps: this.normalizeTodayPlanStepList([
+      steps: this.normalizeTodayPlanStepList(programmingTemplate?.steps ?? [
         {
           title: '先确认今天的最小目标',
           detail: firstTask?.note || '先把今天要交付什么写清楚，再开始执行。',
@@ -1135,14 +1155,14 @@ export class AppStorageService {
         },
       ]),
       tomorrowCandidates: [],
-      resources: [
+      resources: programmingTemplate?.resources ?? [
         {
           title: '使用当前最熟悉的一份入门资料',
           url: '',
           reason: 'AI 不可用时，先沿用你最容易开始的资料，避免今天停在准备阶段。',
         },
       ],
-      practice: [
+      practice: programmingTemplate?.practice ?? [
         {
           title: '完成一个最小练习',
           detail: '把今天的学习内容转成一个真实动作或脚本。',
