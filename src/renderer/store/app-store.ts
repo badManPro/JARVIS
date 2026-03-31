@@ -16,6 +16,7 @@ import type {
   UserProfile,
 } from '@shared/app-state';
 import type { AiObservabilitySnapshot, AiProviderHealthCheckResult, AiRuntimeSummaryItem } from '@shared/ai-service';
+import type { CompanionCue, CompanionCueInput } from '@shared/companion';
 import type { CodexAuthStatus } from '@shared/codex-auth';
 import {
   applyAcceptedConversationActionPreviews,
@@ -86,26 +87,6 @@ type AppStore = AppState & {
   publishCompanionCue: (cue: CompanionCueInput) => void;
   clearCompanionCue: () => void;
 };
-
-type CompanionCueMode = 'reminder' | 'celebration' | 'status';
-
-type CompanionCueSource = 'today' | 'calendar';
-
-type CompanionCue = {
-  id: string;
-  source: CompanionCueSource;
-  sourceLabel: string;
-  mode: CompanionCueMode;
-  label: string;
-  title: string;
-  detail: string;
-  note: string;
-  chips: string[];
-  actionLabel: string;
-  actionPageId: string;
-};
-
-type CompanionCueInput = Omit<CompanionCue, 'id'>;
 
 const companionCueDurationMs = 4200;
 let companionCueTimeout: ReturnType<typeof globalThis.setTimeout> | null = null;

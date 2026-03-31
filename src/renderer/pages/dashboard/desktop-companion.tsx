@@ -4,25 +4,23 @@ import { cn } from '@/lib/utils';
 import { pages } from '@/pages/page-data';
 import { getActiveDraft, getActiveGoal, getFocusTodayPlanStep } from '@/pages/dashboard/shared';
 import { useAppStore } from '@/store/app-store';
+import {
+  companionPresenceByMode,
+  createCompanionNavigateAction,
+  resolveCompanionPersona,
+  type CompanionAction,
+  type CompanionCue,
+  type CompanionMode,
+  type CompanionPersona,
+  type CompanionPersonaProfile,
+  type CompanionPresence,
+} from '@shared/companion';
 import type { DashboardRiskSignal, LearningPlanDraft } from '@shared/app-state';
 
 type DesktopCompanionProps = {
   currentPage: string;
   onOpenCoach: () => void;
   onPageChange: (pageId: string) => void;
-};
-
-type CompanionMode = 'reminder' | 'celebration' | 'status';
-
-type CompanionMotion = 'lean-in' | 'bounce' | 'hover';
-
-type CompanionExpression = 'alert' | 'cheerful' | 'steady';
-
-type CompanionPresence = {
-  motion: CompanionMotion;
-  motionLabel: string;
-  expression: CompanionExpression;
-  expressionLabel: string;
 };
 
 type CompanionBrief = {
@@ -32,9 +30,9 @@ type CompanionBrief = {
   detail: string;
   note: string;
   presence: CompanionPresence;
+  persona: CompanionPersona;
   chips: string[];
-  actionLabel: string;
-  actionPageId: string;
+  action: CompanionAction;
   cueSource?: string;
   cueSourceLabel?: string;
   cueSourceDetail?: string;
@@ -58,31 +56,15 @@ const companionDuties = [
   },
 ];
 
-const companionPresenceByMode: Record<CompanionMode, CompanionPresence> = {
-  reminder: {
-    motion: 'lean-in',
-    motionLabel: '前倾提醒',
-    expression: 'alert',
-    expressionLabel: '警觉聚焦',
-  },
-  celebration: {
-    motion: 'bounce',
-    motionLabel: '轻跳庆祝',
-    expression: 'cheerful',
-    expressionLabel: '开心微笑',
-  },
-  status: {
-    motion: 'hover',
-    motionLabel: '悬停同步',
-    expression: 'steady',
-    expressionLabel: '平静确认',
-  },
-};
-
-function withPresence(brief: Omit<CompanionBrief, 'presence'>): CompanionBrief {
+function withPresence(
+  brief: Omit<CompanionBrief, 'presence' | 'persona'>,
+  personaProfile: CompanionPersonaProfile,
+  personaHint?: CompanionCue['personaHint'],
+): CompanionBrief {
   return {
     ...brief,
     presence: companionPresenceByMode[brief.mode],
+    persona: resolveCompanionPersona(personaProfile, personaHint),
   };
 }
 
@@ -102,7 +84,10 @@ function resolveRiskPageId(signal: DashboardRiskSignal) {
   return 'today';
 }
 
-function buildCelebrationBrief(activeDraft: LearningPlanDraft | null): CompanionBrief | null {
+function buildCelebrationBrief(
+  activeDraft: LearningPlanDraft | null,
+  personaProfile: CompanionPersonaProfile,
+): CompanionBrief | null {
   const todayPlan = activeDraft?.todayPlan;
   const completedCount = todayPlan?.steps.filter((step) => step.status === 'done').length ?? 0;
   if (!todayPlan || completedCount === 0) {
@@ -126,13 +111,13 @@ function buildCelebrationBrief(activeDraft: LearningPlanDraft | null): Companion
       todayPlan.deliverable || '今日产出已更新',
       nextFocusStep?.duration ?? '继续保持连续推进',
     ],
-    actionLabel: '查看今日执行',
-    actionPageId: 'today',
-  });
+    action: createCompanionNavigateAction('查看今日执行', 'today', 'resume-flow'),
+  }, personaProfile, 'encouraging');
 }
 
 function buildCueBrief(
-  cue: NonNullable<ReturnType<typeof useAppStore.getState>['companionCue']>,
+  cue: CompanionCue,
+  personaProfile: CompanionPersonaProfile,
 ): CompanionBrief {
   return withPresence({
     mode: cue.mode,
@@ -141,12 +126,11 @@ function buildCueBrief(
     detail: cue.detail,
     note: cue.note,
     chips: cue.chips,
-    actionLabel: cue.actionLabel,
-    actionPageId: cue.actionPageId,
+    action: cue.action,
     cueSource: cue.source,
     cueSourceLabel: cue.sourceLabel,
-    cueSourceDetail: cue.label,
-  });
+    cueSourceDetail: cue.sourceDetail ?? cue.title,
+  }, personaProfile, cue.personaHint);
 }
 
 function buildCompanionBrief({
@@ -155,15 +139,17 @@ function buildCompanionBrief({
   activeGoalTitle,
   activeDraft,
   companionCue,
+  personaProfile,
 }: {
   currentPage: string;
   dashboard: ReturnType<typeof useAppStore.getState>['dashboard'];
   activeGoalTitle: string;
   activeDraft: LearningPlanDraft | null;
-  companionCue: ReturnType<typeof useAppStore.getState>['companionCue'];
+  companionCue: CompanionCue | null;
+  personaProfile: CompanionPersonaProfile;
 }): CompanionBrief {
   if (companionCue) {
-    return buildCueBrief(companionCue);
+    return buildCueBrief(companionCue, personaProfile);
   }
 
   const nextOnboardingStep = dashboard.onboarding.steps.find((step) => step.status !== 'complete') ?? dashboard.onboarding.steps[0];
@@ -179,9 +165,12 @@ function buildCompanionBrief({
         nextOnboardingStep?.title ?? '开始使用',
         activeGoalTitle,
       ],
-      actionLabel: nextOnboardingStep?.actionLabel ?? '开始建档',
-      actionPageId: nextOnboardingStep?.pageId ?? 'today',
-    });
+      action: createCompanionNavigateAction(
+        nextOnboardingStep?.actionLabel ?? '开始建档',
+        nextOnboardingStep?.pageId ?? 'today',
+        'continue-onboarding',
+      ),
+    }, personaProfile, 'direct');
   }
 
   const primaryRisk = dashboard.riskSignals[0] ?? null;
@@ -197,9 +186,8 @@ function buildCompanionBrief({
         activeGoalTitle,
         dashboard.duration,
       ],
-      actionLabel: '处理当前风险',
-      actionPageId: resolveRiskPageId(primaryRisk),
-    });
+      action: createCompanionNavigateAction('处理当前风险', resolveRiskPageId(primaryRisk), 'resolve-risk'),
+    }, personaProfile, 'direct');
   }
 
   if (dashboard.priorityAction.kind === 'start') {
@@ -214,12 +202,11 @@ function buildCompanionBrief({
         dashboard.stage,
         activeGoalTitle,
       ],
-      actionLabel: `前往${getPageTitle(currentPage)}`,
-      actionPageId: currentPage,
-    });
+      action: createCompanionNavigateAction(`前往${getPageTitle(currentPage)}`, currentPage, 'resume-flow'),
+    }, personaProfile);
   }
 
-  const celebrationBrief = buildCelebrationBrief(activeDraft);
+  const celebrationBrief = buildCelebrationBrief(activeDraft, personaProfile);
   if (celebrationBrief) {
     return celebrationBrief;
   }
@@ -241,9 +228,12 @@ function buildCompanionBrief({
         dashboard.scheduling.delayedPlacements.length ? `延期补回 ${dashboard.scheduling.delayedPlacements.length}` : '当前无延期补回',
         activeGoalTitle,
       ],
-      actionLabel: currentPage === 'calendar' ? '查看当前排程' : `前往${getPageTitle('calendar')}`,
-      actionPageId: 'calendar',
-    });
+      action: createCompanionNavigateAction(
+        currentPage === 'calendar' ? '查看当前排程' : `前往${getPageTitle('calendar')}`,
+        'calendar',
+        'review-schedule',
+      ),
+    }, personaProfile, 'steady');
   }
 
   return withPresence({
@@ -257,9 +247,8 @@ function buildCompanionBrief({
       dashboard.duration,
       activeGoalTitle,
     ],
-    actionLabel: `回到${getPageTitle(currentPage)}`,
-    actionPageId: currentPage,
-  });
+    action: createCompanionNavigateAction(`回到${getPageTitle(currentPage)}`, currentPage, 'resume-flow'),
+  }, personaProfile);
 }
 
 function CompanionModeIcon({ mode }: { mode: CompanionMode }) {
@@ -283,6 +272,7 @@ export function DesktopCompanion({
   const companionCue = useAppStore((state) => state.companionCue);
   const goals = useAppStore((state) => state.goals);
   const plan = useAppStore((state) => state.plan);
+  const profile = useAppStore((state) => state.profile);
   const activeGoal = getActiveGoal(goals, plan.activeGoalId);
   const activeDraft = getActiveDraft(plan);
   const brief = buildCompanionBrief({
@@ -291,6 +281,7 @@ export function DesktopCompanion({
     activeGoalTitle: activeGoal?.title ?? '先完成第一轮建档',
     activeDraft,
     companionCue,
+    personaProfile: profile,
   });
 
   return (
@@ -300,12 +291,16 @@ export function DesktopCompanion({
         data-mode={brief.mode}
         data-cue-active={brief.cueSource ? 'true' : 'false'}
         data-linked-source={brief.cueSource ?? 'dashboard'}
+        data-persona={brief.persona.id}
+        data-tone={brief.persona.tone}
       >
         <div className="flex items-start gap-4">
           <div
             className={cn('desktop-companion-avatar', `is-${brief.mode}`)}
             data-motion={brief.presence.motion}
             data-expression={brief.presence.expression}
+            data-persona={brief.persona.id}
+            data-tone={brief.persona.tone}
             aria-hidden="true"
           >
             <span className="desktop-companion-orbit" />
@@ -340,6 +335,11 @@ export function DesktopCompanion({
                 <div className="mt-1 text-xs leading-5 text-slate-600">{brief.cueSourceDetail}</div>
               </div>
             ) : null}
+            <div className="desktop-companion-link mt-3">
+              <div className="desktop-companion-link-label">人格基调</div>
+              <div className="desktop-companion-link-value">{brief.persona.label}</div>
+              <div className="mt-1 text-xs leading-5 text-slate-600">{brief.persona.summary}</div>
+            </div>
           </div>
         </div>
 
@@ -359,6 +359,10 @@ export function DesktopCompanion({
           <div className="desktop-companion-presence-card">
             <div className="desktop-companion-presence-label">当前表情</div>
             <div className="desktop-companion-presence-value">{brief.presence.expressionLabel}</div>
+          </div>
+          <div className="desktop-companion-presence-card">
+            <div className="desktop-companion-presence-label">当前语气</div>
+            <div className="desktop-companion-presence-value">{brief.persona.toneLabel}</div>
           </div>
         </div>
 
@@ -384,15 +388,16 @@ export function DesktopCompanion({
             陪伴层，不是主入口
           </div>
           <div className="mt-2 text-xs leading-5 text-slate-600">{brief.note}</div>
+          <div className="mt-2 text-xs leading-5 text-slate-500">{brief.persona.boundary}</div>
         </div>
 
         <div className="mt-4 flex gap-2">
           <button
             type="button"
             className="neo-button neo-button-primary inline-flex min-w-0 flex-1 items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-white"
-            onClick={() => onPageChange(brief.actionPageId)}
+            onClick={() => onPageChange(brief.action.pageId)}
           >
-            {brief.actionLabel}
+            {brief.action.label}
           </button>
           <button
             type="button"

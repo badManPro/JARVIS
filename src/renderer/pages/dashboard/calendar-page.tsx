@@ -4,6 +4,7 @@ import { Badge, Card, Muted, SectionTitle } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { FeedbackBanner, createFeedbackMessage, type FeedbackMessage } from '@/pages/dashboard/feedback-effects';
 import { useAppStore } from '@/store/app-store';
+import { createCompanionNavigateAction } from '@shared/companion';
 import type { DashboardDelayedPlacement, DashboardWeeklyScheduleDay } from '@shared/app-state';
 
 const flowResetDuration = 1800;
@@ -177,6 +178,9 @@ export function CalendarPage() {
     publishCompanionCue({
       source: 'calendar',
       sourceLabel: '日历页联动',
+      sourceDetail: affectedBlockCount
+        ? `${affectedBlockCount} 个时间块流向新的可执行窗口`
+        : '本周排程已刷新',
       mode: 'status',
       label: '角色状态反馈',
       title: affectedBlockCount
@@ -191,8 +195,8 @@ export function CalendarPage() {
         changedPlacementKeys.length || removedPlacementCount ? `延期补回 ${changedPlacementKeys.length + removedPlacementCount}` : '无新增延期补回',
         secondaryShare ? '副目标补位已同步' : '主目标连续块已锁定',
       ],
-      actionLabel: '查看当前排程',
-      actionPageId: 'calendar',
+      action: createCompanionNavigateAction('查看当前排程', 'calendar', 'review-schedule'),
+      personaHint: 'steady',
     });
 
     if (flowFrameRef.current !== null) {

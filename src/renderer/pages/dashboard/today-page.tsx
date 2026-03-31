@@ -26,6 +26,11 @@ import {
   taskStatusLabel,
   textareaClassName,
 } from '@/pages/dashboard/shared';
+import {
+  createCompanionNavigateAction,
+  type CompanionCuePersonaHint,
+  type CompanionMode,
+} from '@shared/companion';
 import type { LearningPlanDraft, TaskStatus, TodayPlanDependencyStrategy, TodayPlanStep } from '@shared/app-state';
 
 type TodayPlanDisplayState =
@@ -103,26 +108,29 @@ export function TodayPage({
     title,
     detail,
     chips,
+    personaHint,
     actionLabel = '查看今日执行',
   }: {
-    mode: 'reminder' | 'celebration' | 'status';
+    mode: CompanionMode;
     label: string;
     title: string;
     detail: string;
     chips: string[];
+    personaHint?: CompanionCuePersonaHint;
     actionLabel?: string;
   }) {
     publishCompanionCue({
       source: 'today',
       sourceLabel: '今日页联动',
+      sourceDetail: title,
       mode,
       label,
       title,
       detail,
       note: '角色会优先跟随今日页的生成结果和步骤反馈切换动作，但不会把自己做成新的执行入口。',
       chips,
-      actionLabel,
-      actionPageId: 'today',
+      action: createCompanionNavigateAction(actionLabel, 'today', 'resume-flow'),
+      personaHint,
     });
   }
 
@@ -220,6 +228,7 @@ export function TodayPage({
           activeGoal.title,
         ],
         actionLabel: '继续今日执行',
+        personaHint: 'steady',
       });
     } catch (error) {
       setNotice(createFeedbackMessage({
@@ -266,6 +275,7 @@ export function TodayPage({
             detail: '它会继续盯住这一步，直到你完成、延期或跳过，再把注意力切到新的可执行动作。',
             chips: [step.duration, activeGoal?.title ?? '当前主目标'],
             actionLabel: '继续当前步骤',
+            personaHint: 'direct',
           });
           break;
         case 'done':
@@ -288,6 +298,7 @@ export function TodayPage({
               : '完成反馈已经同步到桌面角色，它会停在庆祝状态确认今天的产出，而不是再制造新的动作分支。',
             chips: nextFocusStep ? ['步骤已完成', nextFocusStep.duration] : ['今日清空', step.duration],
             actionLabel: '查看下一步',
+            personaHint: 'encouraging',
           });
           setReflectionContext({
             taskTitle: step.title,
@@ -315,6 +326,7 @@ export function TodayPage({
               : `「${step.title}」已进入明天候选区，桌面角色会保留提醒状态，等待新的可执行时间块。`,
             chips: nextFocusStep ? ['明天候选区', nextFocusStep.duration] : ['明天候选区', '等待新时间块'],
             actionLabel: '查看顺延结果',
+            personaHint: 'direct',
           });
           setReflectionContext({
             taskTitle: step.title,
@@ -337,6 +349,7 @@ export function TodayPage({
             detail: '跳过反馈会先解释系统为什么保留当前最小可执行顺序，再回到常规陪伴层状态。',
             chips: nextFocusStep ? ['等待补回', nextFocusStep.duration] : ['等待补回', '自动重排'],
             actionLabel: '查看重排结果',
+            personaHint: 'steady',
           });
           setReflectionContext({
             taskTitle: step.title,
